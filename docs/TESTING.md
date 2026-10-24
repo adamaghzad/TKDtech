@@ -8,7 +8,7 @@ Verified locally on **2026-10-24** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **59/59 tests passed across 9 files** |
+| `npm test` | **60/60 tests passed across 9 files** |
 | `npm run test:e2e` | **3/3 real Chromium tests passed** against the final Next 16 production preview |
 | `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
@@ -22,6 +22,7 @@ Verified locally on **2026-10-24** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 - Point values, penalties, distinct-judge consensus using server receipt time despite skewed device clocks, duplicate delivery, ties, Golden Point, timer behavior, and state transitions.
 - Role/tournament permissions and public denial.
 - Idempotent commands and optimistic version conflicts.
+- Pending-proposal diagnostics identify earlier matching proposals that expired before server arrival without changing the configured consensus policy.
 - Expired/revoked pairing, heartbeat presence expiry, and assigned-session validation.
 - Transactional completion and winner advancement; completed matches cannot be advanced again through the generic path.
 - Published draw/event immutability, multiple mats, simultaneous-athlete conflict checks, and restart recovery.

@@ -10,7 +10,7 @@ import { createToken, hashToken } from '../security/auth';
 import type { Actor, MatchCommand } from '../types';
 
 interface DeviceSession { id:string;tournament_id:string;match_id:string;role:'J1'|'J2'|'J3'|'REFEREE';device_name:string;status:string;expires_at:number;last_sequence?:number }
-interface ProposalResult { status:string;reason:string;decisionId:string|null;points:number;duplicate?:boolean;matchId:string }
+interface ProposalResult { status:string;reason:string;decisionId:string|null;points:number;duplicate?:boolean;matchId:string;diagnostics?:{serverReceivedAt:number;consensusWindowMs:number;consensusThreshold:number;matchingJudgeCount:number;expiredPriorCount:number} }
 
 export class MatchService {
   constructor(private readonly db: SqliteDatabase, private readonly repository: TournamentRepository) {}
@@ -185,11 +185,11 @@ export class MatchService {
     const duplicate=this.db.prepare('SELECT status,reason,decision_id FROM scoring_proposals WHERE event_id=? OR idempotency_key=?').get(input.eventId,input.idempotencyKey) as {status:string;reason:string;decision_id:string|null}|undefined;if(duplicate)return{status:duplicate.status,reason:'DUPLICATE_DELIVERY',decisionId:duplicate.decision_id,points:0,duplicate:true,matchId:match.id};
     let result:ProposalResult|undefined;
     this.db.transaction(()=>{
-      let status='PENDING';let reason='AWAITING_DISTINCT_JUDGES';let decisionId:string|null=null;let points=0;const round=this.db.prepare('SELECT id,number FROM match_rounds WHERE id=? AND match_id=?').get(input.roundId,match.id) as {id:string;number:number}|undefined;
+      let status='PENDING';let reason='AWAITING_DISTINCT_JUDGES';let decisionId:string|null=null;let points=0;let expiredPriorCount=0;let matchingJudgeCount=0;const round=this.db.prepare('SELECT id,number FROM match_rounds WHERE id=? AND match_id=?').get(input.roundId,match.id) as {id:string;number:number}|undefined;
       if(!round||round.number!==match.current_round){status='REJECTED';reason='ROUND_MISMATCH';}
       else if((session.last_sequence??0)>=input.sequence){status='REJECTED';reason='OUT_OF_ORDER_SEQUENCE';}
       else{
-        this.db.prepare(`UPDATE scoring_proposals SET status='EXPIRED',reason='CONSENSUS_WINDOW_ELAPSED' WHERE match_id=? AND round_id=? AND side=? AND point_type=? AND status='PENDING' AND submitted_at<?`).run(match.id,input.roundId,input.side,input.pointType,now-ruleset.consensusWindowMs);
+        const expired=this.db.prepare(`UPDATE scoring_proposals SET status='EXPIRED',reason='CONSENSUS_WINDOW_ELAPSED' WHERE match_id=? AND round_id=? AND side=? AND point_type=? AND status='PENDING' AND submitted_at<?`).run(match.id,input.roundId,input.side,input.pointType,now-ruleset.consensusWindowMs);expiredPriorCount=expired.changes;
         const prior=this.db.prepare(`SELECT event_id,judge_id,submitted_at FROM scoring_proposals WHERE match_id=? AND round_id=? AND side=? AND point_type=? AND status='PENDING' ORDER BY submitted_at`).all(match.id,input.roundId,input.side,input.pointType) as Array<{event_id:string;judge_id:string;submitted_at:number}>;
         if(prior.some(p=>p.judge_id===session.id)){status='REJECTED';reason='JUDGE_ALREADY_COUNTED';}
         else if(prior.length>0&&(input.submittedAt<prior[0]!.submitted_at||input.submittedAt-prior[0]!.submitted_at>ruleset.consensusWindowMs)){status='REJECTED';reason='OUTSIDE_CONSENSUS_WINDOW';}
@@ -198,13 +198,13 @@ export class MatchService {
       if(status!=='OUT_OF_ORDER_SEQUENCE')this.db.prepare('UPDATE judge_sessions SET last_sequence=? WHERE id=?').run(input.sequence,session.id);
       if(status==='PENDING'){
         const group=this.db.prepare(`SELECT event_id FROM scoring_proposals WHERE match_id=? AND round_id=? AND side=? AND point_type=? AND status='PENDING' ORDER BY submitted_at`).all(match.id,input.roundId,input.side,input.pointType) as Array<{event_id:string}>;
-        if(group.length>=ruleset.consensusThreshold){status='ACCEPTED';reason='CONSENSUS_THRESHOLD_MET';decisionId=randomUUID();points=ruleset.points[input.pointType];const ids=group.map(item=>item.event_id);const placeholders=ids.map(()=>'?').join(',');this.db.prepare(`UPDATE scoring_proposals SET status='ACCEPTED',reason='CONSENSUS_THRESHOLD_MET',decision_id=? WHERE event_id IN (${placeholders})`).run(decisionId,...ids);
+        matchingJudgeCount=group.length;if(group.length>=ruleset.consensusThreshold){status='ACCEPTED';reason='CONSENSUS_THRESHOLD_MET';decisionId=randomUUID();points=ruleset.points[input.pointType];const ids=group.map(item=>item.event_id);const placeholders=ids.map(()=>'?').join(',');this.db.prepare(`UPDATE scoring_proposals SET status='ACCEPTED',reason='CONSENSUS_THRESHOLD_MET',decision_id=? WHERE event_id IN (${placeholders})`).run(decisionId,...ids);
           const column=input.side==='BLUE'?'blue_score':'red_score';this.db.prepare(`UPDATE matches SET ${column}=${column}+? WHERE id=?`).run(points,match.id);this.db.prepare(`UPDATE match_rounds SET ${column}=${column}+? WHERE id=?`).run(points,input.roundId);
           const sequence=match.sequence+1;this.db.prepare('UPDATE matches SET sequence=?,version=version+1,updated_at=? WHERE id=?').run(sequence,isoNow(),match.id);appendMatchEvent(this.db,{tournamentId:match.tournament_id,matchId:match.id,sequence,type:'score.accepted',actorId:session.id,sessionId:session.id,payload:{side:input.side,pointType:input.pointType,points,roundId:input.roundId,round:match.current_round,proposalIds:ids,decisionId,undoable:true},idempotencyKey:`consensus:${decisionId}`});
         }
       }
       if(status!=='ACCEPTED'){const sequence=match.sequence+1;this.db.prepare('UPDATE matches SET sequence=?,version=version+1,updated_at=? WHERE id=?').run(sequence,isoNow(),match.id);appendMatchEvent(this.db,{tournamentId:match.tournament_id,matchId:match.id,sequence,type:status==='REJECTED'?'score.rejected':'score.proposed',actorId:session.id,sessionId:session.id,payload:{eventId:input.eventId,side:input.side,pointType:input.pointType,status,reason},idempotencyKey:`proposal:${input.eventId}`});}
-      audit(this.db,{tournamentId:match.tournament_id,actorId:session.id,action:`SCORE_PROPOSAL_${status}`,entityType:'match',entityId:match.id,after:{eventId:input.eventId,status,reason,decisionId,clientSubmittedAt}});result={status,reason,decisionId,points,matchId:match.id};
+      audit(this.db,{tournamentId:match.tournament_id,actorId:session.id,action:`SCORE_PROPOSAL_${status}`,entityType:'match',entityId:match.id,after:{eventId:input.eventId,status,reason,decisionId,clientSubmittedAt}});result={status,reason,decisionId,points,matchId:match.id,diagnostics:{serverReceivedAt:now,consensusWindowMs:ruleset.consensusWindowMs,consensusThreshold:ruleset.consensusThreshold,matchingJudgeCount,expiredPriorCount}};
     })();if(!result)throw new HttpError(500,'PROPOSAL_NOT_RECORDED','Proposal transaction did not return a result.');return result;
   }
 

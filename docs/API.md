@@ -111,6 +111,8 @@ Send the device credential as `Authorization: Bearer DEVICE_TOKEN`. The session 
 
 `submittedAt` is the device-reported timestamp used for diagnostics. The server replaces it with its own receipt time when evaluating proposal expiry and the consensus window, so unsynchronized phone clocks cannot reject an otherwise valid proposal. Delivery retries remain protected by event IDs, idempotency keys, and per-judge sequences. Both judges' requests must still arrive inside the configured consensus window.
 
+New proposal responses include non-sensitive `diagnostics`: server receipt time, the configured window/threshold, matching judge count, and the number of earlier matching proposals that expired before arrival. These fields explain pending responses; they do not relax consensus or alter scoring policy.
+
 ## WebSockets
 
 Connect to `/ws?matchId=MATCH_UUID`. Public display connections receive only display-safe snapshots. Operator connections use the same session cookie. Device connections use their assigned credential flow.
