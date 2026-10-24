@@ -61,6 +61,12 @@ curl -b cookies.txt http://127.0.0.1:3000/api/v1/bootstrap
 | `GET /api/v1/network/status` | Authenticated LAN/cloud/sync status |
 | `POST /api/v1/sync/push` | Tournament-admin event-log delivery; see cloud limitations |
 
+## Mat queue lifecycle
+
+Completing a match or recording a walkover releases its active mat assignment in the same transaction as result finalization and bracket advancement. The server deterministically assigns the next eligible `PENDING`/`READY` match by queue position and match number, skipping matches with athletes in another live match. The newly assigned match remains stopped in `READY`; an operator or referee must start it explicitly. If no eligible match remains, the mat becomes `AVAILABLE`.
+
+Server startup reconciles stale active assignments left on resolved matches through the same recovery path. `/display/mat/:matId` checks the assignment every three seconds, switches the read-only display when the active match changes, and shows a waiting state when the mat is available.
+
 ## Match commands
 
 ```http

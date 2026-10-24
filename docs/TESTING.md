@@ -8,8 +8,8 @@ Verified locally on **2026-10-24** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **60/60 tests passed across 9 files** |
-| `npm run test:e2e` | **3/3 real Chromium tests passed** against the final Next 16 production preview |
+| `npm test` | **64/64 tests passed across 9 files** |
+| `npm run test:e2e` | **4/4 real Chromium tests passed** against the final Next 16 production preview |
 | `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
 | `npm run build` | Passed: optimized Next 16.4.3 App Router production build with proxy convention |
@@ -25,6 +25,7 @@ Verified locally on **2026-10-24** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 - Pending-proposal diagnostics identify earlier matching proposals that expired before server arrival without changing the configured consensus policy.
 - Expired/revoked pairing, heartbeat presence expiry, and assigned-session validation.
 - Transactional completion and winner advancement; completed matches cannot be advanced again through the generic path.
+- Completion releases the mat, deterministically auto-assigns the next eligible queued match without starting it, leaves an empty mat available, skips athletes live elsewhere, and recovers stale resolved assignments.
 - Published draw/event immutability, multiple mats, simultaneous-athlete conflict checks, and restart recovery.
 - Real WebSocket synchronization among operator, public display, and two judges, including duplicate snapshots, reconnection, and sequence-gap recovery.
 - Sync full-log replay, server acknowledgement, duplicate handling, and conflict jobs never marked complete.
@@ -37,6 +38,7 @@ The Playwright suite verifies:
 1. Demo login and record-derived dashboard metrics; operator control updates the authoritative score and public display state; the test correction restores the showcase.
 2. An anonymous client receives HTTP 401 when attempting a match mutation.
 3. Two independently paired mobile judges submit distinct proposals, one accepted +3 results, and the score is restored through the audited undo path.
+4. A public mat display automatically rolls from a completed match to the next eligible queued match, whose timer remains stopped in `READY`.
 
 Reviewed screenshots:
 

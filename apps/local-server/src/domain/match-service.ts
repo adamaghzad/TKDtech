@@ -140,7 +140,7 @@ export class MatchService {
       if(winner&&['COMPLETED','WALKOVER'].includes(state)){
         const winnerId=winner==='BLUE'?current.blue_athlete_id:current.red_athlete_id;const loserId=winner==='BLUE'?current.red_athlete_id:current.blue_athlete_id;if(!winnerId)throw new HttpError(409,'RESULT_INVALID','Winner athlete is unknown.');
         this.db.prepare('INSERT INTO tournament_results(id,tournament_id,match_id,winner_athlete_id,loser_athlete_id,decision_method,blue_score,red_score,completed_at,version) VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),current.tournament_id,matchId,winnerId,loserId,decision??'RESULT',blueScore,redScore,actualEnd??updatedAt,current.version+1);
-        this.repository.advanceFromCompletedMatch(actor,matchId,winnerId);
+        this.repository.advanceFromCompletedMatch(actor,matchId,winnerId);this.repository.releaseMatAndAssignNext(current.tournament_id,matchId,actor.id);
       }
     })();
     return this.snapshot(matchId);

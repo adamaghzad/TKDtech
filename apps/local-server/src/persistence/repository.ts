@@ -218,6 +218,39 @@ export class TournamentRepository {
     this.db.transaction(()=>{const now=isoNow();this.db.prepare('UPDATE match_assignments SET unassigned_at=? WHERE match_id=? AND unassigned_at IS NULL').run(now,matchId);this.db.prepare('UPDATE match_assignments SET unassigned_at=? WHERE mat_id=? AND unassigned_at IS NULL').run(now,matId);this.db.prepare('INSERT INTO match_assignments(id,match_id,mat_id,assigned_at) VALUES(?,?,?,?)').run(randomUUID(),matchId,matId,now);this.db.prepare('UPDATE matches SET mat_id=?,state=CASE WHEN state=\'PENDING\' THEN \'READY\' ELSE state END,version=version+1,updated_at=? WHERE id=?').run(matId,now,matchId);this.db.prepare('UPDATE mats SET status=\'OCCUPIED\' WHERE id=?').run(matId);audit(this.db,{tournamentId:match.tournament_id,actorId:actor.id,action:'MATCH_ASSIGNED',entityType:'match',entityId:matchId,after:{matId}});})();
   }
 
+  /** Internal authorized completion/recovery path. Must run inside the caller's transaction. */
+  releaseMatAndAssignNext(tournamentId: string, completedMatchId: string, actorId: string | null): {matId:string;nextMatchId:string|null}|null {
+    const assignment=this.db.prepare('SELECT mat_id FROM match_assignments WHERE match_id=? AND unassigned_at IS NULL').get(completedMatchId) as {mat_id:string}|undefined;
+    if(!assignment)return null;
+    const matId=assignment.mat_id;const now=isoNow();
+    this.db.prepare('UPDATE match_assignments SET unassigned_at=? WHERE match_id=? AND unassigned_at IS NULL').run(now,completedMatchId);
+    const next=this.db.prepare(`SELECT m.id FROM matches m
+      WHERE m.tournament_id=? AND m.id<>? AND m.state IN ('PENDING','READY')
+        AND m.blue_athlete_id IS NOT NULL AND m.red_athlete_id IS NOT NULL
+        AND NOT EXISTS(SELECT 1 FROM match_assignments ma WHERE ma.match_id=m.id AND ma.unassigned_at IS NULL)
+        AND NOT EXISTS(SELECT 1 FROM matches live WHERE live.tournament_id=m.tournament_id AND live.id<>m.id
+          AND live.state IN ('CALLED','IN_PROGRESS','PAUSED','ROUND_BREAK','GOLDEN_POINT','UNDER_REVIEW')
+          AND (live.blue_athlete_id IN (m.blue_athlete_id,m.red_athlete_id) OR live.red_athlete_id IN (m.blue_athlete_id,m.red_athlete_id)))
+      ORDER BY COALESCE(m.queue_position,999999),CAST(m.match_number AS INTEGER),m.match_number,m.id LIMIT 1`).get(tournamentId,completedMatchId) as {id:string}|undefined;
+    if(next){
+      const updated=this.db.prepare(`UPDATE matches SET mat_id=?,state=CASE WHEN state='PENDING' THEN 'READY' ELSE state END,version=version+1,updated_at=? WHERE id=? AND state IN ('PENDING','READY')`).run(matId,now,next.id);
+      if(updated.changes!==1)throw new HttpError(409,'MAT_QUEUE_CONFLICT','The next queued match changed before automatic assignment. No partial assignment was made.');
+      this.db.prepare('INSERT INTO match_assignments(id,match_id,mat_id,assigned_at) VALUES(?,?,?,?)').run(randomUUID(),next.id,matId,now);
+    }
+    this.db.prepare('UPDATE mats SET status=? WHERE id=?').run(next?'OCCUPIED':'AVAILABLE',matId);
+    audit(this.db,{tournamentId,actorId,action:'MAT_RELEASED',entityType:'mat',entityId:matId,before:{matchId:completedMatchId},after:{nextMatchId:next?.id??null,status:next?'OCCUPIED':'AVAILABLE'},reason:'Match resolved; mat released for queue advancement.'});
+    if(next)audit(this.db,{tournamentId,actorId,action:'MATCH_ASSIGNED',entityType:'match',entityId:next.id,after:{matId,automatic:true,previousMatchId:completedMatchId},reason:'Previous match completed; next eligible queued match assigned without starting its timer.'});
+    return{matId,nextMatchId:next?.id??null};
+  }
+
+  recoverResolvedMatAssignments(): Array<{matchId:string;matId:string;nextMatchId:string|null}> {
+    const rows=this.db.prepare(`SELECT ma.match_id,m.tournament_id FROM match_assignments ma JOIN matches m ON m.id=ma.match_id
+      WHERE ma.unassigned_at IS NULL AND m.state IN ('COMPLETED','WALKOVER','WITHDRAWN','DISQUALIFIED','CANCELLED') ORDER BY ma.assigned_at,ma.match_id`).all() as Array<{match_id:string;tournament_id:string}>;
+    const recovered:Array<{matchId:string;matId:string;nextMatchId:string|null}>=[];
+    for(const row of rows){const result=this.db.transaction(()=>this.releaseMatAndAssignNext(row.tournament_id,row.match_id,null))();if(result)recovered.push({matchId:row.match_id,...result});}
+    return recovered;
+  }
+
   dashboard(actor: Actor): Record<string,unknown> {
     const tournaments=this.listTournaments(actor);const ids=tournaments.map(t=>t.id);if(ids.length===0)return{tournaments:[],activeTournament:null,stats:{},liveMatches:[],recentResults:[],schedule:[],medals:[]};const placeholders=ids.map(()=>'?').join(',');
     const scalar=(sql:string):number=>(this.db.prepare(sql).get(...ids) as {value:number}).value;

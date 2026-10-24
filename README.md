@@ -67,7 +67,7 @@ Register the initial organization at `/login`, then create a tournament. See [De
 1. Create a tournament and its clubs.
 2. Create categories, then register athletes with compatible division/category and a passing weigh-in. CSV import validates each row independently.
 3. Generate a random or seeded draw. Publishing freezes that draw version and creates bracket/match records; later seeds generate a new version rather than silently replacing it.
-4. Open **Schedule**, assign ready matches to mats, then open **Matches** or **Live Scoreboard**.
+4. Open **Schedule**, assign ready matches to mats, then open **Matches** or **Live Scoreboard**. Completing a match releases its mat and automatically assigns the next eligible queued match without starting its timer.
 5. Pair authorized devices from **Judges & Referees**. Each role has one active replaceable session; pairing tokens expire and are stored only as hashes.
 6. Start/resume the round from the operator or referee console. Judge proposals are accepted only when the configured number of distinct judges agrees inside the consensus window. Duplicate proposals cannot award extra points.
 7. Use documented correction/undo reasons for nonfinal scoring mistakes. Completed matches cannot be silently progressed again; a dedicated completed-result correction/downstream-reversal workflow is listed as remaining work.
