@@ -72,7 +72,7 @@ Register the initial organization at `/login`, then create a tournament. See [De
 6. Start/resume the round from the operator or referee console. With one online corner judge, that judge's authorized input is accepted immediately; when two or more are online, matching input from two distinct judges is required inside the consensus window. The mode switches automatically with device presence, and duplicate deliveries cannot award extra points.
 7. At nonfinal round expiry the server starts the configured rest countdown and the TV keeps the completed round's points and winner visible. Rest is non-scoring; when it reaches zero, explicitly start the next round from the operator or referee console.
 8. Use documented correction/undo reasons for nonfinal scoring mistakes. Completed matches cannot be silently progressed again; a dedicated completed-result correction/downstream-reversal workflow is listed as remaining work.
-9. Open `/display/:matchId` on the television. Public clients can read only the required display data and cannot issue scoring commands.
+9. Open `/display/:matchId` on the television. Use **Sound off / Enable sound** once to unlock browser audio for final-five-second beeps and round/rest end buzzers; the preference is saved per device. Public clients remain read-only and cannot issue scoring commands.
 10. Review results, medals, audit history, and CSV/PDF reports.
 
 ## Commands

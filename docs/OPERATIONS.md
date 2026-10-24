@@ -18,11 +18,15 @@
 - Presence comes from heartbeat timestamps, not from a stale socket label. Expired devices must reconnect/heartbeat before being considered online.
 - If a phone sleeps, reopen the session URL. Revoke and re-pair if its session expired or was replaced.
 
+## Timer audio
+
+The public TV and operator scoreboard provide a per-device sound control. Browsers require one tap on **Enable sound** after opening/reloading the page before audio can play. Round and rest timers emit short beeps at 5, 4, 3, 2, and 1 seconds and a distinct buzzer at zero. Tones are generated locally with Web Audio and work without Internet access. Verify the TV/operator speakers before the event; audio is supplementary and never changes the authoritative timer.
+
 ## Authoritative scoring rules
 
 - Only the server accepts scores and transitions. The browser never decides consensus or the final winner.
 - Commands carry `expectedVersion` and an idempotency key. A stale operator must reload rather than overwrite a newer match.
-- A judge proposal is not itself a point. The configured number of distinct judge sessions must agree within the configured window.
+- A judge proposal becomes a point only under the active consensus policy: one fresh online corner judge can score alone; two or more online judges require two distinct matching proposals inside the configured window.
 - In two-judge mode, repeated input from one judge cannot satisfy consensus or award duplicate points. In one-judge mode, each deliberate unique proposal is accepted once; retries remain idempotent.
 - Persist the event and match transaction first; only then acknowledge/broadcast.
 - Corrections require a reason and create new audit/history records. Never edit the database to erase a published mistake.

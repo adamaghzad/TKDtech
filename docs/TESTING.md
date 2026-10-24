@@ -8,8 +8,8 @@ Verified locally on **2026-10-24** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **70/70 tests passed across 10 files** |
-| `npm run test:e2e` | **6/6 real Chromium tests passed** against the final Next 16 production preview |
+| `npm test` | **75/75 tests passed across 11 files** |
+| `npm run test:e2e` | **7/7 real Chromium tests passed** against the final Next 16 production preview |
 | `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
 | `npm run build` | Passed: optimized Next 16.4.3 App Router production build with proxy convention |
@@ -22,6 +22,7 @@ Verified locally on **2026-10-24** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 - Point values, penalties, distinct-judge consensus using server receipt time despite skewed device clocks, duplicate delivery, ties, Golden Point, timer behavior, and state transitions.
 - Automatic one-/two-judge switching from fresh device presence: immediate one-judge acceptance, two-judge restoration on reconnection, and pending-input resolution without duplicate scoring decisions.
 - Automatic nonfinal-round expiry starts the category-configured running break; the completed round result is persisted, scoring stays closed, break expiry does not start scoring, final-round expiry pauses, and interrupted breaks recover/resume correctly.
+- Timer-alert tracking emits one beep at each of 5/4/3/2/1 seconds and one round/rest end alert, with no initial-load replay, paused alert, unsupported-timer alert, or duplicate snapshot alert.
 - Role/tournament permissions and public denial.
 - Idempotent commands and optimistic version conflicts.
 - Pending-proposal diagnostics identify earlier matching proposals that expired before server arrival without changing the configured consensus policy.
@@ -42,7 +43,8 @@ The Playwright suite verifies:
 3. One connected mobile judge sees one-judge mode, submits an immediately accepted +3, and restores the score through the audited undo path.
 4. Two independently paired mobile judges see the automatic return to two-judge consensus, submit distinct proposals for one accepted +3, and restore the score.
 5. A public round-rest display shows a decreasing `REST TIME` clock, `ROUND 1 COMPLETE`, Blue 5 / Red 2, and `BLUE WINS ROUND 1`; the test then restores the showcase.
-6. A public mat display automatically rolls from a completed match to the next eligible queued match, whose timer remains stopped in `READY`.
+6. After the browser-required sound unlock, a six-second TV rest emits five scheduled `880 Hz` warning tones and one `180 Hz` end buzzer; the test restores the normal 60-second break.
+7. A public mat display automatically rolls from a completed match to the next eligible queued match, whose timer remains stopped in `READY`.
 
 Reviewed screenshots:
 
@@ -51,6 +53,7 @@ Reviewed screenshots:
 - `artifacts/judge-mobile.png`
 - `artifacts/judge-single-mobile.png`
 - `artifacts/round-break-display.png`
+- `artifacts/timer-audio-rest-end.png`
 
 No browser page errors were observed in the dashboard/operator test.
 
