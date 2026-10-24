@@ -131,15 +131,16 @@ export class MatchService {
           transition('PAUSED');eventType='match.review_completed';payload={...payload,reason:command.reason||'Review closed by authorized operator'};break;
         }
         case 'TIMER_EXPIRED': {
-          if(!timer.running||remainingAt(timer,now)>0)throw new HttpError(409,'TIMER_NOT_EXPIRED','The authoritative timer has not expired.');
-          const timing=this.timing(current.category_id);
-          if(nextTimer.kind==='ROUND'&&state==='IN_PROGRESS'){
+          const timing=this.timing(current.category_id);const expiredRunning=timer.running&&remainingAt(timer,now)===0;
+          const pausedRoundRecovery=state==='PAUSED'&&nextTimer.kind==='ROUND'&&nextTimer.remainingMs<=0&&round<timing.rounds;
+          if(!expiredRunning&&!pausedRoundRecovery)throw new HttpError(409,'TIMER_NOT_EXPIRED','The authoritative timer has not expired.');
+          if(nextTimer.kind==='ROUND'&&(state==='IN_PROGRESS'||pausedRoundRecovery)){
             const endedRound=round;const roundWinner=currentRound.blue_score===currentRound.red_score?null:currentRound.blue_score>currentRound.red_score?'BLUE':'RED';
             this.db.prepare('UPDATE match_rounds SET winner_side=?,ended_at=? WHERE id=?').run(roundWinner,new Date(now).toISOString(),currentRound.id);
             const roundResult={number:endedRound,blueScore:currentRound.blue_score,redScore:currentRound.red_score,winner:roundWinner};
             if(endedRound<timing.rounds){
               round+=1;transition('ROUND_BREAK');nextTimer=startTimer(resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now),now);eventType='match.round_changed';
-              payload={...payload,previousRound:endedRound,round,automatic:true,roundResult};
+              payload={...payload,previousRound:endedRound,round,automatic:true,recoveredPaused:pausedRoundRecovery,roundResult};
             }else{
               transition('PAUSED');nextTimer=pauseTimer(nextTimer,now);eventType='match.paused';payload={...payload,reason:'ROUND_EXPIRED',round:endedRound,automatic:true,roundResult};
             }
@@ -275,12 +276,17 @@ export class MatchService {
 
   /** Persist timer expiry before broadcasting it. A finished break never starts scoring automatically. */
   expireTimers(now=Date.now()):string[]{
-    const rows=this.db.prepare(`SELECT id,tournament_id,state,timer_json FROM matches WHERE json_extract(timer_json,'$.running')=1`).all() as Array<{id:string;tournament_id:string;state:MatchSnapshot['state'];timer_json:string}>;
+    const rows=this.db.prepare(`SELECT m.id,m.tournament_id,m.state,m.current_round,m.timer_json,c.rounds AS total_rounds
+      FROM matches m JOIN categories c ON c.id=m.category_id
+      WHERE json_extract(m.timer_json,'$.running')=1
+         OR (m.state='PAUSED' AND json_extract(m.timer_json,'$.kind')='ROUND' AND json_extract(m.timer_json,'$.remainingMs')<=0)`).all() as Array<{id:string;tournament_id:string;state:MatchSnapshot['state'];current_round:number;total_rounds:number;timer_json:string}>;
     const changed:string[]=[];
     for(const row of rows){
       const timer=JSON.parse(row.timer_json) as MatchSnapshot['timer'];
-      if(!timer.running||remainingAt(timer,now)>0)continue;
-      const valid=(timer.kind==='ROUND'&&row.state==='IN_PROGRESS')||(timer.kind==='BREAK'&&row.state==='ROUND_BREAK')||(timer.kind==='MEDICAL'&&row.state==='PAUSED')||(timer.kind==='GOLDEN_POINT'&&row.state==='GOLDEN_POINT');
+      const runningExpired=timer.running&&remainingAt(timer,now)<=0;
+      const pausedRoundRecovery=row.state==='PAUSED'&&timer.kind==='ROUND'&&timer.remainingMs<=0&&row.current_round<row.total_rounds;
+      if(!runningExpired&&!pausedRoundRecovery)continue;
+      const valid=pausedRoundRecovery||(timer.kind==='ROUND'&&row.state==='IN_PROGRESS')||(timer.kind==='BREAK'&&row.state==='ROUND_BREAK')||(timer.kind==='MEDICAL'&&row.state==='PAUSED')||(timer.kind==='GOLDEN_POINT'&&row.state==='GOLDEN_POINT');
       if(!valid)continue;
       this.execute({id:'system-timer',role:'SUPER_ADMIN',tournamentIds:[row.tournament_id]},row.id,{type:'TIMER_EXPIRED'},`timer-expired:${row.id}:${timer.authoritativeAt}`);
       changed.push(row.id);

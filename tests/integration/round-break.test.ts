@@ -20,6 +20,14 @@ describe('authoritative round breaks',()=>{
     clock.mockReturnValue(161500);expect(service.snapshot(matchId).timer.remainingMs).toBe(119500);
   });
 
+  it('automatically recovers a paused zero non-final round into a running rest',()=>{
+    const{db,service,matchId}=system();setRound(db,matchId,1,'PAUSED',0);vi.spyOn(Date,'now').mockReturnValue(101000);
+    expect(service.expireTimers(101000)).toEqual([matchId]);
+    const resting=service.snapshot(matchId);expect(resting).toMatchObject({state:'ROUND_BREAK',currentRound:2});expect(resting.timer).toMatchObject({kind:'BREAK',remainingMs:60000,running:true,authoritativeAt:101000});
+    const event=db.prepare(`SELECT payload_json FROM match_events WHERE match_id=? AND event_type='match.round_changed' ORDER BY sequence DESC LIMIT 1`).get(matchId) as{payload_json:string};expect(JSON.parse(event.payload_json)).toMatchObject({automatic:true,recoveredPaused:true,previousRound:1,round:2});
+    expect(service.expireTimers(101000)).toEqual([]);
+  });
+
   it('uses category timing for manual breaks, break resets, and the next round',()=>{
     const{db,service,actor,matchId}=system();setRound(db,matchId,1,'PAUSED',0);db.prepare('UPDATE categories SET round_duration_ms=90000,break_duration_ms=45000 WHERE id=(SELECT category_id FROM matches WHERE id=?)').run(matchId);vi.spyOn(Date,'now').mockReturnValue(100000);
     const resting=service.execute(actor,matchId,{type:'NEXT_ROUND'});expect(resting).toMatchObject({state:'ROUND_BREAK',currentRound:2});expect(resting.timer).toMatchObject({kind:'BREAK',remainingMs:45000,running:true});
@@ -30,6 +38,7 @@ describe('authoritative round breaks',()=>{
   it('pauses at final-round expiry without inventing another break or round',()=>{
     const{db,service,actor,matchId}=system();setRound(db,matchId,3,'IN_PROGRESS');vi.spyOn(Date,'now').mockReturnValue(101000);expect(service.expireTimers(101000)).toEqual([matchId]);
     const snapshot=service.snapshot(matchId);expect(snapshot).toMatchObject({state:'PAUSED',currentRound:3});expect(snapshot.timer).toMatchObject({kind:'ROUND',remainingMs:0,running:false});expect(snapshot.rounds[2]!.endedAt).not.toBeNull();
+    expect(service.expireTimers(101000)).toEqual([]);expect(service.snapshot(matchId)).toMatchObject({state:'PAUSED',currentRound:3});
     expect(service.execute(actor,matchId,{type:'COMPLETE'})).toMatchObject({state:'COMPLETED',winner:'BLUE'});
   });
 

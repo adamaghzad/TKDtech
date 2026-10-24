@@ -21,7 +21,10 @@ export function useTimerAudio(snapshot:MatchSnapshot|null,remainingMs:number){
  useEffect(()=>()=>{if(contextRef.current)void contextRef.current.close();},[]);
  useEffect(()=>{
   const alerts=trackerRef.current.observe(snapshot,remainingMs);if(!enabled||!ready)return;
-  for(const alert of alerts){if(alert.type==='WARNING')playTone(880,0.09,0.07,'sine');else playTone(180,0.8,0.11,'square');}
+  for(const alert of alerts){
+   if(alert.type==='WARNING')playTone(880,0.09,0.07,'sine');
+   else{playTone(180,1.1,0.09,'square');playTone(240,1.1,0.055,'square');}
+  }
  },[snapshot,remainingMs,enabled,ready,playTone]);
  return{enabled,ready,toggle};
 }

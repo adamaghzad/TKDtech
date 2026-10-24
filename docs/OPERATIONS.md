@@ -20,7 +20,7 @@
 
 ## Timer audio
 
-The public TV and operator scoreboard provide a per-device sound control. Browsers require one tap on **Enable sound** after opening/reloading the page before audio can play. Round and rest timers emit short beeps at 5, 4, 3, 2, and 1 seconds and a distinct buzzer at zero. Tones are generated locally with Web Audio and work without Internet access. Verify the TV/operator speakers before the event; audio is supplementary and never changes the authoritative timer.
+The public TV and operator scoreboard provide a clearly visible per-device sound control. Browsers require one tap on **Enable sound** after opening/reloading the page before audio can play. Round and rest timers emit short `880 Hz` beeps at 5, 4, 3, 2, and 1 seconds and an original competition-style dual `180/240 Hz` buzzer for 1.1 seconds at zero. This is not a proprietary PSS sound or a claim of hardware equivalence. Tones are generated locally with Web Audio and work without Internet access. Verify the TV/operator speakers before the event; audio is supplementary and never changes the authoritative timer.
 
 ## Authoritative scoring rules
 
@@ -33,7 +33,7 @@ The public TV and operator scoreboard provide a per-device sound control. Browse
 
 ## Process restart and power recovery
 
-Running timers are deliberately changed to a confirmation-safe paused state during recovery. A graceful shutdown persists the paused remaining time before the database closes; after an abrupt crash, officials must verify the recovered timer against their own records. After a restart:
+Running timers are deliberately changed to a confirmation-safe paused state during recovery. A graceful shutdown persists the paused remaining time before the database closes; after an abrupt crash, officials must verify the recovered timer against their own records. A nonfinal round already at zero is treated as expired and automatically enters its rest countdown; final-round zero remains paused for the result workflow. After a restart:
 
 1. Open the operator console for every previously live match.
 2. Confirm athletes, round, score, penalties, and remaining time against officials' records.
@@ -89,6 +89,7 @@ Do not expose club contacts or full registration exports on the public TV browse
 
 | Symptom | Check |
 |---|---|
+| Rest stays at `0:00` before the next round | Confirm the deployed health includes `pausedZeroRecovery: NON_FINAL_ROUND_TO_BREAK`; a nonfinal paused-zero round should enter rest within 500 ms. At genuine rest expiry, `0:00 · REST ENDED` is expected and the operator/referee must start the next round. |
 | `WEB_UNAVAILABLE` | Ensure Next.js is running on internal port 3001 and `WEB_INTERNAL_URL` points to it |
 | LAN device cannot connect | Host firewall, Wi-Fi client isolation, correct interface/IP, port 3000, and that all devices use the same LAN |
 | Judge buttons disabled | Session status/expiry, heartbeat presence, match state, and whether the referee/operator started the round |
