@@ -19,7 +19,14 @@ ENV NEXT_PUBLIC_TKD_MODE=${NEXT_PUBLIC_TKD_MODE}
 RUN npm run build
 
 FROM node:22-bookworm-slim AS runtime
+# concurrently uses ps to enumerate and stop its child processes cleanly.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends procps \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
+# npm start normally supplies this PATH. The container launches concurrently
+# directly for signal handling, so make tsx/wait-on/next visible explicitly.
+ENV PATH=/app/node_modules/.bin:$PATH
 ENV NODE_ENV=production \
   NEXT_TELEMETRY_DISABLED=1 \
   NEXT_PUBLIC_TKD_MODE=LOCAL \
