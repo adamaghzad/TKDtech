@@ -18,9 +18,11 @@ At the time this guide was written, Northflank advertised Sandbox with no card, 
 
 Suggested allocation:
 
-- runtime: `nf-compute-50` (0.5 vCPU, 1 GB RAM), one instance;
+- runtime: `nf-compute-20` (0.2 vCPU, 512 MB RAM), one instance;
 - persistent volume: 5 GB;
 - no additional always-on services.
+
+Some Sandbox accounts expose only `nf-compute-10` and `nf-compute-20`. Choose `nf-compute-20`; the 256 MB `nf-compute-10` plan is too small. The 512 MB plan is only an evaluation target and may be insufficient under tournament load.
 
 The listed runtime and a 5 GB volume fit below the advertised resource allowance before builds and network usage. Monitor actual usage; do not assume every possible workload is free.
 
@@ -73,7 +75,7 @@ The Dockerfile installs the native build prerequisites for `better-sqlite3`, run
 
 | Setting | Value |
 |---|---|
-| Compute plan | `nf-compute-50` |
+| Compute plan | `nf-compute-20` (the largest option on some free accounts) |
 | Instances | `1` |
 | Deployment type | One instance with a single read/write volume |
 
@@ -181,4 +183,4 @@ Disable automatic production deployment during an official event. Apply updates 
 
 ## Production boundary
 
-Sandbox is appropriate for evaluation and small noncritical deployments. For an official tournament, first complete load, restart, recovery, mobile-device, and backup/restore drills. Use an on-site local server if scoring must continue during an Internet outage, and upgrade the hosting resources if the 1 GB runtime or single-instance availability is insufficient.
+Sandbox is appropriate for evaluation and small noncritical deployments. For an official tournament, first complete load, restart, recovery, mobile-device, and backup/restore drills. Use an on-site local server if scoring must continue during an Internet outage, and upgrade the hosting resources if the 512 MB runtime or single-instance availability is insufficient. If logs show repeated out-of-memory restarts, stop retrying and move to a larger runtime.
