@@ -109,6 +109,8 @@ Exchange a pairing token before submitting. Proposal body follows `scoreProposal
 
 Send the device credential as `Authorization: Bearer DEVICE_TOKEN`. The session must belong to the match and judge role. Scoring is accepted only in a live scoring state.
 
+`submittedAt` is the device-reported timestamp used for diagnostics. The server replaces it with its own receipt time when evaluating proposal expiry and the consensus window, so unsynchronized phone clocks cannot reject an otherwise valid proposal. Delivery retries remain protected by event IDs, idempotency keys, and per-judge sequences. Both judges' requests must still arrive inside the configured consensus window.
+
 ## WebSockets
 
 Connect to `/ws?matchId=MATCH_UUID`. Public display connections receive only display-safe snapshots. Operator connections use the same session cookie. Device connections use their assigned credential flow.

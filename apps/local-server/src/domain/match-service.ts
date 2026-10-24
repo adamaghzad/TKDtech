@@ -180,14 +180,14 @@ export class MatchService {
   submitProposal(token:string,input:ScoreProposalInput):ProposalResult{
     const session=this.deviceSession(token,true);if(session.role==='REFEREE')throw new HttpError(403,'PERMISSION_DENIED','Referee sessions cannot submit corner-judge scores.');if(session.match_id!==input.matchId||session.id!==input.judgeSessionId)throw new HttpError(403,'SESSION_MISMATCH','Proposal does not belong to this assigned judge session.');
     const match=getMatchRow(this.db,input.matchId);if(!['IN_PROGRESS','GOLDEN_POINT'].includes(match.state))throw new HttpError(409,'SCORING_CLOSED','Scoring proposals require a live round.');const ruleset=this.ruleset(match.tournament_id);const now=Date.now();
+    // Device clocks are diagnostic only. Server receipt time is the authority for consensus windows.
+    const clientSubmittedAt=input.submittedAt;input={...input,submittedAt:now};
     const duplicate=this.db.prepare('SELECT status,reason,decision_id FROM scoring_proposals WHERE event_id=? OR idempotency_key=?').get(input.eventId,input.idempotencyKey) as {status:string;reason:string;decision_id:string|null}|undefined;if(duplicate)return{status:duplicate.status,reason:'DUPLICATE_DELIVERY',decisionId:duplicate.decision_id,points:0,duplicate:true,matchId:match.id};
     let result:ProposalResult|undefined;
     this.db.transaction(()=>{
       let status='PENDING';let reason='AWAITING_DISTINCT_JUDGES';let decisionId:string|null=null;let points=0;const round=this.db.prepare('SELECT id,number FROM match_rounds WHERE id=? AND match_id=?').get(input.roundId,match.id) as {id:string;number:number}|undefined;
       if(!round||round.number!==match.current_round){status='REJECTED';reason='ROUND_MISMATCH';}
       else if((session.last_sequence??0)>=input.sequence){status='REJECTED';reason='OUT_OF_ORDER_SEQUENCE';}
-      else if(input.submittedAt>now+500){status='REJECTED';reason='FUTURE_TIMESTAMP';}
-      else if(now-input.submittedAt>ruleset.proposalExpiryMs){status='REJECTED';reason='EXPIRED_PROPOSAL';}
       else{
         this.db.prepare(`UPDATE scoring_proposals SET status='EXPIRED',reason='CONSENSUS_WINDOW_ELAPSED' WHERE match_id=? AND round_id=? AND side=? AND point_type=? AND status='PENDING' AND submitted_at<?`).run(match.id,input.roundId,input.side,input.pointType,now-ruleset.consensusWindowMs);
         const prior=this.db.prepare(`SELECT event_id,judge_id,submitted_at FROM scoring_proposals WHERE match_id=? AND round_id=? AND side=? AND point_type=? AND status='PENDING' ORDER BY submitted_at`).all(match.id,input.roundId,input.side,input.pointType) as Array<{event_id:string;judge_id:string;submitted_at:number}>;
@@ -204,7 +204,7 @@ export class MatchService {
         }
       }
       if(status!=='ACCEPTED'){const sequence=match.sequence+1;this.db.prepare('UPDATE matches SET sequence=?,version=version+1,updated_at=? WHERE id=?').run(sequence,isoNow(),match.id);appendMatchEvent(this.db,{tournamentId:match.tournament_id,matchId:match.id,sequence,type:status==='REJECTED'?'score.rejected':'score.proposed',actorId:session.id,sessionId:session.id,payload:{eventId:input.eventId,side:input.side,pointType:input.pointType,status,reason},idempotencyKey:`proposal:${input.eventId}`});}
-      audit(this.db,{tournamentId:match.tournament_id,actorId:session.id,action:`SCORE_PROPOSAL_${status}`,entityType:'match',entityId:match.id,after:{eventId:input.eventId,status,reason,decisionId}});result={status,reason,decisionId,points,matchId:match.id};
+      audit(this.db,{tournamentId:match.tournament_id,actorId:session.id,action:`SCORE_PROPOSAL_${status}`,entityType:'match',entityId:match.id,after:{eventId:input.eventId,status,reason,decisionId,clientSubmittedAt}});result={status,reason,decisionId,points,matchId:match.id};
     })();if(!result)throw new HttpError(500,'PROPOSAL_NOT_RECORDED','Proposal transaction did not return a result.');return result;
   }
 

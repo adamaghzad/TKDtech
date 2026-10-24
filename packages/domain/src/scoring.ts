@@ -28,14 +28,14 @@ export class ConsensusTracker {
   constructor(private readonly ruleset: Ruleset, private readonly authorizedJudgeIds: ReadonlySet<string>) {}
 
   submit(input: ScoreProposalInput, judgeId: string, now: number): ScoringDecision {
+    // Never let unsynchronized device clocks determine expiry or consensus membership.
+    input = { ...input, submittedAt: now };
     const duplicate = this.seenEvents.get(input.eventId) ?? this.idempotency.get(input.idempotencyKey);
     if (duplicate) return { ...duplicate, status: 'REJECTED', reason: 'DUPLICATE_DELIVERY', decisionId: null, points: 0 };
     let decision: ScoringDecision;
     const reject = (reason: string): ScoringDecision => ({ status: 'REJECTED', reason, proposalIds: [input.eventId], decisionId: null, points: 0 });
     if (!this.authorizedJudgeIds.has(judgeId)) decision = reject('UNAUTHORIZED_JUDGE');
     else if (input.judgeSessionId.length === 0 || input.matchId.length === 0 || input.roundId.length === 0) decision = reject('MALFORMED_PROPOSAL');
-    else if (input.submittedAt > now + 500) decision = reject('FUTURE_TIMESTAMP');
-    else if (now - input.submittedAt > this.ruleset.proposalExpiryMs) decision = reject('EXPIRED_PROPOSAL');
     else if ((this.lastSequences.get(input.judgeSessionId) ?? 0) >= input.sequence) decision = reject('OUT_OF_ORDER_SEQUENCE');
     else {
       this.lastSequences.set(input.judgeSessionId, input.sequence);

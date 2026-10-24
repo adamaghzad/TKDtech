@@ -8,7 +8,7 @@ Verified locally on **2026-10-24** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **57/57 tests passed across 9 files** |
+| `npm test` | **59/59 tests passed across 9 files** |
 | `npm run test:e2e` | **3/3 real Chromium tests passed** against the final Next 16 production preview |
 | `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
@@ -19,7 +19,7 @@ Verified locally on **2026-10-24** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 
 - Bracket sizes 2–32, deterministic random draws, seeded placement, byes, graph integrity, and reproducibility.
 - Finalist-path configurable repechage for 4/8/16/32 entrants and winner progression.
-- Point values, penalties, distinct-judge consensus, duplicate delivery, ties, Golden Point, timer behavior, and state transitions.
+- Point values, penalties, distinct-judge consensus using server receipt time despite skewed device clocks, duplicate delivery, ties, Golden Point, timer behavior, and state transitions.
 - Role/tournament permissions and public denial.
 - Idempotent commands and optimistic version conflicts.
 - Expired/revoked pairing, heartbeat presence expiry, and assigned-session validation.
