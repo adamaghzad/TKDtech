@@ -8,8 +8,8 @@ Verified locally on **2026-10-24** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **64/64 tests passed across 9 files** |
-| `npm run test:e2e` | **4/4 real Chromium tests passed** against the final Next 16 production preview |
+| `npm test` | **68/68 tests passed across 10 files** |
+| `npm run test:e2e` | **5/5 real Chromium tests passed** against the final Next 16 production preview |
 | `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
 | `npm run build` | Passed: optimized Next 16.4.3 App Router production build with proxy convention |
@@ -20,6 +20,7 @@ Verified locally on **2026-10-24** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 - Bracket sizes 2–32, deterministic random draws, seeded placement, byes, graph integrity, and reproducibility.
 - Finalist-path configurable repechage for 4/8/16/32 entrants and winner progression.
 - Point values, penalties, distinct-judge consensus using server receipt time despite skewed device clocks, duplicate delivery, ties, Golden Point, timer behavior, and state transitions.
+- Automatic nonfinal-round expiry starts the category-configured running break; the completed round result is persisted, scoring stays closed, break expiry does not start scoring, final-round expiry pauses, and interrupted breaks recover/resume correctly.
 - Role/tournament permissions and public denial.
 - Idempotent commands and optimistic version conflicts.
 - Pending-proposal diagnostics identify earlier matching proposals that expired before server arrival without changing the configured consensus policy.
@@ -38,13 +39,15 @@ The Playwright suite verifies:
 1. Demo login and record-derived dashboard metrics; operator control updates the authoritative score and public display state; the test correction restores the showcase.
 2. An anonymous client receives HTTP 401 when attempting a match mutation.
 3. Two independently paired mobile judges submit distinct proposals, one accepted +3 results, and the score is restored through the audited undo path.
-4. A public mat display automatically rolls from a completed match to the next eligible queued match, whose timer remains stopped in `READY`.
+4. A public round-rest display shows a decreasing `REST TIME` clock, `ROUND 1 COMPLETE`, Blue 5 / Red 2, and `BLUE WINS ROUND 1`; the test then restores the showcase.
+5. A public mat display automatically rolls from a completed match to the next eligible queued match, whose timer remains stopped in `READY`.
 
 Reviewed screenshots:
 
 - `artifacts/dashboard.png`
 - `artifacts/public-scoreboard.png`
 - `artifacts/judge-mobile.png`
+- `artifacts/round-break-display.png`
 
 No browser page errors were observed in the dashboard/operator test.
 

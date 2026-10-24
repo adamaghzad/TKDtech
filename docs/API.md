@@ -67,6 +67,12 @@ Completing a match or recording a walkover releases its active mat assignment in
 
 Server startup reconciles stale active assignments left on resolved matches through the same recovery path. `/display/mat/:matId` checks the assignment every three seconds, switches the read-only display when the active match changes, and shows a waiting state when the mat is available.
 
+## Round and rest lifecycle
+
+The server checks authoritative running timers every 500 ms and persists expiry before broadcasting the new snapshot. When a nonfinal round expires, it records that round's winner/end time, enters `ROUND_BREAK`, and starts the category-configured break duration. The public display shows the running rest clock and the just-completed round's blue/red points and winner. Scoring remains closed throughout the break.
+
+When the break reaches zero it stays in `ROUND_BREAK`; it never starts the next round automatically. An operator or referee must explicitly start it. `NEXT_ROUND` from a paused round ends that round and starts the break; during a break it skips the remaining rest and starts the next round. `RESUME` resumes a paused break, or starts the next round when the break is running/expired. Final-round expiry pauses at zero without creating an extra round or break.
+
 ## Match commands
 
 ```http

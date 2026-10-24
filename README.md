@@ -70,9 +70,10 @@ Register the initial organization at `/login`, then create a tournament. See [De
 4. Open **Schedule**, assign ready matches to mats, then open **Matches** or **Live Scoreboard**. Completing a match releases its mat and automatically assigns the next eligible queued match without starting its timer.
 5. Pair authorized devices from **Judges & Referees**. Each role has one active replaceable session; pairing tokens expire and are stored only as hashes.
 6. Start/resume the round from the operator or referee console. Judge proposals are accepted only when the configured number of distinct judges agrees inside the consensus window. Duplicate proposals cannot award extra points.
-7. Use documented correction/undo reasons for nonfinal scoring mistakes. Completed matches cannot be silently progressed again; a dedicated completed-result correction/downstream-reversal workflow is listed as remaining work.
-8. Open `/display/:matchId` on the television. Public clients can read only the required display data and cannot issue scoring commands.
-9. Review results, medals, audit history, and CSV/PDF reports.
+7. At nonfinal round expiry the server starts the configured rest countdown and the TV keeps the completed round's points and winner visible. Rest is non-scoring; when it reaches zero, explicitly start the next round from the operator or referee console.
+8. Use documented correction/undo reasons for nonfinal scoring mistakes. Completed matches cannot be silently progressed again; a dedicated completed-result correction/downstream-reversal workflow is listed as remaining work.
+9. Open `/display/:matchId` on the television. Public clients can read only the required display data and cannot issue scoring commands.
+10. Review results, medals, audit history, and CSV/PDF reports.
 
 ## Commands
 

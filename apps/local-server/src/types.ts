@@ -25,5 +25,6 @@ export interface MatchJoinedRow extends MatchRow {
 }
 export interface SessionContext { user: AuthUser; token?: string }
 export interface CommandContext { actor: Actor; expectedVersion?: number; reason?: string; idempotencyKey?: string }
-export type TimerCommand = 'START'|'PAUSE'|'RESUME'|'RESET_TIMER'|'NEXT_ROUND'|'PREVIOUS_ROUND'|'SCORE'|'GAM_JEOM'|'MEDICAL_TIMEOUT'|'VIDEO_REVIEW'|'END_REVIEW'|'COMPLETE'|'WALKOVER'|'UNDO';
+// TIMER_EXPIRED is internal to the server scheduler; the public command schema does not accept it.
+export type TimerCommand = 'START'|'PAUSE'|'RESUME'|'RESET_TIMER'|'NEXT_ROUND'|'PREVIOUS_ROUND'|'SCORE'|'GAM_JEOM'|'MEDICAL_TIMEOUT'|'VIDEO_REVIEW'|'END_REVIEW'|'COMPLETE'|'WALKOVER'|'UNDO'|'TIMER_EXPIRED';
 export interface MatchCommand { type: TimerCommand; side?: Side; pointType?: keyof Ruleset['points']; points?: number; expectedVersion?: number; reason?: string }

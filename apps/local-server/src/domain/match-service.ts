@@ -29,6 +29,12 @@ export class MatchService {
     return JSON.parse(row.config_json) as Ruleset;
   }
 
+  private timing(categoryId:string):{rounds:number;roundDurationMs:number;breakDurationMs:number} {
+    const row=this.db.prepare('SELECT rounds,round_duration_ms,break_duration_ms FROM categories WHERE id=?').get(categoryId) as {rounds:number;round_duration_ms:number;break_duration_ms:number}|undefined;
+    if(!row)throw new HttpError(404,'CATEGORY_NOT_FOUND','Match category is missing.');
+    return {rounds:row.rounds,roundDurationMs:row.round_duration_ms,breakDurationMs:row.break_duration_ms};
+  }
+
   execute(actor: Actor, matchId: string, command: MatchCommand, idempotencyKey: string = randomUUID()): MatchSnapshot {
     const duplicate=this.db.prepare('SELECT event_id FROM match_events WHERE match_id=? AND idempotency_key=?').get(matchId,idempotencyKey);
     if(duplicate)return this.snapshot(matchId);
@@ -55,7 +61,17 @@ export class MatchService {
           transition('PAUSED');nextTimer=pauseTimer(nextTimer,now);eventType='match.paused';break;
         }
         case 'RESUME': {
-          if(state!=='PAUSED')throw new HttpError(409,'INVALID_STATE','Resume requires a paused match.');
+          if(state==='ROUND_BREAK'){
+            if(!timer.running&&nextTimer.remainingMs>0){nextTimer=startTimer(nextTimer,now);eventType='match.resumed';payload={...payload,round,breakResumed:true};break;}
+            const timing=this.timing(current.category_id);
+            transition('IN_PROGRESS');nextTimer=startTimer(resetTimer({...nextTimer,kind:'ROUND'},timing.roundDurationMs,now),now);eventType='match.resumed';
+            this.db.prepare('UPDATE match_rounds SET started_at=COALESCE(started_at,?) WHERE match_id=? AND number=?').run(new Date(now).toISOString(),matchId,round);
+            payload={...payload,round,breakSkipped:true};break;
+          }
+          if(state!=='PAUSED')throw new HttpError(409,'INVALID_STATE','Resume requires a paused match or an active round break.');
+          if(nextTimer.kind==='BREAK'){
+            transition('ROUND_BREAK');nextTimer=startTimer(nextTimer,now);eventType='match.resumed';payload={...payload,round,breakResumed:true};break;
+          }
           if(nextTimer.remainingMs<=0)throw new HttpError(409,'TIMER_EXPIRED','Reset the timer or advance the round before resuming.');
           if(nextTimer.kind==='MEDICAL'){nextTimer=startTimer(nextTimer,now);eventType='timer.medical_started';}
           else{transition('IN_PROGRESS');nextTimer=startTimer(nextTimer,now);eventType='match.resumed';}break;
@@ -63,14 +79,23 @@ export class MatchService {
         case 'RESET_TIMER': {
           if(state==='IN_PROGRESS')throw new HttpError(409,'INVALID_STATE','Pause before resetting the timer.');
           if(!command.reason)throw new HttpError(400,'REASON_REQUIRED','A correction reason is required to reset the timer.');
-          nextTimer=resetTimer(nextTimer,ruleset.roundDurationMs,now);eventType='timer.reset';payload={...payload,reason:command.reason};break;
+          const timing=this.timing(current.category_id);
+          const durationMs=nextTimer.kind==='BREAK'?timing.breakDurationMs:nextTimer.kind==='MEDICAL'?ruleset.medicalTimeoutMs:nextTimer.kind==='GOLDEN_POINT'?(ruleset.goldenPointDurationMs??timing.roundDurationMs):timing.roundDurationMs;
+          nextTimer=resetTimer(nextTimer,durationMs,now);eventType='timer.reset';payload={...payload,reason:command.reason,timerKind:nextTimer.kind};break;
         }
         case 'NEXT_ROUND': {
           if(!['PAUSED','ROUND_BREAK'].includes(state))throw new HttpError(409,'INVALID_STATE','Pause the match before changing rounds.');
-          if(round>=ruleset.rounds)throw new HttpError(409,'FINAL_ROUND','The final round is already active. Complete the match after resolving the result.');
-          const roundWinner=currentRound.blue_score===currentRound.red_score?null:currentRound.blue_score>currentRound.red_score?'BLUE':'RED';
+          const timing=this.timing(current.category_id);
+          if(state==='ROUND_BREAK'||nextTimer.kind==='BREAK'){
+            transition('IN_PROGRESS');nextTimer=startTimer(resetTimer({...nextTimer,kind:'ROUND'},timing.roundDurationMs,now),now);eventType='match.round_changed';
+            this.db.prepare('UPDATE match_rounds SET started_at=COALESCE(started_at,?) WHERE match_id=? AND number=?').run(new Date(now).toISOString(),matchId,round);
+            payload={...payload,round,breakSkipped:true};break;
+          }
+          if(round>=timing.rounds)throw new HttpError(409,'FINAL_ROUND','The final round is already active. Complete the match after resolving the result.');
+          const endedRound=round;const roundWinner=currentRound.blue_score===currentRound.red_score?null:currentRound.blue_score>currentRound.red_score?'BLUE':'RED';
           this.db.prepare('UPDATE match_rounds SET winner_side=?,ended_at=? WHERE id=?').run(roundWinner,new Date(now).toISOString(),currentRound.id);
-          round+=1;nextTimer=resetTimer({...nextTimer,kind:'ROUND'},ruleset.roundDurationMs,now);eventType='match.round_changed';payload={...payload,previousRound:round-1,round};break;
+          round+=1;transition('ROUND_BREAK');nextTimer=startTimer(resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now),now);eventType='match.round_changed';
+          payload={...payload,previousRound:endedRound,round,automatic:false,roundResult:{number:endedRound,blueScore:currentRound.blue_score,redScore:currentRound.red_score,winner:roundWinner}};break;
         }
         case 'PREVIOUS_ROUND': {
           if(!['SUPER_ADMIN','TOURNAMENT_ADMIN'].includes(actor.role)||!command.reason)throw new HttpError(403,'AUTHORIZED_CORRECTION_REQUIRED','Previous-round correction requires an administrator and a reason.');
@@ -104,6 +129,32 @@ export class MatchService {
         case 'END_REVIEW': {
           if(state!=='UNDER_REVIEW')throw new HttpError(409,'INVALID_STATE','No active video review.');
           transition('PAUSED');eventType='match.review_completed';payload={...payload,reason:command.reason||'Review closed by authorized operator'};break;
+        }
+        case 'TIMER_EXPIRED': {
+          if(!timer.running||remainingAt(timer,now)>0)throw new HttpError(409,'TIMER_NOT_EXPIRED','The authoritative timer has not expired.');
+          const timing=this.timing(current.category_id);
+          if(nextTimer.kind==='ROUND'&&state==='IN_PROGRESS'){
+            const endedRound=round;const roundWinner=currentRound.blue_score===currentRound.red_score?null:currentRound.blue_score>currentRound.red_score?'BLUE':'RED';
+            this.db.prepare('UPDATE match_rounds SET winner_side=?,ended_at=? WHERE id=?').run(roundWinner,new Date(now).toISOString(),currentRound.id);
+            const roundResult={number:endedRound,blueScore:currentRound.blue_score,redScore:currentRound.red_score,winner:roundWinner};
+            if(endedRound<timing.rounds){
+              round+=1;transition('ROUND_BREAK');nextTimer=startTimer(resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now),now);eventType='match.round_changed';
+              payload={...payload,previousRound:endedRound,round,automatic:true,roundResult};
+            }else{
+              transition('PAUSED');nextTimer=pauseTimer(nextTimer,now);eventType='match.paused';payload={...payload,reason:'ROUND_EXPIRED',round:endedRound,automatic:true,roundResult};
+            }
+            break;
+          }
+          if(nextTimer.kind==='BREAK'&&state==='ROUND_BREAK'){
+            nextTimer=pauseTimer(nextTimer,now);eventType='timer.updated';payload={...payload,reason:'BREAK_EXPIRED',round};break;
+          }
+          if(nextTimer.kind==='MEDICAL'&&state==='PAUSED'){
+            nextTimer=pauseTimer(nextTimer,now);eventType='timer.updated';payload={...payload,reason:'MEDICAL_EXPIRED',round};break;
+          }
+          if(nextTimer.kind==='GOLDEN_POINT'&&state==='GOLDEN_POINT'){
+            transition('PAUSED');nextTimer=pauseTimer(nextTimer,now);eventType='match.paused';payload={...payload,reason:'GOLDEN_POINT_EXPIRED',round};break;
+          }
+          throw new HttpError(409,'INVALID_TIMER_STATE','The expired timer does not match the current match state.');
         }
         case 'COMPLETE': {
           if(!['IN_PROGRESS','PAUSED','ROUND_BREAK','GOLDEN_POINT','UNDER_REVIEW'].includes(state))throw new HttpError(409,'INVALID_STATE','The match cannot be completed from its current state.');
@@ -209,6 +260,21 @@ export class MatchService {
   }
 
   expirePresence(expiryMs=15000):string[]{const cutoff=Date.now()-expiryMs;const rows=this.db.prepare(`SELECT match_id FROM device_presence WHERE status='ONLINE' AND last_seen_at<?`).all(cutoff) as Array<{match_id:string}>;this.db.prepare(`UPDATE device_presence SET status='OFFLINE' WHERE status='ONLINE' AND last_seen_at<?`).run(cutoff);return[...new Set(rows.map(row=>row.match_id))];}
+
+  /** Persist timer expiry before broadcasting it. A finished break never starts scoring automatically. */
+  expireTimers(now=Date.now()):string[]{
+    const rows=this.db.prepare(`SELECT id,tournament_id,state,timer_json FROM matches WHERE json_extract(timer_json,'$.running')=1`).all() as Array<{id:string;tournament_id:string;state:MatchSnapshot['state'];timer_json:string}>;
+    const changed:string[]=[];
+    for(const row of rows){
+      const timer=JSON.parse(row.timer_json) as MatchSnapshot['timer'];
+      if(!timer.running||remainingAt(timer,now)>0)continue;
+      const valid=(timer.kind==='ROUND'&&row.state==='IN_PROGRESS')||(timer.kind==='BREAK'&&row.state==='ROUND_BREAK')||(timer.kind==='MEDICAL'&&row.state==='PAUSED')||(timer.kind==='GOLDEN_POINT'&&row.state==='GOLDEN_POINT');
+      if(!valid)continue;
+      this.execute({id:'system-timer',role:'SUPER_ADMIN',tournamentIds:[row.tournament_id]},row.id,{type:'TIMER_EXPIRED'},`timer-expired:${row.id}:${timer.authoritativeAt}`);
+      changed.push(row.id);
+    }
+    return changed;
+  }
 
   recoverTimers(reason='Server restarted; operator confirmation required before resume.'):string[]{const rows=this.db.prepare(`SELECT id,tournament_id,sequence,timer_json FROM matches WHERE json_extract(timer_json,'$.running')=1`).all() as Array<{id:string;tournament_id:string;sequence:number;timer_json:string}>;for(const row of rows){this.db.transaction(()=>{const timer=JSON.parse(row.timer_json) as MatchSnapshot['timer'];const recovered={...timer,remainingMs:remainingAt(timer,Date.now()),running:false,authoritativeAt:Date.now()};this.db.prepare('UPDATE matches SET timer_json=?,state=CASE WHEN state=\'IN_PROGRESS\' THEN \'PAUSED\' ELSE state END,sequence=sequence+1,version=version+1,updated_at=? WHERE id=?').run(JSON.stringify(recovered),isoNow(),row.id);appendMatchEvent(this.db,{tournamentId:row.tournament_id,matchId:row.id,sequence:row.sequence+1,type:'timer.recovered_paused',payload:{reason}});})();}return rows.map(row=>row.id);}
 }
