@@ -1,0 +1,6 @@
+import {cn} from '@/lib/utils';
+export function Field({label,error,hint,children,className}:{label:string;error?:string;hint?:string;children:React.ReactNode;className?:string}){return<label className={cn('block space-y-1.5',className)}><span className="text-xs font-semibold uppercase tracking-[.08em] text-muted">{label}</span>{children}{hint&&!error&&<span className="block text-[11px] text-muted">{hint}</span>}{error&&<span className="block text-xs text-[#ff8390]">{error}</span>}</label>;}
+export const inputClass='h-10 w-full rounded-lg border border-line bg-[#0b111d] px-3 text-sm text-white outline-none transition placeholder:text-[#66728a] focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-50';
+export function Input({className,...props}:React.InputHTMLAttributes<HTMLInputElement>){return<input className={cn(inputClass,className)}{...props}/>;}
+export function Select({className,children,...props}:React.SelectHTMLAttributes<HTMLSelectElement>){return<select className={cn(inputClass,'appearance-auto',className)}{...props}>{children}</select>;}
+export function Textarea({className,...props}:React.TextareaHTMLAttributes<HTMLTextAreaElement>){return<textarea className={cn(inputClass,'min-h-24 py-2',className)}{...props}/>;}

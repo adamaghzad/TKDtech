@@ -1,0 +1,27 @@
+.git
+.gitignore
+.cache
+.local
+.npm
+.arena
+
+**/node_modules
+**/.next
+**/coverage
+**/dist
+**/*.tsbuildinfo
+
+# Never include credentials, local databases, backups, or test evidence.
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+data
+artifacts
+uploads
+test-results
+playwright-report
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*

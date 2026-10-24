@@ -1,0 +1,1 @@
+'use client';import{useParams}from'next/navigation';import{PublicDisplay}from'@/features/scoreboard/public-display';export default function DisplayPage(){const{matchId}=useParams<{matchId:string}>();return<PublicDisplay matchId={matchId}/>;}

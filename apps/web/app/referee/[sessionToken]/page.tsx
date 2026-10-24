@@ -1,0 +1,1 @@
+'use client';import{useParams}from'next/navigation';import{DevicePad}from'@/features/devices/device-pad';export default function RefereePage(){const{sessionToken}=useParams<{sessionToken:string}>();return<DevicePad pairingOrSessionToken={sessionToken} expectedRole="REFEREE"/>;}

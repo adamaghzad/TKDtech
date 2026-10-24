@@ -1,0 +1,26 @@
+node_modules/
+.next/
+dist/
+coverage/
+.cache/
+.config/
+.local/
+.npm/
+.arena/
+*.tsbuildinfo
+
+# Keep all local environment files out of source control.
+.env
+.env.*
+!.env.example
+
+# Never commit tournament databases, SQLite sidecars, or generated evidence.
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+artifacts/
+uploads/
+playwright-report/
+test-results/
+.DS_Store

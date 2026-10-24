@@ -1,0 +1,1 @@
+'use client';import{useParams}from'next/navigation';import{OperatorScoreboard}from'@/features/scoreboard/operator-scoreboard';export default function ScoreboardPage(){const{matchId}=useParams<{matchId:string}>();return<OperatorScoreboard matchId={matchId}/>;}

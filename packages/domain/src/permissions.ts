@@ -1,0 +1,18 @@
+import type { Role } from '@tkd/contracts';
+
+export const PERMISSIONS = {
+  TOURNAMENT_WRITE: ['SUPER_ADMIN','TOURNAMENT_ADMIN'],
+  REGISTRATION_WRITE: ['SUPER_ADMIN','TOURNAMENT_ADMIN','REGISTRATION_MANAGER'],
+  DRAW_PUBLISH: ['SUPER_ADMIN','TOURNAMENT_ADMIN'],
+  MATCH_CONTROL: ['SUPER_ADMIN','TOURNAMENT_ADMIN','MAT_OPERATOR'],
+  REFEREE_REQUEST: ['SUPER_ADMIN','TOURNAMENT_ADMIN','MAT_OPERATOR','REFEREE'],
+  SCORE_PROPOSE: ['CORNER_JUDGE'],
+  RESULT_CORRECT: ['SUPER_ADMIN','TOURNAMENT_ADMIN'],
+  ORGANIZATION_MANAGE: ['SUPER_ADMIN'],
+  PUBLIC_READ: ['SUPER_ADMIN','TOURNAMENT_ADMIN','REGISTRATION_MANAGER','MAT_OPERATOR','REFEREE','CORNER_JUDGE','PUBLIC_VIEWER']
+} as const satisfies Record<string, readonly Role[]>;
+
+export type Permission = keyof typeof PERMISSIONS;
+export function can(role: Role, permission: Permission): boolean {
+  return (PERMISSIONS[permission] as readonly Role[]).includes(role);
+}

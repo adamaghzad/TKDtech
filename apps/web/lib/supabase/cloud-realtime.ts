@@ -1,0 +1,4 @@
+import type{SupabaseClient}from'@supabase/supabase-js';
+export interface CloudRealtimeHandlers{onInvalidated:(sequence:number)=>void;onGap:()=>void;onStatus:(status:string)=>void}
+/** RLS-authorized cloud invalidation. The client then loads a complete authorized snapshot. */
+export function subscribeCloudMatch(client:SupabaseClient,matchId:string,initialSequence:number,handlers:CloudRealtimeHandlers){let sequence=initialSequence;const channel=client.channel(`match-display:${matchId}`).on('postgres_changes',{event:'UPDATE',schema:'public',table:'matches',filter:`id=eq.${matchId}`},payload=>{const next=Number((payload.new as {sequence?:number}).sequence??0);if(next>sequence+1)handlers.onGap();if(next>=sequence){sequence=next;handlers.onInvalidated(next);}}).subscribe(status=>handlers.onStatus(status));return()=>{void client.removeChannel(channel);};}

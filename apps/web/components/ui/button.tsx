@@ -1,0 +1,8 @@
+import * as React from 'react';
+import {Slot} from '@radix-ui/react-slot';
+import {cva,type VariantProps} from 'class-variance-authority';
+import {cn} from '@/lib/utils';
+const buttonVariants=cva('inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-4 [&_svg]:shrink-0',{variants:{variant:{default:'bg-primary text-white hover:bg-blue-500 shadow-[0_5px_18px_rgba(32,104,255,.2)]',secondary:'border border-line bg-[#182236] text-white hover:bg-[#22304a]',ghost:'text-muted hover:bg-white/5 hover:text-white',danger:'bg-[#c91525] text-white hover:bg-[#e42538]',success:'bg-[#0caa60] text-white hover:bg-[#13c874]',yellow:'bg-timer text-black hover:bg-[#f6ff4c]',outline:'border border-primary/50 bg-primary/5 text-[#78a8ff] hover:bg-primary/15'},size:{default:'h-10 px-4 py-2',sm:'h-8 rounded-md px-3 text-xs',lg:'h-12 px-5 text-base',icon:'h-10 w-10',xl:'h-16 rounded-xl px-5 text-lg'}},defaultVariants:{variant:'default',size:'default'}});
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>,VariantProps<typeof buttonVariants>{asChild?:boolean}
+export const Button=React.forwardRef<HTMLButtonElement,ButtonProps>(({className,variant,size,asChild=false,...props},ref)=>{const Comp=asChild?Slot:'button';return<Comp className={cn(buttonVariants({variant,size,className}))}ref={ref}{...props}/>;});Button.displayName='Button';
+export {buttonVariants};
