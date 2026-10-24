@@ -121,9 +121,11 @@ Exchange a pairing token before submitting. Proposal body follows `scoreProposal
 
 Send the device credential as `Authorization: Bearer DEVICE_TOKEN`. The session must belong to the match and judge role. Scoring is accepted only in a live scoring state.
 
-`submittedAt` is the device-reported timestamp used for diagnostics. The server replaces it with its own receipt time when evaluating proposal expiry and the consensus window, so unsynchronized phone clocks cannot reject an otherwise valid proposal. Delivery retries remain protected by event IDs, idempotency keys, and per-judge sequences. Both judges' requests must still arrive inside the configured consensus window.
+`submittedAt` is the device-reported timestamp used for diagnostics. The server replaces it with its own receipt time when evaluating proposal expiry and the consensus window, so unsynchronized phone clocks cannot reject an otherwise valid proposal. Delivery retries remain protected by event IDs, idempotency keys, and per-judge sequences.
 
-New proposal responses include non-sensitive `diagnostics`: server receipt time, the configured window/threshold, matching judge count, and the number of earlier matching proposals that expired before arrival. These fields explain pending responses; they do not relax consensus or alter scoring policy.
+Consensus switches automatically from fresh corner-judge presence. With exactly one online judge, that authorized judge's proposal is accepted immediately in `ONE_JUDGE_MODE`. When two or more judges are online, matching proposals from two distinct judges are required inside the configured window. A submitting device is marked live before its threshold is evaluated; stale presence does not count. Reconnecting a second judge restores two-judge consensus, and accepted decisions remain idempotent.
+
+Proposal responses include non-sensitive `diagnostics`: server receipt time, configured window, effective threshold, online/matching judge counts, active scoring mode, and the number of earlier matching proposals that expired before arrival. These fields explain pending and accepted responses without exposing device credentials.
 
 ## WebSockets
 

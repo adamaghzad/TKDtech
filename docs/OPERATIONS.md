@@ -23,7 +23,7 @@
 - Only the server accepts scores and transitions. The browser never decides consensus or the final winner.
 - Commands carry `expectedVersion` and an idempotency key. A stale operator must reload rather than overwrite a newer match.
 - A judge proposal is not itself a point. The configured number of distinct judge sessions must agree within the configured window.
-- Repeated input from one judge cannot satisfy consensus or award duplicate points.
+- In two-judge mode, repeated input from one judge cannot satisfy consensus or award duplicate points. In one-judge mode, each deliberate unique proposal is accepted once; retries remain idempotent.
 - Persist the event and match transaction first; only then acknowledge/broadcast.
 - Corrections require a reason and create new audit/history records. Never edit the database to erase a published mistake.
 

@@ -24,6 +24,7 @@ export function getJoinedMatch(db: SqliteDatabase, matchId: string): MatchJoined
 export function snapshotFromRow(db: SqliteDatabase, row: MatchJoinedRow, now = Date.now()): MatchSnapshot {
   const rounds = db.prepare('SELECT * FROM match_rounds WHERE match_id=? ORDER BY number').all(row.id) as Array<{id:string;number:number;blue_score:number;red_score:number;blue_penalties:number;red_penalties:number;winner_side:'BLUE'|'RED'|null;started_at:string|null;ended_at:string|null}>;
   const presence = db.prepare(`SELECT role,status,last_seen_at FROM device_presence WHERE match_id=?`).all(row.id) as Array<{role:'J1'|'J2'|'J3'|'REFEREE';status:'ONLINE'|'RECONNECTING'|'OFFLINE';last_seen_at:number}>;
+  const presenceCutoff=now-Number(process.env.PRESENCE_EXPIRY_SECONDS||15)*1000;
   const timer = JSON.parse(row.timer_json) as MatchSnapshot['timer'];
   const displayTimer = timer.running ? { ...timer, remainingMs: Math.max(0, timer.remainingMs - (now - timer.authoritativeAt)) } : timer;
   const roundSnapshots: RoundSnapshot[] = rounds.map(round => ({ id: round.id, number: round.number, blueScore: round.blue_score, redScore: round.red_score, bluePenalties: round.blue_penalties, redPenalties: round.red_penalties, winner: round.winner_side, startedAt: round.started_at, endedAt: round.ended_at }));
@@ -38,7 +39,7 @@ export function snapshotFromRow(db: SqliteDatabase, row: MatchJoinedRow, now = D
     totalRounds: row.total_rounds, blue: athlete('blue'), red: athlete('red'), blueScore: row.blue_score,
     redScore: row.red_score, blueGamJeom: row.blue_gam_jeom, redGamJeom: row.red_gam_jeom,
     rounds: roundSnapshots, timer: displayTimer, winner: row.winner_side, decisionMethod: row.decision_method,
-    judges: presence.map(item => ({ role: item.role, status: item.status, lastSeenAt: new Date(item.last_seen_at).toISOString() })),
+    judges: presence.map(item => ({ role: item.role, status: item.status==='ONLINE'&&item.last_seen_at<=presenceCutoff?'OFFLINE':item.status, lastSeenAt: new Date(item.last_seen_at).toISOString() })),
     updatedAt: row.updated_at, serverTime: now
   };
 }

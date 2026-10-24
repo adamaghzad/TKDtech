@@ -29,7 +29,7 @@ Production must start with a fresh nonseeded database. `SEED_DEVELOPMENT=true` c
 - Expected versions reject stale commands.
 - Idempotency records make safe retries possible.
 - The server, not browsers, validates transitions, timer changes, consensus, penalties, winner calculation, and bracket progression.
-- Distinct judge sessions are required for consensus.
+- With two or more fresh online corner judges, two distinct authorized judge sessions are required for consensus. With exactly one online judge, that authorized session can score alone in the explicitly displayed one-judge mode. Duplicate deliveries never count twice.
 - Match events and published draw versions have database immutability triggers.
 - State/result/advancement commits complete before realtime broadcast.
 - Public mutation attempts receive authorization errors even with valid match IDs.
