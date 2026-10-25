@@ -8,7 +8,7 @@ Verified locally on **2026-10-25** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **76/76 tests passed across 11 files** |
+| `npm test` | **81/81 tests passed across 12 files** |
 | `npm run test:e2e` | **8/8 real Chromium tests passed** against the final Next 16 production preview |
 | `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
@@ -23,6 +23,7 @@ Verified locally on **2026-10-25** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 - Automatic one-/two-judge switching from fresh device presence: immediate one-judge acceptance, two-judge restoration on reconnection, and pending-input resolution without duplicate scoring decisions.
 - Automatic nonfinal-round expiry starts the category-configured running break; a paused nonfinal `0:00` round is also recovered into that break. The completed round result is persisted, scoring stays closed, break expiry does not start scoring, final-round expiry pauses without repeat transitions, and interrupted breaks recover/resume correctly.
 - Timer-alert tracking emits one beep at each of 5/4/3/2/1 seconds and one round/rest end alert, with no initial-load replay, paused alert, unsupported-timer alert, or duplicate snapshot alert.
+- Score-alert tracking emits once for authoritative blue/red score increases, including multi-point scores, with no initial-load/match-change replay, duplicate-snapshot repeat, or undo sound; a later new score sounds normally.
 - Role/tournament permissions and public denial.
 - Idempotent commands and optimistic version conflicts.
 - Pending-proposal diagnostics identify earlier matching proposals that expired before server arrival without changing the configured consensus policy.
@@ -38,7 +39,7 @@ Verified locally on **2026-10-25** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 
 The Playwright suite verifies:
 
-1. Demo login and record-derived dashboard metrics; operator control updates the authoritative score and public display state; the test correction restores the showcase.
+1. Demo login and record-derived dashboard metrics; operator +1 updates the authoritative score and public display, emits exactly one scheduled `1320 Hz` score-confirmation tone after the browser sound unlock, and the test correction restores the showcase.
 2. An anonymous client receives HTTP 401 when attempting a match mutation.
 3. One connected mobile judge sees one-judge mode, submits an immediately accepted +3, and restores the score through the audited undo path.
 4. Two independently paired mobile judges see the automatic return to two-judge consensus, submit distinct proposals for one accepted +3, and restore the score.

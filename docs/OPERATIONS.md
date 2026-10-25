@@ -18,9 +18,9 @@
 - Presence comes from heartbeat timestamps, not from a stale socket label. Expired devices must reconnect/heartbeat before being considered online.
 - If a phone sleeps, reopen the session URL. Revoke and re-pair if its session expired or was replaced.
 
-## Timer audio
+## Match and timer audio
 
-The public TV and operator scoreboard provide a clearly visible per-device sound control. Browsers require one tap on **Enable sound** after opening/reloading the page before audio can play. Round and rest timers emit short `880 Hz` beeps at 5, 4, 3, 2, and 1 seconds and an original competition-style dual `180/240 Hz` buzzer for 1.1 seconds at zero. This is not a proprietary PSS sound or a claim of hardware equivalence. Tones are generated locally with Web Audio and work without Internet access. Verify the TV/operator speakers before the event; audio is supplementary and never changes the authoritative timer.
+The public TV and operator scoreboard provide a clearly visible per-device sound control. Browsers require one tap on **Enable sound** after opening/reloading the page before audio can play. An authoritative blue/red score increase emits one short `1320 Hz` confirmation after the server accepts it; a judge tap alone, initial page load, duplicate snapshot, or score-lowering undo does not emit that confirmation. Round and rest timers emit short `880 Hz` beeps at 5, 4, 3, 2, and 1 seconds and an original competition-style dual `180/240 Hz` buzzer for 1.1 seconds at zero. This is not a proprietary PSS sound or a claim of hardware equivalence. Tones are generated locally with Web Audio and work without Internet access. Verify the TV/operator speakers before the event; audio is supplementary and never changes the authoritative score or timer.
 
 ## Authoritative scoring rules
 
