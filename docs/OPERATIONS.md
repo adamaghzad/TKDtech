@@ -24,6 +24,7 @@ The public TV and operator scoreboard provide a clearly visible per-device sound
 
 ## Round and match result displays
 
+- On the live display, the large Blue/Red numbers are **ended-round wins**, not cumulative points. R1/R2/R3 points remain separately visible near the top. During rest, wins count only through `currentRound - 1`, so upcoming rounds cannot contribute; for example, Red winning Round 1 by 7–2 produces a large Blue 0 / Red 1 score.
 - Ended rounds show a yellow marker beside the winning athlete's round score. Future rounds never receive a marker. During rest, the center panel keeps the completed round's points and shows a yellow round-winner banner.
 - A completed match-specific display (`/display/:matchId`) switches to a dedicated **MATCH … RESULT** screen with a yellow **WINNER** banner, the winner's corner color, flag, name, country, decision method, and round-by-round points.
 - The large Blue/Red result values are round wins for round-win and Golden Point decisions, or total points when total points decide the result. Cumulative Blue/Red points remain visible separately; values always come from the authoritative completed snapshot.

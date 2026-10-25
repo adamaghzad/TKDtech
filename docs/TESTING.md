@@ -8,8 +8,8 @@ Verified locally on **2026-10-25** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **84/84 tests passed across 13 files** |
-| `npm run test:e2e` | **8/8 real Chromium tests passed** against the final Next 16 production preview |
+| `npm test` | **85/85 tests passed across 13 files** |
+| `npm run test:e2e` | **9/9 real Chromium tests passed** against the final Next 16 production preview |
 | `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
 | `npm run build` | Passed: optimized Next 16.4.3 App Router production build with proxy convention |
@@ -24,7 +24,7 @@ Verified locally on **2026-10-25** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 - Automatic nonfinal-round expiry starts the category-configured running break; a paused nonfinal `0:00` round is also recovered into that break. The completed round result is persisted, scoring stays closed, break expiry does not start scoring, final-round expiry pauses without repeat transitions, and interrupted breaks recover/resume correctly.
 - Timer-alert tracking emits one beep at each of 5/4/3/2/1 seconds and one round/rest end alert, with no initial-load replay, paused alert, unsupported-timer alert, or duplicate snapshot alert.
 - Score-alert tracking emits once for authoritative blue/red score increases, including multi-point scores, with no initial-load/match-change replay, duplicate-snapshot repeat, or undo sound; a later new score sounds normally.
-- Result-display scoring counts only ended round winners, excludes future rounds, uses round wins for round-win/Golden Point results, and uses authoritative cumulative points for a total-points decision.
+- Live large scores count only ended-round winners through the current phase, exclude future rounds during breaks, and preserve separate per-round/cumulative points. Completed-result scoring uses round wins for round-win/Golden Point results and authoritative cumulative points for a total-points decision.
 - Role/tournament permissions and public denial.
 - Idempotent commands and optimistic version conflicts.
 - Pending-proposal diagnostics identify earlier matching proposals that expired before server arrival without changing the configured consensus policy.
@@ -44,10 +44,11 @@ The Playwright suite verifies:
 2. An anonymous client receives HTTP 401 when attempting a match mutation.
 3. One connected mobile judge sees one-judge mode, submits an immediately accepted +3, and restores the score through the audited undo path.
 4. Two independently paired mobile judges see the automatic return to two-judge consensus, submit distinct proposals for one accepted +3, and restore the score.
-5. A public round-rest display shows a decreasing `REST TIME` clock, `ROUND 1 COMPLETE`, Blue 5 / Red 2, a yellow `BLUE WINS ROUND 1` banner, and a yellow marker only on ended Round 1—not future Round 2; the test then restores the showcase.
-6. The real 500 ms server scheduler automatically turns a six-second running round into a visible decreasing rest countdown, then recovers a paused nonfinal `0:00` fixture into a separate running 30-second rest; both are checked on the public TV, not only through domain calls.
-7. After the browser-required sound unlock, a six-second TV rest emits five scheduled `880 Hz` warning tones and one original competition-style dual `180/240 Hz` end buzzer; the display then reads `REST ENDED`, and the test restores the normal 60-second break.
-8. Completing a match opens a dedicated **MATCH … RESULT** view on the match-specific public display; Chromium verifies the yellow winner banner, authoritative winner name/country, decision-aware Blue/Red result values, and total-point summary. The public mat display then automatically rolls to the next eligible queued match, whose timer remains stopped in `READY`.
+5. A public round-rest display shows large Blue 1 / Red 0 round wins after Blue's 5–2 Round 1 win, a decreasing `REST TIME` clock, `ROUND 1 COMPLETE`, separate Blue 5 / Red 2 points, a yellow `BLUE WINS ROUND 1` banner, and a yellow marker only on ended Round 1—not future Round 2; the test then restores the showcase.
+6. Red winning Round 1 by 7–2 produces large Blue 0 / Red 1 round-win values during rest, while Round 1 remains Blue 2 / Red 7 with Red's yellow marker and winner banner.
+7. The real 500 ms server scheduler automatically turns a six-second running round into a visible decreasing rest countdown, then recovers a paused nonfinal `0:00` fixture into a separate running 30-second rest; both are checked on the public TV, not only through domain calls.
+8. After the browser-required sound unlock, a six-second TV rest emits five scheduled `880 Hz` warning tones and one original competition-style dual `180/240 Hz` end buzzer; the display then reads `REST ENDED`, and the test restores the normal 60-second break.
+9. Completing a match opens a dedicated **MATCH … RESULT** view on the match-specific public display; Chromium verifies the yellow winner banner, authoritative winner name/country, decision-aware Blue/Red result values, and total-point summary. The public mat display then automatically rolls to the next eligible queued match, whose timer remains stopped in `READY`.
 
 Reviewed screenshots:
 
@@ -56,6 +57,7 @@ Reviewed screenshots:
 - `artifacts/judge-mobile.png`
 - `artifacts/judge-single-mobile.png`
 - `artifacts/round-break-display.png`
+- `artifacts/red-round-win-display.png`
 - `artifacts/automatic-round-rest.png`
 - `artifacts/automatic-paused-zero-rest.png`
 - `artifacts/timer-audio-rest-end.png`
