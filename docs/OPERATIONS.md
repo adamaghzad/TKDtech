@@ -22,6 +22,13 @@
 
 The public TV and operator scoreboard provide a clearly visible per-device sound control. Browsers require one tap on **Enable sound** after opening/reloading the page before audio can play. An authoritative blue/red score increase emits one short `1320 Hz` confirmation after the server accepts it; a judge tap alone, initial page load, duplicate snapshot, or score-lowering undo does not emit that confirmation. Round and rest timers emit short `880 Hz` beeps at 5, 4, 3, 2, and 1 seconds and an original competition-style dual `180/240 Hz` buzzer for 1.1 seconds at zero. This is not a proprietary PSS sound or a claim of hardware equivalence. Tones are generated locally with Web Audio and work without Internet access. Verify the TV/operator speakers before the event; audio is supplementary and never changes the authoritative score or timer.
 
+## Round and match result displays
+
+- Ended rounds show a yellow marker beside the winning athlete's round score. Future rounds never receive a marker. During rest, the center panel keeps the completed round's points and shows a yellow round-winner banner.
+- A completed match-specific display (`/display/:matchId`) switches to a dedicated **MATCH … RESULT** screen with a yellow **WINNER** banner, the winner's corner color, flag, name, country, decision method, and round-by-round points.
+- The large Blue/Red result values are round wins for round-win and Golden Point decisions, or total points when total points decide the result. Cumulative Blue/Red points remain visible separately; values always come from the authoritative completed snapshot.
+- Mat displays retain their automatic next-match assignment behavior. The completed match's direct display URL remains available on its result screen.
+
 ## Authoritative scoring rules
 
 - Only the server accepts scores and transitions. The browser never decides consensus or the final winner.
