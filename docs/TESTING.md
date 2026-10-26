@@ -48,7 +48,7 @@ The Playwright suite verifies:
 1. Demo login and record-derived dashboard metrics; operator +1 updates the authoritative score and public display, emits exactly one scheduled `1320 Hz` score-confirmation tone after the browser sound unlock, and the test correction restores the showcase.
 2. An anonymous client receives HTTP 401 when attempting a match mutation.
 3. One connected mobile judge sees one-judge mode, submits an immediately accepted +3, and restores the score through the audited undo path.
-4. Two independently paired mobile judges drive the public KPNP-style side rails: a Blue head kick adds a headguard, a pending punch shows only J1, server-window expiry removes it, and two fresh matching punches show J1/J2 with `2/3 confirmed` and +1. A second punch immediately replaces that confirmed state with a fresh J1-only pending row, hides the old `2/3 confirmed` label, and then confirms separately; a Red body kick adds a hogu. The test checks both athletes' icon counts, confirms that punches do not increment body hits, and restores every accepted score through audited corrections.
+4. Two independently paired mobile judges drive the public KPNP-style side rails: a Blue head kick adds a headguard, a pending punch shows only J1, server-window expiry removes it, and two fresh matching punches show J1/J2 with `2/3 confirmed` and +1. A second punch immediately replaces that confirmed state with a fresh J1-only pending row, hides the old `2/3 confirmed` label, and then confirms separately; a Red body kick adds a hogu. The test checks both athletes' icon counts, confirms that punches do not increment body hits, verifies both Gam-Jeom values and their yellow-accent footers' containment inside the rails, and restores every accepted score through audited corrections.
 5. A public round-rest display shows large Blue 1 / Red 0 round wins after Blue's 5–2 Round 1 win, a decreasing `REST TIME` clock, `ROUND 1 COMPLETE`, separate Blue 5 / Red 2 points, a yellow `BLUE WINS ROUND 1` banner, and a yellow marker only on ended Round 1—not future Round 2; the test then restores the showcase.
 6. A Round 1 time-out with Blue 2 / Red 7 shows those current-round points and hides the round-win/per-round summary. After expiry, rest alone switches to large Blue 0 / Red 1 round wins while Round 1 remains 2–7 with Red's marker/banner. Starting Round 2 then shows **0–0 round points** while the authoritative cumulative match total remains Blue 2 / Red 7.
 7. A tied 7–7 round initially shows **AWAITING SUPERIORITY**, **SUPERIORITY REQUIRED**, 0–0 round wins, and a 30-second rest clock that remains unchanged over time. The operator records Red's superiority decision with an audit reason; the TV then starts **REST TIME** automatically and shows **RED WINS ROUND 1 · SUPERIORITY**, Red's yellow marker, and 0–1 round wins while both Round 1 point values remain 7.
@@ -67,6 +67,7 @@ Reviewed screenshots:
 - `artifacts/judge-punch-pending-display.png`
 - `artifacts/latest-punch-only-display.png`
 - `artifacts/kpnp-style-scoring-activity-display.png`
+- `artifacts/gam-jeom-rail.png`
 - `artifacts/round-break-display.png`
 - `artifacts/timeout-round-points-display.png`
 - `artifacts/red-round-win-display.png`

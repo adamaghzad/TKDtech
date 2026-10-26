@@ -4,7 +4,7 @@ import { HeadguardIcon, HoguIcon, PunchFistIcon } from './scoring-activity-icons
 
 const judgeRoles: CornerJudgeRole[] = ['J1', 'J2', 'J3'];
 
-export function ScoringActivityRail({ side, activity }: { side: Side; activity: SideScoringActivity }) {
+export function ScoringActivityRail({ side, activity, gamJeom }: { side: Side; activity: SideScoringActivity; gamJeom: number }) {
   const blue = side === 'BLUE';
   const testSide = side.toLowerCase();
   const punch = activity.punch;
@@ -18,7 +18,7 @@ export function ScoringActivityRail({ side, activity }: { side: Side; activity: 
   const punchStatus = punch ? `${punch.confirmedJudges.length} of 3 judges registered, ${punch.status === 'CONFIRMED' ? 'punch confirmed' : `waiting for ${punch.requiredConfirmations} matching judges`}` : 'no punch input';
 
   return <aside
-    aria-label={`${side} scoring activity: ${activity.headHits} head hits, ${activity.bodyHits} body hits; ${punchStatus}`}
+    aria-label={`${side} scoring activity: ${activity.headHits} head hits, ${activity.bodyHits} body hits, ${gamJeom} Gam-Jeom; ${punchStatus}`}
     data-testid={`${testSide}-scoring-activity`}
     className={cn('absolute bottom-[4%] top-[17%] z-20 flex w-[clamp(64px,16%,150px)] flex-col border-white/10 bg-black/10', blue ? 'left-0 border-r' : 'right-0 border-l')}
   >
@@ -70,6 +70,15 @@ export function ScoringActivityRail({ side, activity }: { side: Side; activity: 
           </div>;
         })}
       </div> : <p data-testid={`${testSide}-zero-hits`} className="mt-2 text-center text-[clamp(.34rem,.48vw,.56rem)] font-bold text-white/40">0 HITS</p>}
+    </div>
+
+    <div
+      data-testid={`${testSide}-gam-jeom`}
+      title="Cumulative Gam-Jeom penalties"
+      className="shrink-0 border-t border-timer/35 bg-black/15 px-[6%] py-[7%] text-center"
+    >
+      <p className="text-[clamp(.36rem,.52vw,.62rem)] font-black uppercase tracking-[.14em] text-timer/75">Gam-Jeom</p>
+      <p data-testid={`${testSide}-gam-jeom-value`} className="numeric mt-[4%] text-center text-[clamp(1.25rem,2.4vw,2.7rem)] font-black leading-none text-white">{gamJeom}</p>
     </div>
   </aside>;
 }
