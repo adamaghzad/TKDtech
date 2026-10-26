@@ -11,7 +11,7 @@ SELECT m.*, t.name AS tournament_name, c.name AS category_name, m.phase AS phase
 FROM matches m
 JOIN tournaments t ON t.id=m.tournament_id
 JOIN categories c ON c.id=m.category_id
-JOIN tournament_rulesets tr ON tr.tournament_id=t.id AND tr.version=(SELECT version FROM tournament_rulesets WHERE tournament_id=t.id ORDER BY created_at LIMIT 1)
+JOIN tournament_rulesets tr ON tr.id=(SELECT id FROM tournament_rulesets WHERE tournament_id=t.id ORDER BY created_at DESC,rowid DESC LIMIT 1)
 LEFT JOIN mats mat ON mat.id=m.mat_id
 LEFT JOIN athletes ba ON ba.id=m.blue_athlete_id LEFT JOIN clubs bc ON bc.id=ba.club_id
 LEFT JOIN athletes ra ON ra.id=m.red_athlete_id LEFT JOIN clubs rc ON rc.id=ra.club_id`;

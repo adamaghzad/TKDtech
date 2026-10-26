@@ -8,8 +8,8 @@ Verified locally on **2026-10-26** with **Node.js 22.16.0**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **106/106 tests passed across 17 files** |
-| `npm run test:e2e` | **12/12 real Chromium tests passed** against the final Next 16 production preview |
+| `npm test` | **121/121 tests passed across 19 files** |
+| `npm run test:e2e` | **13/13 real Chromium tests passed** against the final Next 16 production preview |
 | `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
 | `npm run build` | Passed: optimized Next 16.4.3 App Router production build with proxy convention |
@@ -25,8 +25,10 @@ Verified locally on **2026-10-26** with **Node.js 22.16.0**, **Next.js 16.4.3**,
 - Shared timer formatting preserves `M:SS` at and above 10 seconds, switches to seconds and hundredths without a minute prefix below 10 seconds (for example `9.85`), and clamps zero/negative values to `0.00`.
 - Timer-alert tracking emits one beep at each of 5/4/3/2/1 seconds and one round/rest end alert, with no initial-load replay, paused alert, unsupported-timer alert, or duplicate snapshot alert.
 - Score-alert tracking emits once for authoritative blue/red score increases, including multi-point scores, with no initial-load/match-change replay, duplicate-snapshot repeat, or undo sound; a later new score sounds normally.
-- Live large scores show current-round points during rounds and ordinary time-outs, including a verified 0–0 start to the next round while cumulative totals remain stored. Only after-round breaks show ended-round wins through `currentRound - 1`, exclude future rounds, and add the separate per-round summary. Completed-result scoring uses round wins for round-win/Golden Point results and authoritative cumulative points for a total-points decision.
+- Live large scores show current-round points during rounds and ordinary time-outs, including a verified 0–0 start to the next round while cumulative totals remain stored. Only after-round breaks show ended-round wins through `currentRound - 1`, exclude future rounds, and add the separate per-round summary. Completed-result scoring uses round wins for round-win/Golden Point results and authoritative cumulative points for total-points and match point-gap decisions.
 - Two ended round wins automatically complete the match with `ROUND_WINS` after operator round end and authoritative timer expiry; the first win still enters rest, future rounds cannot contribute, and no third round starts. A superiority decision that supplies the second win completes immediately without starting rest, while a tied final round with no two-round winner remains paused and unresolved.
+- Configurable point-gap policy verifies exact boundaries and timing: legacy omissions stay disabled; Red 14–0 continues under a 15-point round rule; exactly 15–0 persists the accepted score then a separate `POINT_GAP` round decision; a second such round win completes by `ROUND_WINS`; timer-expiry recovery honors an already-persisted gap. Cumulative 20-point match gap completes at the end of Round 2 or live in Round 3, takes priority over ordinary two-round-win finalization at round completion, and leaves a live unfinished Round 3 explicitly unended. Operator, judge-consensus, and Gam-Jeom points all trigger evaluation, while a fifth Gam-Jeom keeps `DISQUALIFICATION` priority. Duplicate commands remain idempotent and below-threshold evaluation adds no no-op event/version.
+- Tournament-admin ruleset saves create audited `RULESET_UPDATED` revisions, preserve unrelated scoring fields, reject stale versions and invalid round numbers, restrict registration managers, and lock whenever a tournament match is active. Latest-ruleset joins select one deterministic revision for snapshots and proposal expiry.
 - An ended tied round holds the full rest with `SUPERIORITY`, blocks every rest/next-round resume path, and survives reset/review/recovery checks until an authorized referee/operator records a reasoned decision. Legacy running unresolved breaks are paused by the scheduler. The decision releases the hold, starts rest automatically, preserves equal points, persists/audits the winner, rejects overwrites, and feeds match results.
 - Club/category/athlete CSV parsing supports UTF-8 BOM, CRLF, quoted fields, and independent row failures with a 500-row cap. Real browser uploads create 4 clubs and 4 categories, reject repeated duplicates, then create 12 athletes whose club/category names resolve to the correct registrations and passing weigh-ins.
 - Role/tournament permissions and public denial.
@@ -56,7 +58,8 @@ The Playwright suite verifies:
 9. After the browser-required sound unlock, a six-second TV rest shows seconds and hundredths without a minute prefix and emits five scheduled `880 Hz` warning tones plus one original competition-style dual `180/240 Hz` end buzzer; the display then reads `0.00` and `REST ENDED`, and the test restores the normal 60-second break.
 10. On an independent match, Blue wins Round 1 and leads Round 2 without completing early. Ending Round 2 immediately opens the **MATCH … RESULT** view with `BLUE CORNER · ROUND WINS`, two round wins, authoritative total points, and Round 3 explicitly marked `NOT PLAYED`.
 11. The fifth cumulative Gam-Jeom against Blue immediately opens a dedicated **MATCH … RESULT** view on the match-specific public display; Chromium verifies Red's `DISQUALIFICATION` win, the yellow winner banner, authoritative winner name/country, decision-aware Blue/Red result values, and total-point summary. The public mat display then automatically rolls to the next eligible queued match, whose timer remains stopped in `READY`.
-12. In a fresh tournament, Chromium uploads `01-clubs-test.csv`, `02-categories-test.csv`, and `03-athletes-import.csv` in order. It verifies 4 clubs and 4 categories, duplicate rejection on repeated club/category uploads, then 12 athletes with correct name-based club/category assignments, 3 passing entries per category, and 12/12 successful athlete rows.
+12. Chromium opens the real tournament settings form, verifies the active-match save lock, saves round gap 12 and match gap 18 with Round 2/Round 3 timing, reads back the `2025.1-example-r2` configuration through the authorized API, and confirms the persisted `RULESET_UPDATED` audit entry.
+13. In a fresh tournament, Chromium uploads `01-clubs-test.csv`, `02-categories-test.csv`, and `03-athletes-import.csv` in order. It verifies 4 clubs and 4 categories, duplicate rejection on repeated club/category uploads, then 12 athletes with correct name-based club/category assignments, 3 passing entries per category, and 12/12 successful athlete rows.
 
 Reviewed screenshots:
 
@@ -87,6 +90,7 @@ Reviewed screenshots:
 - `artifacts/automatic-two-round-win-display.png`
 - `artifacts/gam-jeom-disqualification-display.png`
 - `artifacts/csv-import-athletes.png`
+- `artifacts/point-gap-settings.png`
 
 No browser page errors were observed in the dashboard/operator test.
 

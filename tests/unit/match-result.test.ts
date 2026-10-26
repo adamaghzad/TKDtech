@@ -21,6 +21,9 @@ describe('match result display scores',()=>{
  it('shows authoritative total points when total points decide the result',()=>{
   expect(matchResultScores(snapshot('TOTAL_POINTS'))).toEqual({blue:12,red:9,label:'TOTAL POINTS'});
  });
+ it('shows cumulative points for a match point-gap result',()=>{
+  expect(matchResultScores(snapshot('POINT_GAP'))).toEqual({blue:12,red:9,label:'TOTAL POINTS'});
+ });
  it('keeps the round-win score visible for a Golden Point decision',()=>{
   expect(matchResultScores(snapshot('GOLDEN_POINT'))).toEqual({blue:2,red:1,label:'ROUND WINS'});
  });

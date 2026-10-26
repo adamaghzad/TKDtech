@@ -25,6 +25,15 @@ export interface Ruleset {
   proposalExpiryMs: number;
   tieBreak: 'GOLDEN_POINT' | 'SUPERIORITY' | 'NONE';
   resultValidation: 'ROUND_WINS' | 'TOTAL_POINTS';
+  /** Optional point-gap policy; omitted fields preserve legacy ruleset behavior. */
+  roundPointGapEnabled?: boolean;
+  roundPointGapThreshold?: number;
+  matchPointGapEnabled?: boolean;
+  matchPointGapThreshold?: number;
+  /** Check the cumulative match gap when this exact round ends. */
+  matchPointGapCompletionRound?: number;
+  /** Check the cumulative match gap immediately from this round onward. */
+  matchPointGapLiveFromRound?: number;
 }
 
 export interface TimerState {
@@ -134,7 +143,7 @@ export type RealtimeEventType =
   | 'match.round_changed' | 'match.completed' | 'score.proposed' | 'score.accepted'
   | 'score.rejected' | 'penalty.proposed' | 'penalty.accepted' | 'timer.updated'
   | 'judge.connected' | 'judge.disconnected' | 'bracket.updated' | 'athlete.advanced'
-  | 'network.sync_status_changed';
+  | 'network.sync_status_changed' | 'ruleset.updated';
 
 export interface ApiError { error: { code: string; message: string; details?: unknown } }
 export interface AuthUser { id: string; email: string; name: string; role: Role; tournamentIds: string[] }

@@ -93,10 +93,33 @@ export interface ResultRound {
 }
 export interface MatchResult {
   winner: Side | null;
-  decisionMethod: 'ROUND_WINS' | 'TOTAL_POINTS' | 'DISQUALIFICATION' | 'GOLDEN_POINT' | 'UNRESOLVED_TIE';
+  decisionMethod: 'ROUND_WINS' | 'TOTAL_POINTS' | 'DISQUALIFICATION' | 'GOLDEN_POINT' | 'POINT_GAP' | 'UNRESOLVED_TIE';
   blueRoundWins: number;
   redRoundWins: number;
   reason: string;
+}
+
+export type PointGapTiming = 'LIVE' | 'ROUND_END';
+
+/** Return a leader only for an enabled, valid, non-zero gap. Legacy omissions stay disabled. */
+export function pointGapLeader(blueScore: number, redScore: number, enabled: boolean | undefined, threshold: number | undefined, fallbackThreshold: number): Side | null {
+  if (!enabled || blueScore === redScore) return null;
+  const configuredThreshold = threshold ?? fallbackThreshold;
+  if (!Number.isInteger(configuredThreshold) || configuredThreshold < 1) return null;
+  return Math.abs(blueScore - redScore) >= configuredThreshold ? (blueScore > redScore ? 'BLUE' : 'RED') : null;
+}
+
+export function roundPointGapLeader(ruleset: Ruleset, blueScore: number, redScore: number): Side | null {
+  return pointGapLeader(blueScore, redScore, ruleset.roundPointGapEnabled, ruleset.roundPointGapThreshold, 15);
+}
+
+export function matchPointGapLeader(ruleset: Ruleset, round: number, blueScore: number, redScore: number, timing: PointGapTiming): Side | null {
+  if (!ruleset.matchPointGapEnabled) return null;
+  const completionRound = ruleset.matchPointGapCompletionRound ?? 2;
+  const liveFromRound = ruleset.matchPointGapLiveFromRound ?? 3;
+  const applies = timing === 'LIVE' ? round >= liveFromRound : round === completionRound || round >= liveFromRound;
+  if (!applies) return null;
+  return pointGapLeader(blueScore, redScore, true, ruleset.matchPointGapThreshold, 20);
 }
 
 export function determineMatchResult(rounds: readonly ResultRound[], ruleset: Ruleset): MatchResult {

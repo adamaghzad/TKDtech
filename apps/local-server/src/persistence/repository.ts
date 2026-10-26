@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { AuthUser, Role, Ruleset } from '@tkd/contracts';
-import { advanceWinner, EXAMPLE_WT_STYLE_RULESET, generateBracket, validateBracket, type Bracket } from '@tkd/domain';
+import { advanceWinner, EXAMPLE_WT_STYLE_RULESET, generateBracket, validateBracket, validateRuleset, type Bracket } from '@tkd/domain';
 import type { SqliteDatabase } from './database';
 import { audit, isoNow } from './audit';
 import { createToken, hashPassword, hashToken, verifyPassword } from '../security/auth';
@@ -9,6 +9,7 @@ import type { Actor, TournamentRow } from '../types';
 
 interface TournamentInput { name: string; description?: string; organizer?: string; venue?: string; country?: string; startDate: string; endDate: string; timezone?: string; matCount?: number; mode?: 'LOCAL'|'CLOUD' }
 interface AthleteInput { firstName: string; lastName: string; dateOfBirth: string; division: 'MEN'|'WOMEN'; nationality: string; countryCode: string; clubId?: string; externalNumber?: string; coach?: string; categoryId?: string; weightKg?: number; seed?: number }
+interface RulesetConfigurationInput { roundPointGapEnabled:boolean;roundPointGapThreshold:number;matchPointGapEnabled:boolean;matchPointGapThreshold:number;matchPointGapCompletionRound:number;matchPointGapLiveFromRound:number;expectedVersion?:string }
 interface CategoryInput { name: string; division: 'MEN'|'WOMEN'; ageGroup: string; minWeightKg: number; maxWeightKg: number; format: 'SINGLE_ELIMINATION'|'REPECHAGE'; rounds?: number; roundDurationMs?: number; breakDurationMs?: number; goldenPointPolicy?: string; repechagePolicy?: string }
 
 export class TournamentRepository {
@@ -110,6 +111,31 @@ export class TournamentRepository {
     this.db.transaction(() => { this.db.prepare('UPDATE tournaments SET status=?,version=version+1,updated_at=? WHERE id=?').run(status, isoNow(), id); audit(this.db,{tournamentId:id,actorId:actor.id,action:'TOURNAMENT_STATUS_CHANGED',entityType:'tournament',entityId:id,before:{status:row.status},after:{status}}); })();
   }
 
+  updateRuleset(actor: Actor, tournamentId: string, input: RulesetConfigurationInput): Ruleset {
+    this.authorizeTournament(actor,tournamentId,true);
+    if(!['SUPER_ADMIN','TOURNAMENT_ADMIN'].includes(actor.role))throw new HttpError(403,'PERMISSION_DENIED','Only tournament administrators can change scoring rules.');
+    let updated:Ruleset|undefined;
+    this.db.transaction(()=>{
+      const current=this.db.prepare('SELECT * FROM tournament_rulesets WHERE tournament_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1').get(tournamentId) as {id:string;version:string;name:string;config_json:string;effective_date:string}|undefined;
+      if(!current)throw new HttpError(404,'RULESET_NOT_FOUND','Tournament ruleset not found.');
+      if(input.expectedVersion&&input.expectedVersion!==current.version)throw new HttpError(409,'RULESET_VERSION_CONFLICT','The ruleset changed in another session. Refresh before saving.');
+      const active=this.db.prepare(`SELECT COUNT(*) AS count FROM matches WHERE tournament_id=? AND state IN ('CALLED','IN_PROGRESS','PAUSED','ROUND_BREAK','GOLDEN_POINT','UNDER_REVIEW')`).get(tournamentId) as {count:number};
+      if(active.count>0)throw new HttpError(409,'RULESET_LOCKED','Scoring rules cannot change while a match is active. Finish the active match first.');
+      const previous=JSON.parse(current.config_json) as Ruleset;
+      const revision=(this.db.prepare('SELECT COUNT(*) AS count FROM tournament_rulesets WHERE tournament_id=?').get(tournamentId) as {count:number}).count+1;
+      const version=`${current.version.replace(/-r\d+$/,'')}-r${revision}`;
+      const {expectedVersion:_expectedVersion,...configuration}=input;
+      updated={...previous,...configuration,version};
+      const errors=validateRuleset(updated);if(errors.length)throw new HttpError(400,'INVALID_RULESET','Ruleset validation failed.',{errors});
+      const id=randomUUID();const now=isoNow();
+      this.db.prepare('INSERT INTO tournament_rulesets(id,tournament_id,version,name,config_json,effective_date,created_at) VALUES(?,?,?,?,?,?,?)').run(id,tournamentId,version,current.name,JSON.stringify(updated),current.effective_date,now);
+      const policy=(ruleset:Ruleset)=>({roundPointGapEnabled:ruleset.roundPointGapEnabled??false,roundPointGapThreshold:ruleset.roundPointGapThreshold??15,matchPointGapEnabled:ruleset.matchPointGapEnabled??false,matchPointGapThreshold:ruleset.matchPointGapThreshold??20,matchPointGapCompletionRound:ruleset.matchPointGapCompletionRound??2,matchPointGapLiveFromRound:ruleset.matchPointGapLiveFromRound??3});
+      audit(this.db,{tournamentId,actorId:actor.id,action:'RULESET_UPDATED',entityType:'ruleset',entityId:id,before:{version:current.version,...policy(previous)},after:{version,...policy(updated)}});
+    })();
+    if(!updated)throw new HttpError(500,'RULESET_UPDATE_FAILED','Ruleset update did not complete.');
+    return updated;
+  }
+
   getTournament(id: string): Record<string, unknown> {
     const tournament = this.db.prepare('SELECT * FROM tournaments WHERE id=?').get(id) as TournamentRow|undefined;
     if (!tournament) throw new HttpError(404,'NOT_FOUND','Tournament not found.');
@@ -121,7 +147,7 @@ export class TournamentRepository {
     const draws = this.db.prepare(`SELECT d.*,c.name AS category_name FROM draws d JOIN categories c ON c.id=d.category_id WHERE c.tournament_id=? ORDER BY d.created_at DESC`).all(id);
     const results = this.db.prepare(`SELECT r.*,m.match_number,c.name AS category_name,w.first_name||' '||w.last_name AS winner_name,l.first_name||' '||l.last_name AS loser_name FROM tournament_results r JOIN matches m ON m.id=r.match_id JOIN categories c ON c.id=m.category_id LEFT JOIN athletes w ON w.id=r.winner_athlete_id LEFT JOIN athletes l ON l.id=r.loser_athlete_id WHERE r.tournament_id=? ORDER BY r.completed_at DESC`).all(id);
     const medals = this.db.prepare(`SELECT ms.id,ms.place,a.first_name||' '||a.last_name AS athlete_name,cl.name AS club_name,cat.name AS category_name FROM medal_standings ms JOIN athletes a ON a.id=ms.athlete_id LEFT JOIN clubs cl ON cl.id=ms.club_id JOIN categories cat ON cat.id=ms.category_id WHERE ms.tournament_id=? ORDER BY ms.place,a.last_name`).all(id);
-    const ruleset = this.db.prepare('SELECT * FROM tournament_rulesets WHERE tournament_id=? ORDER BY created_at LIMIT 1').get(id) as {config_json:string}|undefined;
+    const ruleset = this.db.prepare('SELECT * FROM tournament_rulesets WHERE tournament_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1').get(id) as {config_json:string}|undefined;
     return { tournament, clubs, athletes, categories, mats, matches, draws, results, medals, ruleset: ruleset ? JSON.parse(ruleset.config_json) as Ruleset : EXAMPLE_WT_STYLE_RULESET };
   }
 

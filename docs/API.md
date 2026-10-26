@@ -36,6 +36,7 @@ curl -b cookies.txt http://127.0.0.1:3000/api/v1/bootstrap
 | `GET/POST /api/v1/tournaments` | List/create authorized tournaments |
 | `GET /api/v1/tournaments/:id` | Authorized full administration detail |
 | `PATCH /api/v1/tournaments/:id/status` | Administrator status/completion/cancellation transition |
+| `PATCH /api/v1/tournaments/:id/ruleset` | Tournament-admin point-gap configuration; audited revision, optimistic ruleset version, active-match lock |
 | `POST /api/v1/tournaments/:id/clubs` | Registration write permission |
 | `POST /api/v1/tournaments/:id/categories` | Tournament administrator |
 | `POST /api/v1/tournaments/:id/athletes` | Registration, category, duplicate, seed, and weigh-in validation |
@@ -73,6 +74,12 @@ Completing a match, recording a walkover, or reaching the Gam-Jeom disqualificat
 
 Server startup reconciles stale active assignments left on resolved matches through the same recovery path. `/display/mat/:matId` checks the assignment every three seconds, switches the read-only display when the active match changes, and shows a waiting state when the mat is available.
 
+## Point-gap configuration
+
+`PATCH /api/v1/tournaments/:id/ruleset` accepts `roundPointGapEnabled`, `roundPointGapThreshold`, `matchPointGapEnabled`, `matchPointGapThreshold`, `matchPointGapCompletionRound`, `matchPointGapLiveFromRound`, and optional `expectedVersion`. All thresholds are positive integers; configured rounds must fit the tournament ruleset. The server preserves every other scoring/timing field, inserts a new ruleset row, and writes `RULESET_UPDATED` with before/after policy values. A stale `expectedVersion` returns 409, non-tournament-administrators receive 403, and any active tournament match locks the update with `RULESET_LOCKED`.
+
+Round gap evaluates active-round points after operator, judge-consensus, and Gam-Jeom scoring. Match gap evaluates cumulative points live from its configured round and again at applicable round completions. The triggering score is persisted before the separate point-gap decision event. `POINT_GAP` round results still feed ordinary round-win completion; `POINT_GAP` match results finalize transactionally. Disqualification retains priority. Legacy rulesets with omitted point-gap fields remain disabled. Configuration is tournament-wide and must be checked against event-specific exclusions.
+
 ## Round and rest lifecycle
 
 The server checks authoritative running timers every 500 ms and persists expiry before broadcasting the new snapshot. When a nonfinal round expires without producing an automatic two-round match win, it records that round's winner/end time and enters `ROUND_BREAK`. Non-tied rounds start the category-configured break immediately; a tied round under the round-win policy persists a `SUPERIORITY` hold with the full break duration instead. A nonfinal round found paused at zero is reconciled through the same expiry path; final-round zero without a two-round winner remains paused. The public display shows the rest clock and the just-completed round's blue/red points and winner. Scoring remains closed throughout the break.
@@ -85,7 +92,7 @@ For round-win results, an ended round with equal points requires an authorized `
 
 When the break reaches zero it stays in `ROUND_BREAK`; it never starts the next round automatically. An operator or referee must explicitly start it. `NEXT_ROUND` from a paused round ends that round and starts the break; during a break it skips the remaining rest and starts the next round. `RESUME` resumes a paused break, or starts the next round when the break is running/expired. Final-round expiry pauses at zero without creating an extra round or break.
 
-A completed or disqualified match-specific public display renders a dedicated result view from the snapshot's `winner`, `decisionMethod`, athlete, score, and round records. Its main Blue/Red values show ended-round wins unless `decisionMethod` is `TOTAL_POINTS`, in which case they show the authoritative cumulative points. The other total and per-round values remain visible for verification.
+A completed or disqualified match-specific public display renders a dedicated result view from the snapshot's `winner`, `decisionMethod`, athlete, score, and round records. Its main Blue/Red values show ended-round wins unless `decisionMethod` is `TOTAL_POINTS` or `POINT_GAP`, in which case they show the authoritative cumulative points. The other total and per-round values remain visible for verification.
 
 ## Match commands
 

@@ -17,6 +17,6 @@ export function liveScoreboardScores(snapshot:MatchSnapshot):{blue:number;red:nu
 
 /** Uses the same deciding policy as the persisted result instead of always displaying cumulative points. */
 export function matchResultScores(snapshot:MatchSnapshot):{blue:number;red:number;label:'ROUND WINS'|'TOTAL POINTS'}{
- if(snapshot.decisionMethod==='TOTAL_POINTS')return{blue:snapshot.blueScore,red:snapshot.redScore,label:'TOTAL POINTS'};
+ if(snapshot.decisionMethod==='TOTAL_POINTS'||snapshot.decisionMethod==='POINT_GAP')return{blue:snapshot.blueScore,red:snapshot.redScore,label:'TOTAL POINTS'};
  return{blue:endedRoundWins(snapshot,'BLUE'),red:endedRoundWins(snapshot,'RED'),label:'ROUND WINS'};
 }

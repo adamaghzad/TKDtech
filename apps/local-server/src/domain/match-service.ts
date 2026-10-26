@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { MatchSnapshot, Ruleset, ScoreProposalInput, Side } from '@tkd/contracts';
-import { applyGamJeom, assertTransition, determineMatchResult, pauseTimer, remainingAt, resetTimer, startTimer } from '@tkd/domain';
+import { applyGamJeom, assertTransition, determineMatchResult, matchPointGapLeader, pauseTimer, remainingAt, resetTimer, roundPointGapLeader, startTimer } from '@tkd/domain';
 import type { SqliteDatabase } from '../persistence/database';
 import { appendMatchEvent, audit, isoNow } from '../persistence/audit';
 import { getJoinedMatch, getMatchRow, snapshotFromRow } from '../persistence/rows';
@@ -25,7 +25,7 @@ export class MatchService {
   }
 
   private ruleset(tournamentId: string): Ruleset {
-    const row=this.db.prepare('SELECT config_json FROM tournament_rulesets WHERE tournament_id=? ORDER BY created_at LIMIT 1').get(tournamentId) as {config_json:string};
+    const row=this.db.prepare('SELECT config_json FROM tournament_rulesets WHERE tournament_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1').get(tournamentId) as {config_json:string};
     return JSON.parse(row.config_json) as Ruleset;
   }
 
@@ -48,7 +48,7 @@ export class MatchService {
     if(!['SUPER_ADMIN','TOURNAMENT_ADMIN','MAT_OPERATOR','REFEREE'].includes(actor.role))throw new HttpError(403,'PERMISSION_DENIED','Match control permission required.');
     if(actor.role==='REFEREE'&&!['START','PAUSE','RESUME','GAM_JEOM','MEDICAL_TIMEOUT','VIDEO_REVIEW','END_REVIEW','ROUND_SUPERIORITY','COMPLETE'].includes(command.type))throw new HttpError(403,'PERMISSION_DENIED','This referee action is not authorized.');
     if(command.expectedVersion!=null&&command.expectedVersion!==match.version)throw new HttpError(409,'VERSION_CONFLICT',`Match version changed. Expected ${command.expectedVersion}, current ${match.version}. Refresh before retrying.`);
-    const ruleset=this.ruleset(match.tournament_id);let eventType='timer.updated';let payload:Record<string,unknown>={command:command.type};
+    const ruleset=this.ruleset(match.tournament_id);let eventType='timer.updated';let payload:Record<string,unknown>={command:command.type};let skipPersistence=false;
     this.db.transaction(()=>{
       const current=getMatchRow(this.db,matchId);const timer=JSON.parse(current.timer_json) as MatchSnapshot['timer'] & {returnTimer?:MatchSnapshot['timer']};const now=Date.now();let state=current.state;let nextTimer=MatchService.cleanTimer(timer);let round=current.current_round;let blueScore=current.blue_score;let redScore=current.red_score;let blueGam=current.blue_gam_jeom;let redGam=current.red_gam_jeom;let winner=current.winner_side;let decision=current.decision_method;let actualEnd=current.actual_end_at;
       const currentRound=this.db.prepare('SELECT * FROM match_rounds WHERE match_id=? AND number=?').get(matchId,round) as {id:string;number:number;blue_score:number;red_score:number;blue_penalties:number;red_penalties:number;winner_side:Side|null;decision_method:string|null;ended_at:string|null};
@@ -57,13 +57,20 @@ export class MatchService {
         const previous=this.unresolvedBreakSuperiority(matchId,current.tournament_id,round);
         if(previous)throw new HttpError(409,'SUPERIORITY_REQUIRED',`Round ${previous.number} is tied. Record the officials' superiority decision before starting or resuming the next-round rest.`);
       };
+      const pointGap=(scope:'ROUND'|'MATCH',leader:Side,endedRound:number,blue:number,red:number)=>({scope,winner:leader,round:endedRound,threshold:scope==='ROUND'?(ruleset.roundPointGapThreshold??15):(ruleset.matchPointGapThreshold??20),difference:Math.abs(blue-red),blueScore:blue,redScore:red});
       const completeIfTwoRoundWins=(endedRound:number)=>{
-        if(ruleset.resultValidation!=='ROUND_WINS')return null;
-        const ended=this.db.prepare('SELECT number,blue_score,red_score,winner_side FROM match_rounds WHERE match_id=? AND number<=? AND ended_at IS NOT NULL ORDER BY number').all(matchId,endedRound) as Array<{number:number;blue_score:number;red_score:number;winner_side:Side|null}>;
+        const ended=this.db.prepare('SELECT number,blue_score,red_score,blue_penalties,red_penalties,winner_side FROM match_rounds WHERE match_id=? AND number<=? AND ended_at IS NOT NULL ORDER BY number').all(matchId,endedRound) as Array<{number:number;blue_score:number;red_score:number;blue_penalties:number;red_penalties:number;winner_side:Side|null}>;
         let blueRoundWins=0;let redRoundWins=0;
         for(const item of ended){const roundWinner=item.winner_side??(item.blue_score===item.red_score?null:item.blue_score>item.red_score?'BLUE':'RED');if(roundWinner==='BLUE')blueRoundWins+=1;else if(roundWinner==='RED')redRoundWins+=1;}
         if(blueRoundWins>=2&&redRoundWins>=2)throw new HttpError(409,'RESULT_REVIEW_REQUIRED','Both athletes have two recorded round wins; authorized result review is required.');
-        if(blueRoundWins<2&&redRoundWins<2)return null;
+        const blueDisqualified=ended.reduce((sum,item)=>sum+item.blue_penalties,0)>=ruleset.disqualificationThreshold;
+        const redDisqualified=ended.reduce((sum,item)=>sum+item.red_penalties,0)>=ruleset.disqualificationThreshold;
+        const matchGap=blueDisqualified||redDisqualified?null:matchPointGapLeader(ruleset,endedRound,blueScore,redScore,'ROUND_END');
+        if(matchGap){
+          winner=matchGap;decision='POINT_GAP';round=endedRound;transition('COMPLETED');nextTimer={...pauseTimer(nextTimer,now),holdReason:undefined};actualEnd=new Date(now).toISOString();
+          return{winner,decisionMethod:decision,blueRoundWins,redRoundWins,round:endedRound,automatic:true,pointGap:pointGap('MATCH',matchGap,endedRound,blueScore,redScore)};
+        }
+        if(ruleset.resultValidation!=='ROUND_WINS'||(blueRoundWins<2&&redRoundWins<2))return null;
         winner=blueRoundWins>=2?'BLUE':'RED';decision='ROUND_WINS';round=endedRound;transition('COMPLETED');nextTimer={...pauseTimer(nextTimer,now),holdReason:undefined};actualEnd=new Date(now).toISOString();
         return{winner,decisionMethod:decision,blueRoundWins,redRoundWins,round:endedRound,automatic:true};
       };
@@ -112,9 +119,9 @@ export class MatchService {
             payload={...payload,round,breakSkipped:true};break;
           }
           if(round>=timing.rounds)throw new HttpError(409,'FINAL_ROUND','The final round is already active. Complete the match after resolving the result.');
-          const endedRound=round;const roundWinner=currentRound.blue_score===currentRound.red_score?null:currentRound.blue_score>currentRound.red_score?'BLUE':'RED';
-          this.db.prepare('UPDATE match_rounds SET winner_side=?,decision_method=?,ended_at=? WHERE id=?').run(roundWinner,roundWinner?'SCORE':null,new Date(now).toISOString(),currentRound.id);
-          const roundResult={number:endedRound,blueScore:currentRound.blue_score,redScore:currentRound.red_score,winner:roundWinner};const matchResult=completeIfTwoRoundWins(endedRound);
+          const endedRound=round;const roundWinner=currentRound.blue_score===currentRound.red_score?null:currentRound.blue_score>currentRound.red_score?'BLUE':'RED';const roundGap=roundWinner?roundPointGapLeader(ruleset,currentRound.blue_score,currentRound.red_score):null;
+          this.db.prepare('UPDATE match_rounds SET winner_side=?,decision_method=?,ended_at=? WHERE id=?').run(roundWinner,roundGap?'POINT_GAP':roundWinner?'SCORE':null,new Date(now).toISOString(),currentRound.id);
+          const roundResult={number:endedRound,blueScore:currentRound.blue_score,redScore:currentRound.red_score,winner:roundWinner,decisionMethod:roundGap?'POINT_GAP':roundWinner?'SCORE':null};const matchResult=completeIfTwoRoundWins(endedRound);
           if(matchResult){eventType='match.completed';payload={...payload,previousRound:endedRound,round:endedRound,automatic:true,roundResult,matchResult};break;}
           round+=1;transition('ROUND_BREAK');const breakTimer=resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now);nextTimer=ruleset.resultValidation==='ROUND_WINS'&&!roundWinner?{...breakTimer,holdReason:'SUPERIORITY' as const}:startTimer(breakTimer,now);eventType='match.round_changed';
           payload={...payload,previousRound:endedRound,round,automatic:false,roundResult};break;
@@ -146,6 +153,25 @@ export class MatchService {
           }
           break;
         }
+        case 'EVALUATE_POINT_GAP': {
+          if(!['IN_PROGRESS','PAUSED'].includes(state)||nextTimer.kind!=='ROUND'||currentRound.ended_at){skipPersistence=true;break;}
+          const matchGap=matchPointGapLeader(ruleset,round,blueScore,redScore,'LIVE');
+          if(matchGap){
+            winner=matchGap;decision='POINT_GAP';transition('COMPLETED');nextTimer={...pauseTimer(nextTimer,now),holdReason:undefined};actualEnd=new Date(now).toISOString();eventType='match.completed';
+            payload={...payload,winner,decisionMethod:decision,round,automatic:true,pointGap:pointGap('MATCH',matchGap,round,blueScore,redScore)};break;
+          }
+          const roundGap=roundPointGapLeader(ruleset,currentRound.blue_score,currentRound.red_score);
+          if(!roundGap){skipPersistence=true;break;}
+          const endedRound=round;const gapDetails=pointGap('ROUND',roundGap,endedRound,currentRound.blue_score,currentRound.red_score);
+          this.db.prepare("UPDATE match_rounds SET winner_side=?,decision_method='POINT_GAP',ended_at=? WHERE id=?").run(roundGap,new Date(now).toISOString(),currentRound.id);
+          const roundResult={number:endedRound,blueScore:currentRound.blue_score,redScore:currentRound.red_score,winner:roundGap,decisionMethod:'POINT_GAP'};
+          const matchResult=completeIfTwoRoundWins(endedRound);
+          if(matchResult){eventType='match.completed';payload={...payload,previousRound:endedRound,round:endedRound,automatic:true,roundResult,roundPointGap:gapDetails,matchResult};break;}
+          const timing=this.timing(current.category_id);
+          if(endedRound>=timing.rounds){transition('PAUSED');nextTimer={...pauseTimer(nextTimer,now),holdReason:undefined};eventType='match.paused';payload={...payload,reason:'ROUND_POINT_GAP',round:endedRound,automatic:true,roundResult,pointGap:gapDetails};break;}
+          round+=1;transition('ROUND_BREAK');nextTimer=startTimer(resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now),now);eventType='match.round_changed';
+          payload={...payload,previousRound:endedRound,round,automatic:true,roundResult,pointGap:gapDetails};break;
+        }
         case 'MEDICAL_TIMEOUT': {
           if(nextTimer.kind==='MEDICAL'&&timer.returnTimer){nextTimer=pauseTimer(timer.returnTimer,now);eventType='timer.medical_ended';}
           else{if(!['IN_PROGRESS','PAUSED'].includes(state))throw new HttpError(409,'INVALID_STATE','Medical timeout is unavailable in this state.');if(state==='IN_PROGRESS')transition('PAUSED');const returnTimer=pauseTimer(nextTimer,now);nextTimer={...resetTimer({...nextTimer,kind:'MEDICAL'},ruleset.medicalTimeoutMs,now),returnTimer};eventType='timer.medical_timeout';}break;
@@ -163,9 +189,9 @@ export class MatchService {
           const pausedRoundRecovery=state==='PAUSED'&&nextTimer.kind==='ROUND'&&nextTimer.remainingMs<=0&&round<timing.rounds;
           if(!expiredRunning&&!pausedRoundRecovery)throw new HttpError(409,'TIMER_NOT_EXPIRED','The authoritative timer has not expired.');
           if(nextTimer.kind==='ROUND'&&(state==='IN_PROGRESS'||pausedRoundRecovery)){
-            const endedRound=round;const roundWinner=currentRound.blue_score===currentRound.red_score?null:currentRound.blue_score>currentRound.red_score?'BLUE':'RED';
-            this.db.prepare('UPDATE match_rounds SET winner_side=?,decision_method=?,ended_at=? WHERE id=?').run(roundWinner,roundWinner?'SCORE':null,new Date(now).toISOString(),currentRound.id);
-            const roundResult={number:endedRound,blueScore:currentRound.blue_score,redScore:currentRound.red_score,winner:roundWinner};const matchResult=completeIfTwoRoundWins(endedRound);
+            const endedRound=round;const roundWinner=currentRound.blue_score===currentRound.red_score?null:currentRound.blue_score>currentRound.red_score?'BLUE':'RED';const roundGap=roundWinner?roundPointGapLeader(ruleset,currentRound.blue_score,currentRound.red_score):null;
+            this.db.prepare('UPDATE match_rounds SET winner_side=?,decision_method=?,ended_at=? WHERE id=?').run(roundWinner,roundGap?'POINT_GAP':roundWinner?'SCORE':null,new Date(now).toISOString(),currentRound.id);
+            const roundResult={number:endedRound,blueScore:currentRound.blue_score,redScore:currentRound.red_score,winner:roundWinner,decisionMethod:roundGap?'POINT_GAP':roundWinner?'SCORE':null};const matchResult=completeIfTwoRoundWins(endedRound);
             if(matchResult){eventType='match.completed';payload={...payload,previousRound:endedRound,round:endedRound,automatic:true,recoveredPaused:pausedRoundRecovery,roundResult,matchResult};break;}
             if(endedRound<timing.rounds){
               round+=1;transition('ROUND_BREAK');const breakTimer=resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now);nextTimer=ruleset.resultValidation==='ROUND_WINS'&&!roundWinner?{...breakTimer,holdReason:'SUPERIORITY' as const}:startTimer(breakTimer,now);eventType='match.round_changed';
@@ -234,6 +260,7 @@ export class MatchService {
           eventType='score.correction';payload={targetEventId:target.event_id,reason:command.reason,original:original};break;
         }
       }
+      if(skipPersistence)return;
       const sequence=current.sequence+1;const updatedAt=isoNow();
       const update=this.db.prepare(`UPDATE matches SET state=?,current_round=?,blue_score=?,red_score=?,blue_gam_jeom=?,red_gam_jeom=?,winner_side=?,decision_method=?,timer_json=?,sequence=?,version=version+1,actual_end_at=?,updated_at=? WHERE id=? AND version=?`).run(state,round,blueScore,redScore,blueGam,redGam,winner,decision,JSON.stringify(nextTimer),sequence,actualEnd,updatedAt,matchId,current.version);
       if(update.changes!==1)throw new HttpError(409,'VERSION_CONFLICT','Match changed concurrently. No command was applied.');
@@ -245,7 +272,11 @@ export class MatchService {
         this.repository.advanceFromCompletedMatch(actor,matchId,winnerId);this.repository.releaseMatAndAssignNext(current.tournament_id,matchId,actor.id);
       }
     })();
-    return this.snapshot(matchId);
+    const snapshot=this.snapshot(matchId);
+    if(!skipPersistence&&['SCORE','GAM_JEOM'].includes(command.type)&&['IN_PROGRESS','PAUSED'].includes(snapshot.state)){
+      return this.execute(actor,matchId,{type:'EVALUATE_POINT_GAP'},`point-gap:${idempotencyKey}`);
+    }
+    return snapshot;
   }
 
   private static cleanTimer(timer: MatchSnapshot['timer'] & {returnTimer?:MatchSnapshot['timer']}): MatchSnapshot['timer'] & {returnTimer?:MatchSnapshot['timer']} { return {...timer,remainingMs:remainingAt(timer,Date.now())}; }
@@ -319,14 +350,16 @@ export class MatchService {
       }
       if(status!=='ACCEPTED'){const sequence=match.sequence+1;this.db.prepare('UPDATE matches SET sequence=?,version=version+1,updated_at=? WHERE id=?').run(sequence,isoNow(),match.id);appendMatchEvent(this.db,{tournamentId:match.tournament_id,matchId:match.id,sequence,type:status==='REJECTED'?'score.rejected':'score.proposed',actorId:session.id,sessionId:session.id,payload:{eventId:input.eventId,side:input.side,pointType:input.pointType,status,reason},idempotencyKey:`proposal:${input.eventId}`});}
       audit(this.db,{tournamentId:match.tournament_id,actorId:session.id,action:`SCORE_PROPOSAL_${status}`,entityType:'match',entityId:match.id,after:{eventId:input.eventId,status,reason,decisionId,clientSubmittedAt,scoringMode,onlineJudgeCount,consensusThreshold}});result={status,reason,decisionId,points,matchId:match.id,diagnostics:{serverReceivedAt:now,consensusWindowMs:ruleset.consensusWindowMs,consensusThreshold,matchingJudgeCount,expiredPriorCount,onlineJudgeCount,scoringMode}};
-    })();if(!result)throw new HttpError(500,'PROPOSAL_NOT_RECORDED','Proposal transaction did not return a result.');return result;
+    })();if(!result)throw new HttpError(500,'PROPOSAL_NOT_RECORDED','Proposal transaction did not return a result.');
+    if(result.status==='ACCEPTED')this.execute({id:'system-point-gap',role:'SUPER_ADMIN',tournamentIds:[match.tournament_id],sessionId:session.id},match.id,{type:'EVALUATE_POINT_GAP'},`point-gap:consensus:${result.decisionId??input.eventId}`);
+    return result;
   }
 
   expirePresence(expiryMs=15000):string[]{const cutoff=Date.now()-expiryMs;const rows=this.db.prepare(`SELECT match_id FROM device_presence WHERE status='ONLINE' AND last_seen_at<?`).all(cutoff) as Array<{match_id:string}>;this.db.prepare(`UPDATE device_presence SET status='OFFLINE' WHERE status='ONLINE' AND last_seen_at<?`).run(cutoff);return[...new Set(rows.map(row=>row.match_id))];}
 
   /** Persist expired pending proposals before broadcasting their updated display state. */
   expireProposals(now=Date.now()):string[]{
-    const rows=this.db.prepare(`SELECT DISTINCT p.match_id,json_extract(tr.config_json,'$.consensusWindowMs') AS window_ms FROM scoring_proposals p JOIN matches m ON m.id=p.match_id JOIN tournament_rulesets tr ON tr.tournament_id=m.tournament_id AND tr.version=(SELECT version FROM tournament_rulesets WHERE tournament_id=m.tournament_id ORDER BY created_at LIMIT 1) WHERE p.status='PENDING'`).all() as Array<{match_id:string;window_ms:number}>;
+    const rows=this.db.prepare(`SELECT DISTINCT p.match_id,json_extract(tr.config_json,'$.consensusWindowMs') AS window_ms FROM scoring_proposals p JOIN matches m ON m.id=p.match_id JOIN tournament_rulesets tr ON tr.id=(SELECT id FROM tournament_rulesets WHERE tournament_id=m.tournament_id ORDER BY created_at DESC,rowid DESC LIMIT 1) WHERE p.status='PENDING'`).all() as Array<{match_id:string;window_ms:number}>;
     const changed:string[]=[];this.db.transaction(()=>{for(const row of rows){const update=this.db.prepare(`UPDATE scoring_proposals SET status='EXPIRED',reason='CONSENSUS_WINDOW_ELAPSED' WHERE match_id=? AND status='PENDING' AND submitted_at<?`).run(row.match_id,now-row.window_ms);if(update.changes>0)changed.push(row.match_id);}})();return changed;
   }
 
