@@ -71,7 +71,7 @@ Server startup reconciles stale active assignments left on resolved matches thro
 
 The server checks authoritative running timers every 500 ms and persists expiry before broadcasting the new snapshot. When a nonfinal round expires, it records that round's winner/end time, enters `ROUND_BREAK`, and starts the category-configured break duration. A nonfinal round found paused at zero is reconciled through the same persisted expiry path; final-round zero remains paused. The public display shows the running rest clock and the just-completed round's blue/red points and winner. Scoring remains closed throughout the break.
 
-The live display's large Blue/Red values count ended-round wins rather than cumulative points. Only rounds completed through the current phase contribute; during `BREAK`, the cutoff is `currentRound - 1`. Per-round and cumulative point data remain authoritative and visible separately.
+During rounds and ordinary time-outs, the live display's large Blue/Red values are authoritative cumulative match points. Only `BREAK` switches to the after-round summary: large values count ended-round wins through `currentRound - 1`, and per-round points/winner markers appear separately. Future rounds cannot contribute. Cumulative point data remains authoritative throughout.
 
 When the break reaches zero it stays in `ROUND_BREAK`; it never starts the next round automatically. An operator or referee must explicitly start it. `NEXT_ROUND` from a paused round ends that round and starts the break; during a break it skips the remaining rest and starts the next round. `RESUME` resumes a paused break, or starts the next round when the break is running/expired. Final-round expiry pauses at zero without creating an extra round or break.
 
