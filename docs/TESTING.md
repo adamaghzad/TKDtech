@@ -8,7 +8,7 @@ Verified locally on **2026-10-26** with **Node.js 22.21.1**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **94/94 tests passed across 15 files** |
+| `npm test` | **95/95 tests passed across 15 files** |
 | `npm run test:e2e` | **11/11 real Chromium tests passed** against the final Next 16 production preview |
 | `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
@@ -32,7 +32,7 @@ Verified locally on **2026-10-26** with **Node.js 22.21.1**, **Next.js 16.4.3**,
 - Idempotent commands and optimistic version conflicts.
 - Pending-proposal diagnostics identify earlier matching proposals that expired before server arrival without changing the configured consensus policy.
 - Expired/revoked pairing, heartbeat presence expiry, and assigned-session validation.
-- Transactional completion and winner advancement; completed matches cannot be advanced again through the generic path.
+- Transactional completion and winner advancement; completed matches cannot be advanced again through the generic path. The fourth cumulative Gam-Jeom leaves the match active, while the fifth awards the opponent point and atomically persists `DISQUALIFIED`, the opponent's `DISQUALIFICATION` win, the official result, bracket advancement, and mat release. Retries are idempotent and further penalties/generic undo are rejected.
 - Completion releases the mat, deterministically auto-assigns the next eligible queued match without starting it, leaves an empty mat available, skips athletes live elsewhere, and recovers stale resolved assignments.
 - Published draw/event immutability, multiple mats, simultaneous-athlete conflict checks, and restart recovery.
 - Real WebSocket synchronization among operator, public display, and two judges, including duplicate snapshots, reconnection, and sequence-gap recovery.
@@ -52,7 +52,7 @@ The Playwright suite verifies:
 7. A tied 7–7 round initially shows **AWAITING SUPERIORITY**, **SUPERIORITY REQUIRED**, 0–0 round wins, and a 30-second rest clock that remains unchanged over time. The operator records Red's superiority decision with an audit reason; the TV then starts **REST TIME** automatically and shows **RED WINS ROUND 1 · SUPERIORITY**, Red's yellow marker, and 0–1 round wins while both Round 1 point values remain 7.
 8. The real 500 ms server scheduler automatically turns a six-second running round into a visible decreasing rest countdown, then recovers a paused nonfinal `0:00` fixture into a separate running 30-second rest; both are checked on the public TV, not only through domain calls.
 9. After the browser-required sound unlock, a six-second TV rest shows seconds and hundredths without a minute prefix and emits five scheduled `880 Hz` warning tones plus one original competition-style dual `180/240 Hz` end buzzer; the display then reads `0.00` and `REST ENDED`, and the test restores the normal 60-second break.
-10. Completing a match opens a dedicated **MATCH … RESULT** view on the match-specific public display; Chromium verifies the yellow winner banner, authoritative winner name/country, decision-aware Blue/Red result values, and total-point summary. The public mat display then automatically rolls to the next eligible queued match, whose timer remains stopped in `READY`.
+10. The fifth cumulative Gam-Jeom against Blue immediately opens a dedicated **MATCH … RESULT** view on the match-specific public display; Chromium verifies Red's `DISQUALIFICATION` win, the yellow winner banner, authoritative winner name/country, decision-aware Blue/Red result values, and total-point summary. The public mat display then automatically rolls to the next eligible queued match, whose timer remains stopped in `READY`.
 11. In a fresh tournament, Chromium uploads `01-clubs-test.csv`, `02-categories-test.csv`, and `03-athletes-import.csv` in order. It verifies 4 clubs and 4 categories, duplicate rejection on repeated club/category uploads, then 12 athletes with correct name-based club/category assignments, 3 passing entries per category, and 12/12 successful athlete rows.
 
 Reviewed screenshots:
@@ -72,7 +72,7 @@ Reviewed screenshots:
 - `artifacts/timer-hundredths-round.png`
 - `artifacts/timer-hundredths-countdown.png`
 - `artifacts/timer-audio-rest-end.png`
-- `artifacts/match-result-display.png`
+- `artifacts/gam-jeom-disqualification-display.png`
 - `artifacts/csv-import-athletes.png`
 
 No browser page errors were observed in the dashboard/operator test.

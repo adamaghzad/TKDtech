@@ -69,7 +69,7 @@ For athletes, `clubId` and `categoryId` accept tournament-owned UUIDs. Alternati
 
 ## Mat queue lifecycle
 
-Completing a match or recording a walkover releases its active mat assignment in the same transaction as result finalization and bracket advancement. The server deterministically assigns the next eligible `PENDING`/`READY` match by queue position and match number, skipping matches with athletes in another live match. The newly assigned match remains stopped in `READY`; an operator or referee must start it explicitly. If no eligible match remains, the mat becomes `AVAILABLE`.
+Completing a match, recording a walkover, or reaching the Gam-Jeom disqualification threshold releases its active mat assignment in the same transaction as result finalization and bracket advancement. The server deterministically assigns the next eligible `PENDING`/`READY` match by queue position and match number, skipping matches with athletes in another live match. The newly assigned match remains stopped in `READY`; an operator or referee must start it explicitly. If no eligible match remains, the mat becomes `AVAILABLE`.
 
 Server startup reconciles stale active assignments left on resolved matches through the same recovery path. `/display/mat/:matId` checks the assignment every three seconds, switches the read-only display when the active match changes, and shows a waiting state when the mat is available.
 
@@ -83,9 +83,11 @@ For round-win results, an ended round with equal points requires an authorized `
 
 When the break reaches zero it stays in `ROUND_BREAK`; it never starts the next round automatically. An operator or referee must explicitly start it. `NEXT_ROUND` from a paused round ends that round and starts the break; during a break it skips the remaining rest and starts the next round. `RESUME` resumes a paused break, or starts the next round when the break is running/expired. Final-round expiry pauses at zero without creating an extra round or break.
 
-A completed match-specific public display renders a dedicated result view from the snapshot's `winner`, `decisionMethod`, athlete, score, and round records. Its main Blue/Red values show ended-round wins unless `decisionMethod` is `TOTAL_POINTS`, in which case they show the authoritative cumulative points. The other total and per-round values remain visible for verification.
+A completed or disqualified match-specific public display renders a dedicated result view from the snapshot's `winner`, `decisionMethod`, athlete, score, and round records. Its main Blue/Red values show ended-round wins unless `decisionMethod` is `TOTAL_POINTS`, in which case they show the authoritative cumulative points. The other total and per-round values remain visible for verification.
 
 ## Match commands
+
+`GAM_JEOM` requires the penalized `side` and is accepted only during active/paused scoring states. It appends one penalty and awards the configured opponent points. If the penalized side reaches the cumulative `disqualificationThreshold`, the same transaction pauses the timer, sets `state='DISQUALIFIED'`, records the opponent with `decisionMethod='DISQUALIFICATION'`, and runs normal result/bracket/mat finalization. The penalty event payload includes `automaticDisqualification`, `totalPenalties`, `disqualificationThreshold`, and the winner. Replaying the same idempotency key returns the resolved snapshot without another penalty or result.
 
 ```http
 POST /api/v1/matches/MATCH_UUID/commands

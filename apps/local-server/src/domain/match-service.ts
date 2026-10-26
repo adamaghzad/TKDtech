@@ -126,7 +126,13 @@ export class MatchService {
           const updated=applyGamJeom({number:round,blueScore:currentRound.blue_score,redScore:currentRound.red_score,bluePenalties:currentRound.blue_penalties,redPenalties:currentRound.red_penalties},command.side,ruleset);
           if(command.side==='BLUE'){blueGam+=1;redScore+=ruleset.gamJeomOpponentPoints;}else{redGam+=1;blueScore+=ruleset.gamJeomOpponentPoints;}
           this.db.prepare('UPDATE match_rounds SET blue_score=?,red_score=?,blue_penalties=?,red_penalties=? WHERE id=?').run(updated.blueScore,updated.redScore,updated.bluePenalties,updated.redPenalties,currentRound.id);
-          eventType='penalty.accepted';payload={side:command.side,points:ruleset.gamJeomOpponentPoints,roundId:currentRound.id,round,undoable:true};break;
+          eventType='penalty.accepted';payload={side:command.side,points:ruleset.gamJeomOpponentPoints,roundId:currentRound.id,round,undoable:true};
+          const totalPenalties=command.side==='BLUE'?blueGam:redGam;
+          if(totalPenalties>=ruleset.disqualificationThreshold){
+            winner=command.side==='BLUE'?'RED':'BLUE';decision='DISQUALIFICATION';transition('DISQUALIFIED');nextTimer=pauseTimer(nextTimer,now);actualEnd=new Date(now).toISOString();
+            payload={...payload,automaticDisqualification:true,winner,decisionMethod:decision,totalPenalties,disqualificationThreshold:ruleset.disqualificationThreshold};
+          }
+          break;
         }
         case 'MEDICAL_TIMEOUT': {
           if(nextTimer.kind==='MEDICAL'&&timer.returnTimer){nextTimer=pauseTimer(timer.returnTimer,now);eventType='timer.medical_ended';}
@@ -218,7 +224,7 @@ export class MatchService {
       if(update.changes!==1)throw new HttpError(409,'VERSION_CONFLICT','Match changed concurrently. No command was applied.');
       appendMatchEvent(this.db,{tournamentId:current.tournament_id,matchId,sequence,type:eventType,actorId:actor.id,sessionId:actor.sessionId,payload,idempotencyKey});
       audit(this.db,{tournamentId:current.tournament_id,actorId:actor.id,action:`MATCH_${command.type}`,entityType:'match',entityId:matchId,before:{state:current.state,version:current.version,blueScore:current.blue_score,redScore:current.red_score},after:{state,version:current.version+1,blueScore,redScore},reason:command.reason});
-      if(winner&&['COMPLETED','WALKOVER'].includes(state)){
+      if(winner&&['COMPLETED','WALKOVER','DISQUALIFIED'].includes(state)){
         const winnerId=winner==='BLUE'?current.blue_athlete_id:current.red_athlete_id;const loserId=winner==='BLUE'?current.red_athlete_id:current.blue_athlete_id;if(!winnerId)throw new HttpError(409,'RESULT_INVALID','Winner athlete is unknown.');
         this.db.prepare('INSERT INTO tournament_results(id,tournament_id,match_id,winner_athlete_id,loser_athlete_id,decision_method,blue_score,red_score,completed_at,version) VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),current.tournament_id,matchId,winnerId,loserId,decision??'RESULT',blueScore,redScore,actualEnd??updatedAt,current.version+1);
         this.repository.advanceFromCompletedMatch(actor,matchId,winnerId);this.repository.releaseMatAndAssignNext(current.tournament_id,matchId,actor.id);
