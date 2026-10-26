@@ -69,7 +69,7 @@ export interface PunchConfirmationSnapshot {
 export interface SideScoringActivity {
   headHits: number;
   bodyHits: number;
-  punch: PunchConfirmationSnapshot | null;
+  punches: PunchConfirmationSnapshot[];
 }
 
 export interface MatchScoringActivity {

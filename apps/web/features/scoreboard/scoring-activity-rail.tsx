@@ -7,47 +7,55 @@ const judgeRoles: CornerJudgeRole[] = ['J1', 'J2', 'J3'];
 export function ScoringActivityRail({ side, activity, gamJeom }: { side: Side; activity: SideScoringActivity; gamJeom: number }) {
   const blue = side === 'BLUE';
   const testSide = side.toLowerCase();
-  const punch = activity.punch;
+  const punches = activity.punches;
+  const compactPunches = punches.length > 2;
   const totalHits = activity.headHits + activity.bodyHits;
   const hits = [
     ...Array.from({ length: activity.headHits }, (_, index) => ({ target: 'head' as const, index })),
     ...Array.from({ length: activity.bodyHits }, (_, index) => ({ target: 'body' as const, index }))
   ];
-  const columns = totalHits > (punch ? 3 : 5) ? 2 : 1;
+  const columns = totalHits > (punches.length ? 3 : 5) ? 2 : 1;
   const rows = Math.max(1, Math.ceil(totalHits / columns));
-  const punchStatus = punch ? `${punch.confirmedJudges.length} of 3 judges registered, ${punch.status === 'CONFIRMED' ? 'punch confirmed' : `waiting for ${punch.requiredConfirmations} matching judges`}` : 'no punch input';
+  const punchStatus = punches.length ? `${punches.length} current-round ${punches.length === 1 ? 'punch' : 'punches'} recorded` : 'no punch input';
 
   return <aside
     aria-label={`${side} scoring activity: ${activity.headHits} head hits, ${activity.bodyHits} body hits, ${gamJeom} Gam-Jeom; ${punchStatus}`}
     data-testid={`${testSide}-scoring-activity`}
     className={cn('absolute bottom-[4%] top-[17%] z-20 flex w-[clamp(64px,16%,150px)] flex-col border-white/10 bg-black/10', blue ? 'left-0 border-r' : 'right-0 border-l')}
   >
-    {punch && <div
-      data-testid={`${testSide}-punch-confirmation`}
-      data-status={punch.status.toLowerCase()}
-      title={`Punch input · ${punch.requiredConfirmations} matching ${punch.requiredConfirmations === 1 ? 'judge' : 'judges'} required`}
-      className="shrink-0 border-b border-white/10 px-1 py-[8%] text-center"
-    >
-      <div className="flex items-center justify-center gap-[3%]">
-        {judgeRoles.map(role => {
-          const confirmed = punch.confirmedJudges.includes(role);
-          return <span
-            key={role}
-            data-testid={`${testSide}-punch-${role.toLowerCase()}`}
-            data-confirmed={confirmed}
-            aria-label={`${role} ${confirmed ? 'input registered' : 'no input for this punch'}`}
-            title={`${role}: ${confirmed ? 'input registered' : 'no input'}`}
-            className={cn('numeric flex aspect-square w-[29%] max-w-6 items-center justify-center rounded-full border text-[clamp(.42rem,.65vw,.72rem)] font-black leading-none', confirmed ? 'border-timer bg-timer text-black' : 'border-timer/70 bg-black/20 text-timer')}
-          >{role.slice(1)}</span>;
-        })}
+    {punches.length > 0 && <div data-testid={`${testSide}-punches`} className="shrink-0 border-b border-white/10 px-[2%] py-[4%]">
+      <div className="grid grid-cols-1 gap-[2px]">
+        {punches.map((punch, index) => <div
+          key={index}
+          data-testid={`${testSide}-punch-${index}`}
+          data-status={punch.status.toLowerCase()}
+          aria-label={`Punch ${index + 1} of ${punches.length}: ${punch.confirmedJudges.length} of 3 judges registered, ${punch.status === 'CONFIRMED' ? 'confirmed' : `waiting for ${punch.requiredConfirmations} matching judges`}`}
+          title={`Punch ${index + 1} · ${punch.requiredConfirmations} matching ${punch.requiredConfirmations === 1 ? 'judge' : 'judges'} required`}
+          className={cn('min-w-0 border-b border-white/10 px-[2%] text-center last:border-0', compactPunches ? 'py-[2%]' : 'py-[5%]')}
+        >
+          <div className="flex items-center justify-center gap-[3%]">
+            {judgeRoles.map(role => {
+              const confirmed = punch.confirmedJudges.includes(role);
+              return <span
+                key={role}
+                data-testid={`${testSide}-punch-${index}-${role.toLowerCase()}`}
+                data-confirmed={confirmed}
+                aria-label={`Punch ${index + 1} ${role} ${confirmed ? 'input registered' : 'no input'}`}
+                title={`Punch ${index + 1} ${role}: ${confirmed ? 'input registered' : 'no input'}`}
+                className={cn('numeric flex aspect-square w-[29%] max-w-6 items-center justify-center rounded-full border text-[clamp(.42rem,.65vw,.72rem)] font-black leading-none', confirmed ? 'border-timer bg-timer text-black' : 'border-timer/70 bg-black/20 text-timer')}
+              >{role.slice(1)}</span>;
+            })}
+          </div>
+          <div className="mt-[7%] flex items-center justify-center gap-1 whitespace-nowrap text-timer">
+            {!compactPunches && <span className="text-[clamp(.36rem,.52vw,.62rem)] font-black tracking-[.08em]">PUNCH{punch.status === 'CONFIRMED' ? ` +${punch.points}` : ''}</span>}
+            <PunchFistIcon className={cn('shrink-0', compactPunches ? 'size-[clamp(.7rem,1.05vw,1.05rem)]' : 'size-[clamp(.8rem,1.35vw,1.35rem)]')} />
+            {compactPunches && punch.status === 'CONFIRMED' && <span className="numeric text-[clamp(.36rem,.52vw,.62rem)] font-black">+{punch.points}</span>}
+          </div>
+          <p className={cn('mt-[4%] whitespace-nowrap text-[clamp(.3rem,.44vw,.52rem)] font-bold uppercase', punch.status === 'CONFIRMED' ? 'text-white/85' : 'text-timer/85')}>
+            {punch.confirmedJudges.length}/3 {!compactPunches && (punch.status === 'CONFIRMED' ? 'confirmed' : `· need ${punch.requiredConfirmations}`)}
+          </p>
+        </div>)}
       </div>
-      <div className="mt-[7%] flex items-center justify-center gap-1 whitespace-nowrap text-timer">
-        <span className="text-[clamp(.36rem,.52vw,.62rem)] font-black tracking-[.08em]">PUNCH{punch.status === 'CONFIRMED' ? ` +${punch.points}` : ''}</span>
-        <PunchFistIcon className="size-[clamp(.8rem,1.35vw,1.35rem)] shrink-0" />
-      </div>
-      <p className={cn('mt-[4%] whitespace-nowrap text-[clamp(.3rem,.44vw,.52rem)] font-bold uppercase', punch.status === 'CONFIRMED' ? 'text-white/85' : 'text-timer/85')}>
-        {punch.confirmedJudges.length}/3 {punch.status === 'CONFIRMED' ? 'confirmed' : `· need ${punch.requiredConfirmations}`}
-      </p>
     </div>}
 
     <div className="flex min-h-0 flex-1 flex-col px-[8%] py-[6%]">
