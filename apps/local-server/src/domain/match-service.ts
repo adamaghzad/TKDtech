@@ -324,6 +324,12 @@ export class MatchService {
 
   expirePresence(expiryMs=15000):string[]{const cutoff=Date.now()-expiryMs;const rows=this.db.prepare(`SELECT match_id FROM device_presence WHERE status='ONLINE' AND last_seen_at<?`).all(cutoff) as Array<{match_id:string}>;this.db.prepare(`UPDATE device_presence SET status='OFFLINE' WHERE status='ONLINE' AND last_seen_at<?`).run(cutoff);return[...new Set(rows.map(row=>row.match_id))];}
 
+  /** Persist expired pending proposals before broadcasting their updated display state. */
+  expireProposals(now=Date.now()):string[]{
+    const rows=this.db.prepare(`SELECT DISTINCT p.match_id,json_extract(tr.config_json,'$.consensusWindowMs') AS window_ms FROM scoring_proposals p JOIN matches m ON m.id=p.match_id JOIN tournament_rulesets tr ON tr.tournament_id=m.tournament_id AND tr.version=(SELECT version FROM tournament_rulesets WHERE tournament_id=m.tournament_id ORDER BY created_at LIMIT 1) WHERE p.status='PENDING'`).all() as Array<{match_id:string;window_ms:number}>;
+    const changed:string[]=[];this.db.transaction(()=>{for(const row of rows){const update=this.db.prepare(`UPDATE scoring_proposals SET status='EXPIRED',reason='CONSENSUS_WINDOW_ELAPSED' WHERE match_id=? AND status='PENDING' AND submitted_at<?`).run(row.match_id,now-row.window_ms);if(update.changes>0)changed.push(row.match_id);}})();return changed;
+  }
+
   /** Persist timer expiry before broadcasting it. A finished break never starts scoring automatically. */
   expireTimers(now=Date.now()):string[]{
     const rows=this.db.prepare(`SELECT m.id,m.tournament_id,m.state,m.current_round,m.timer_json,c.rounds AS total_rounds

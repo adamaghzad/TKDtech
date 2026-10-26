@@ -144,6 +144,14 @@ Consensus switches automatically from fresh corner-judge presence. With exactly 
 
 Proposal responses include non-sensitive `diagnostics`: server receipt time, configured window, effective threshold, online/matching judge counts, active scoring mode, and the number of earlier matching proposals that expired before arrival. These fields explain pending and accepted responses without exposing device credentials.
 
+The 500 ms authoritative expiry pass also persists stale `PENDING` proposals as `EXPIRED` with `CONSENSUS_WINDOW_ELAPSED` and broadcasts the refreshed snapshot immediately. This removes stale pending-punch activity without waiting for the 20-second display poll.
+
+## Snapshot scoring activity
+
+`MatchSnapshot.scoringActivity` contains display-safe current-round activity for Blue and Red. `headHits` counts effective `HEAD_KICK` and `TURNING_HEAD_KICK` records; `bodyHits` counts effective `BODY_KICK` and `TURNING_BODY_KICK` records. `BODY_PUNCH` is deliberately excluded from those hit counts. Events targeted by an append-only `score.correction` do not contribute, and records from other rounds do not contribute.
+
+Each side's `punch` is `null` or contains `status` (`PENDING`/`CONFIRMED`), `confirmedJudges` (roles only: `J1`/`J2`/`J3`), `requiredConfirmations`, and `points`. It represents the latest effective judge punch attempt, with a newer active pending attempt taking precedence over the previous confirmed one. No session IDs, token hashes, device names, or protector-sensor data are exposed. These values are a view of existing scoring events/proposals, not a PSS integration and not a second scoring authority.
+
 ## WebSockets
 
 Connect to `/ws?matchId=MATCH_UUID`. Public display connections receive only display-safe snapshots. Operator connections use the same session cookie. Device connections use their assigned credential flow.

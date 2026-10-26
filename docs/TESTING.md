@@ -1,6 +1,6 @@
 # Verification record
 
-Verified locally on **2026-10-26** with **Node.js 22.21.1**, **Next.js 16.4.3**, **React 19**, **Zod 4.6.7**, and Chromium via Playwright.
+Verified locally on **2026-10-26** with **Node.js 22.16.0**, **Next.js 16.4.3**, **React 19**, **Zod 4.6.7**, and Chromium via Playwright.
 
 ## Automated checks
 
@@ -8,7 +8,7 @@ Verified locally on **2026-10-26** with **Node.js 22.21.1**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **98/98 tests passed across 15 files** |
+| `npm test` | **105/105 tests passed across 17 files** |
 | `npm run test:e2e` | **12/12 real Chromium tests passed** against the final Next 16 production preview |
 | `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
@@ -31,7 +31,8 @@ Verified locally on **2026-10-26** with **Node.js 22.21.1**, **Next.js 16.4.3**,
 - Club/category/athlete CSV parsing supports UTF-8 BOM, CRLF, quoted fields, and independent row failures with a 500-row cap. Real browser uploads create 4 clubs and 4 categories, reject repeated duplicates, then create 12 athletes whose club/category names resolve to the correct registrations and passing weigh-ins.
 - Role/tournament permissions and public denial.
 - Idempotent commands and optimistic version conflicts.
-- Pending-proposal diagnostics identify earlier matching proposals that expired before server arrival without changing the configured consensus policy.
+- Pending-proposal diagnostics identify earlier matching proposals that expired before server arrival without changing the configured consensus policy. The 500 ms scheduler also persists pending-punch expiry and broadcasts its removal from the public display.
+- Current-round scoring activity derives one headguard icon per effective head-kick record and one hogu icon per body-kick record, including turning variants. Punches stay separate, show J1–J3 pending/confirmed roles and the recorded one-/two-judge threshold, respect append-only corrections, and expose no session credentials or PSS/sensor claims.
 - Expired/revoked pairing, heartbeat presence expiry, and assigned-session validation.
 - Transactional completion and winner advancement; completed matches cannot be advanced again through the generic path. The fourth cumulative Gam-Jeom leaves the match active, while the fifth awards the opponent point and atomically persists `DISQUALIFIED`, the opponent's `DISQUALIFICATION` win, the official result, bracket advancement, and mat release. Retries are idempotent and further penalties/generic undo are rejected.
 - Completion releases the mat, deterministically auto-assigns the next eligible queued match without starting it, leaves an empty mat available, skips athletes live elsewhere, and recovers stale resolved assignments.
@@ -47,7 +48,7 @@ The Playwright suite verifies:
 1. Demo login and record-derived dashboard metrics; operator +1 updates the authoritative score and public display, emits exactly one scheduled `1320 Hz` score-confirmation tone after the browser sound unlock, and the test correction restores the showcase.
 2. An anonymous client receives HTTP 401 when attempting a match mutation.
 3. One connected mobile judge sees one-judge mode, submits an immediately accepted +3, and restores the score through the audited undo path.
-4. Two independently paired mobile judges see the automatic return to two-judge consensus, submit distinct proposals for one accepted +3, and restore the score.
+4. Two independently paired mobile judges drive the public KPNP-style side rails: a Blue head kick adds a headguard, a pending punch shows only J1, server-window expiry removes it, two fresh matching punches show J1/J2 with `2/3 confirmed` and +1, and a Red body kick adds a hogu. The test checks both athletes' icon counts, confirms that punches do not increment body hits, and restores every accepted score through audited corrections.
 5. A public round-rest display shows large Blue 1 / Red 0 round wins after Blue's 5–2 Round 1 win, a decreasing `REST TIME` clock, `ROUND 1 COMPLETE`, separate Blue 5 / Red 2 points, a yellow `BLUE WINS ROUND 1` banner, and a yellow marker only on ended Round 1—not future Round 2; the test then restores the showcase.
 6. A Round 1 time-out with Blue 2 / Red 7 shows those current-round points and hides the round-win/per-round summary. After expiry, rest alone switches to large Blue 0 / Red 1 round wins while Round 1 remains 2–7 with Red's marker/banner. Starting Round 2 then shows **0–0 round points** while the authoritative cumulative match total remains Blue 2 / Red 7.
 7. A tied 7–7 round initially shows **AWAITING SUPERIORITY**, **SUPERIORITY REQUIRED**, 0–0 round wins, and a 30-second rest clock that remains unchanged over time. The operator records Red's superiority decision with an audit reason; the TV then starts **REST TIME** automatically and shows **RED WINS ROUND 1 · SUPERIORITY**, Red's yellow marker, and 0–1 round wins while both Round 1 point values remain 7.
@@ -63,6 +64,8 @@ Reviewed screenshots:
 - `artifacts/public-scoreboard.png`
 - `artifacts/judge-mobile.png`
 - `artifacts/judge-single-mobile.png`
+- `artifacts/judge-punch-pending-display.png`
+- `artifacts/kpnp-style-scoring-activity-display.png`
 - `artifacts/round-break-display.png`
 - `artifacts/timeout-round-points-display.png`
 - `artifacts/red-round-win-display.png`

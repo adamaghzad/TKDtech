@@ -57,6 +57,27 @@ export interface RoundSnapshot {
   endedAt: string | null;
 }
 
+export type CornerJudgeRole = 'J1' | 'J2' | 'J3';
+
+export interface PunchConfirmationSnapshot {
+  status: 'PENDING' | 'CONFIRMED';
+  confirmedJudges: CornerJudgeRole[];
+  requiredConfirmations: number;
+  points: number;
+}
+
+export interface SideScoringActivity {
+  headHits: number;
+  bodyHits: number;
+  punch: PunchConfirmationSnapshot | null;
+}
+
+export interface MatchScoringActivity {
+  round: number;
+  blue: SideScoringActivity;
+  red: SideScoringActivity;
+}
+
 export interface MatchSnapshot {
   schemaVersion: 1;
   matchId: string;
@@ -84,6 +105,7 @@ export interface MatchSnapshot {
   winner: Side | null;
   decisionMethod: string | null;
   judges: Array<{ role: 'J1'|'J2'|'J3'|'REFEREE'; status: 'ONLINE'|'RECONNECTING'|'OFFLINE'; lastSeenAt: string | null }>;
+  scoringActivity: MatchScoringActivity;
   updatedAt: string;
   serverTime: number;
 }
