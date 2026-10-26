@@ -35,6 +35,7 @@ function rolesFor(proposals: PunchProposalRecord[]): CornerJudgeRole[] {
 /**
  * Builds display-only activity from effective scoring records. It does not score the match
  * and does not represent protector/PSS input. Punches stay separate from head/body kick hits.
+ * Only the latest punch attempt is displayed; expired/rejected attempts never restore an older one.
  */
 export function buildScoringActivity(input: {
   round: number;
@@ -68,6 +69,18 @@ export function buildScoringActivity(input: {
     }
   }
 
+  const latestPunch = (side: Side) => {
+    const proposals = input.punchProposals.filter(proposal => proposal.side === side);
+    if (!proposals.length) return null;
+    const submittedAt = Math.max(...proposals.map(proposal => proposal.submittedAt));
+    const latest = proposals.filter(proposal => proposal.submittedAt === submittedAt);
+    return {
+      submittedAt,
+      acceptedDecisionIds: new Set(latest.filter(proposal => proposal.status === 'ACCEPTED' && proposal.decisionId).map(proposal => proposal.decisionId as string)),
+      hasActivePending: latest.some(proposal => proposal.status === 'PENDING' && proposal.submittedAt <= input.now && input.now - proposal.submittedAt <= input.consensusWindowMs)
+    };
+  };
+
   for (const [decisionId, accepted] of acceptedPunches) {
     const proposals = input.punchProposals.filter(proposal => proposal.decisionId === decisionId && proposal.status === 'ACCEPTED');
     if (!proposals.length) continue;
@@ -79,6 +92,8 @@ export function buildScoringActivity(input: {
       points: typeof payload.points === 'number' ? payload.points : input.punchPoints,
       submittedAt: Math.max(...proposals.map(proposal => proposal.submittedAt))
     };
+    const latest = latestPunch(accepted.side);
+    if (!latest || candidate.submittedAt !== latest.submittedAt || !latest.acceptedDecisionIds.has(decisionId)) continue;
     const target = accepted.side === 'BLUE' ? blue : red;
     const current = target.punch as PunchCandidate | null;
     if (!current || candidate.submittedAt >= current.submittedAt) target.punch = candidate;
@@ -94,6 +109,8 @@ export function buildScoringActivity(input: {
       points: input.punchPoints,
       submittedAt: Math.max(...pending.map(proposal => proposal.submittedAt))
     };
+    const latest = latestPunch(side);
+    if (!latest || candidate.submittedAt !== latest.submittedAt || !latest.hasActivePending) continue;
     const target = side === 'BLUE' ? blue : red;
     const current = target.punch as PunchCandidate | null;
     if (!current || candidate.submittedAt >= current.submittedAt) target.punch = candidate;

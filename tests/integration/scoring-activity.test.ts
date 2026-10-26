@@ -49,7 +49,13 @@ describe('persisted scoreboard activity', () => {
     expect(confirmed.scoringActivity.blue).toMatchObject({ headHits: 1, bodyHits: 1, punch: { status: 'CONFIRMED', confirmedJudges: ['J1', 'J2'], requiredConfirmations: 2, points: 1 } });
     expect(JSON.stringify(confirmed.scoringActivity)).not.toContain(j1.session.id);
 
-    service.execute(actor, matchId, { type: 'UNDO', reason: 'Verify append-only scoring activity correction' });
+    const j3 = service.exchangePairing(service.createPairing(actor, { matchId, role: 'J3', replace: true }).token, 'Latest punch J3');
+    expect(service.submitProposal(j3.sessionToken, input(j3.session, roundId, 'BODY_PUNCH', 1)).status).toBe('PENDING');
+    expect(service.snapshot(matchId).scoringActivity.blue.punch).toMatchObject({ status: 'PENDING', confirmedJudges: ['J3'] });
+    expect(service.submitProposal(j2.sessionToken, input(j2.session, roundId, 'BODY_PUNCH', 3)).status).toBe('ACCEPTED');
+    expect(service.snapshot(matchId).scoringActivity.blue.punch).toMatchObject({ status: 'CONFIRMED', confirmedJudges: ['J2', 'J3'] });
+
+    service.execute(actor, matchId, { type: 'UNDO', reason: 'Verify latest punch correction never restores the previous punch' });
     expect(service.snapshot(matchId).scoringActivity.blue).toMatchObject({ headHits: 1, bodyHits: 1, punch: null });
   });
 

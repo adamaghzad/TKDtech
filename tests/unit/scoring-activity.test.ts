@@ -66,12 +66,17 @@ describe('scoreboard scoring activity', () => {
     expect(activity.red.punch).toEqual({ status: 'CONFIRMED', confirmedJudges: ['J3'], requiredConfirmations: 1, points: 1 });
   });
 
-  it('shows a newer pending attempt and ignores expired or rejected proposals', () => {
-    const accepted = score('BODY_PUNCH', { accepted: true, decisionId: 'decision-1' });
-    const confirmed = [proposal('BLUE', 'J1', 'ACCEPTED', 8_000, 'decision-1'), proposal('BLUE', 'J2', 'ACCEPTED', 8_100, 'decision-1')];
+  it('keeps only the latest punch attempt and never restores an older confirmation', () => {
+    const first = score('BODY_PUNCH', { accepted: true, decisionId: 'decision-1' });
+    const firstJudges = [proposal('BLUE', 'J1', 'ACCEPTED', 8_000, 'decision-1'), proposal('BLUE', 'J2', 'ACCEPTED', 8_100, 'decision-1')];
     const pending = proposal('BLUE', 'J3', 'PENDING', 9_500);
-    expect(build([accepted], [...confirmed, pending]).blue.punch).toMatchObject({ status: 'PENDING', confirmedJudges: ['J3'] });
-    expect(build([accepted], [...confirmed, { ...pending, submittedAt: 8_500 }]).blue.punch).toMatchObject({ status: 'CONFIRMED', confirmedJudges: ['J1', 'J2'] });
-    expect(build([], [{ ...pending, status: 'REJECTED' }]).blue.punch).toBeNull();
+    expect(build([first], [...firstJudges, pending]).blue.punch).toMatchObject({ status: 'PENDING', confirmedJudges: ['J3'] });
+    expect(build([first], [...firstJudges, { ...pending, status: 'EXPIRED' }]).blue.punch).toBeNull();
+    expect(build([first], [...firstJudges, { ...pending, status: 'REJECTED' }]).blue.punch).toBeNull();
+
+    const second = score('BODY_PUNCH', { accepted: true, decisionId: 'decision-2' });
+    const secondJudges = [proposal('BLUE', 'J2', 'ACCEPTED', 9_000, 'decision-2'), proposal('BLUE', 'J3', 'ACCEPTED', 9_100, 'decision-2')];
+    expect(build([first, second], [...firstJudges, ...secondJudges]).blue.punch).toMatchObject({ status: 'CONFIRMED', confirmedJudges: ['J2', 'J3'] });
+    expect(build([first, second, correction(second.eventId)], [...firstJudges, ...secondJudges]).blue.punch).toBeNull();
   });
 });
