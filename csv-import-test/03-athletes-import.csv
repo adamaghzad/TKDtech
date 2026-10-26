@@ -1,0 +1,13 @@
+firstName,lastName,dateOfBirth,division,nationality,countryCode,clubId,categoryId,weightKg,seed,externalNumber,coach,clubName,categoryName
+Yassine,El Amrani,2002-03-14,MEN,Morocco,MAR,,,57.2,1,TEST-M01,Youssef El Mansouri,Atlas Taekwondo Casablanca,Men -58 kg
+Hamza,Benali,2001-07-22,MEN,Morocco,MAR,,,56.8,,TEST-M02,Youssef El Mansouri,Atlas Taekwondo Casablanca,Men -58 kg
+Ayoub,El Fassi,2003-11-05,MEN,Morocco,MAR,,,57.6,,TEST-M03,Nadia Berrada,Riad Taekwondo Rabat,Men -58 kg
+Mehdi,Alaoui,2000-01-18,MEN,Morocco,MAR,,,66.4,1,TEST-M04,Karim Idrissi,Espoir Taekwondo Fes,Men -68 kg
+Omar,Berrada,2002-09-09,MEN,Morocco,MAR,,,64.7,,TEST-M05,Karim Idrissi,Espoir Taekwondo Fes,Men -68 kg
+Ilias,Chraibi,2004-05-30,MEN,Morocco,MAR,,,67.1,,TEST-M06,Leila Amrani,Chabab Taekwondo Marrakech,Men -68 kg
+Salma,Bennis,2003-04-12,WOMEN,Morocco,MAR,,,48.2,1,TEST-W01,Youssef El Mansouri,Atlas Taekwondo Casablanca,Women -49 kg
+Nisrine,El Idrissi,2002-12-03,WOMEN,Morocco,MAR,,,47.5,,TEST-W02,Nadia Berrada,Riad Taekwondo Rabat,Women -49 kg
+Houda,Mansouri,2004-08-19,WOMEN,Morocco,MAR,,,48.6,,TEST-W03,Leila Amrani,Chabab Taekwondo Marrakech,Women -49 kg
+Sara,El Moussaoui,2001-06-25,WOMEN,Morocco,MAR,,,55.4,1,TEST-W04,Karim Idrissi,Espoir Taekwondo Fes,Women -57 kg
+Meryem,Amrani,2003-02-17,WOMEN,Morocco,MAR,,,54.8,,TEST-W05,Nadia Berrada,Riad Taekwondo Rabat,Women -57 kg
+Imane,Ait Lahcen,2000-10-08,WOMEN,Morocco,MAR,,,56.1,,TEST-W06,Leila Amrani,Chabab Taekwondo Marrakech,Women -57 kg

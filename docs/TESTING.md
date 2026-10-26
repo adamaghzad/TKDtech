@@ -8,8 +8,8 @@ Verified locally on **2026-10-26** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **87/87 tests passed across 13 files** |
-| `npm run test:e2e` | **10/10 real Chromium tests passed** against the final Next 16 production preview |
+| `npm test` | **91/91 tests passed across 14 files** |
+| `npm run test:e2e` | **11/11 real Chromium tests passed** against the final Next 16 production preview |
 | `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
 | `npm run build` | Passed: optimized Next 16.4.3 App Router production build with proxy convention |
@@ -26,6 +26,7 @@ Verified locally on **2026-10-26** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 - Score-alert tracking emits once for authoritative blue/red score increases, including multi-point scores, with no initial-load/match-change replay, duplicate-snapshot repeat, or undo sound; a later new score sounds normally.
 - Live large scores show cumulative match points during rounds and ordinary time-outs. Only after-round breaks show ended-round wins through `currentRound - 1`, exclude future rounds, and add the separate per-round summary. Completed-result scoring uses round wins for round-win/Golden Point results and authoritative cumulative points for a total-points decision.
 - An ended tied round blocks next-round startup until an authorized referee/operator records a reasoned superiority decision. The server preserves equal points, persists/audits the winner, rejects overwrite attempts, includes that winner in match results, and broadcasts the updated round-win summary.
+- Club/category/athlete CSV parsing supports UTF-8 BOM, CRLF, quoted fields, and independent row failures with a 500-row cap. Real browser uploads create 4 clubs and 4 categories, reject repeated duplicates, then create 12 athletes whose club/category names resolve to the correct registrations and passing weigh-ins.
 - Role/tournament permissions and public denial.
 - Idempotent commands and optimistic version conflicts.
 - Pending-proposal diagnostics identify earlier matching proposals that expired before server arrival without changing the configured consensus policy.
@@ -51,6 +52,7 @@ The Playwright suite verifies:
 8. The real 500 ms server scheduler automatically turns a six-second running round into a visible decreasing rest countdown, then recovers a paused nonfinal `0:00` fixture into a separate running 30-second rest; both are checked on the public TV, not only through domain calls.
 9. After the browser-required sound unlock, a six-second TV rest emits five scheduled `880 Hz` warning tones and one original competition-style dual `180/240 Hz` end buzzer; the display then reads `REST ENDED`, and the test restores the normal 60-second break.
 10. Completing a match opens a dedicated **MATCH … RESULT** view on the match-specific public display; Chromium verifies the yellow winner banner, authoritative winner name/country, decision-aware Blue/Red result values, and total-point summary. The public mat display then automatically rolls to the next eligible queued match, whose timer remains stopped in `READY`.
+11. In a fresh tournament, Chromium uploads `01-clubs-test.csv`, `02-categories-test.csv`, and `03-athletes-import.csv` in order. It verifies 4 clubs and 4 categories, duplicate rejection on repeated club/category uploads, then 12 athletes with correct name-based club/category assignments, 3 passing entries per category, and 12/12 successful athlete rows.
 
 Reviewed screenshots:
 
@@ -66,6 +68,7 @@ Reviewed screenshots:
 - `artifacts/automatic-paused-zero-rest.png`
 - `artifacts/timer-audio-rest-end.png`
 - `artifacts/match-result-display.png`
+- `artifacts/csv-import-athletes.png`
 
 No browser page errors were observed in the dashboard/operator test.
 

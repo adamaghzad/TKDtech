@@ -82,6 +82,16 @@ The restored-file check verifies integrity, foreign-key violations, and schema m
 
 For a whole-file offline restore, also remove stale `-wal` and `-shm` sidecars associated with the replaced database only after the service is stopped and a safety copy exists.
 
+## Registration CSV imports
+
+Open the tournament's **Clubs**, **Categories**, or **Athletes** section and use **Import CSV**. For related test data, import in this order: clubs → categories → athletes. The ready-to-use synthetic pack is in `csv-import-test/` and creates 4 clubs, 4 categories, and 12 assigned athletes with passing weigh-ins.
+
+- Club headers: `name,country,countryCode,headCoach,contactEmail`.
+- Category headers: `name,division,ageGroup,minWeightKg,maxWeightKg` plus optional `format,rounds,roundDurationSeconds,breakDurationSeconds,goldenPointPolicy,repechagePolicy`.
+- Athlete headers support `clubId`/`categoryId` UUIDs or `clubName`/`categoryName`. Names are matched case-insensitively within the tournament, so clubs/categories must exist first.
+- UTF-8 BOM, CRLF, quoted commas, escaped quotes, and quoted newlines are supported. At most 500 data rows are attempted per file.
+- Rows are validated independently through the existing authorized APIs. The summary reports imported/rejected counts and the first error. Existing club/category names and athlete name/birth-date duplicates are rejected rather than overwritten or duplicated.
+
 ## Reports
 
 CSV and PDF endpoints require an authenticated authorized session. Available report types are `athletes`, `clubs`, `categories`, `schedule`, `results`, `medals`, and `audit`.

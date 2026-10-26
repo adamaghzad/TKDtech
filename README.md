@@ -65,7 +65,7 @@ Register the initial organization at `/login`, then create a tournament. See [De
 ## Core operating workflow
 
 1. Create a tournament and its clubs.
-2. Create categories, then register athletes with compatible division/category and a passing weigh-in. CSV import validates each row independently.
+2. Import or create clubs, then categories, then athletes with compatible division/category and a passing weigh-in. Each CSV row is validated independently; athlete `clubName`/`categoryName` values resolve existing records case-insensitively, while UUID fields remain supported. The `csv-import-test/` pack exercises 4 clubs, 4 categories, and 12 assigned athletes.
 3. Generate a random or seeded draw. Publishing freezes that draw version and creates bracket/match records; later seeds generate a new version rather than silently replacing it.
 4. Open **Schedule**, assign ready matches to mats, then open **Matches** or **Live Scoreboard**. Completing a match releases its mat and automatically assigns the next eligible queued match without starting its timer.
 5. Pair authorized devices from **Judges & Referees**. Each role has one active replaceable session; pairing tokens expire and are stored only as hashes.

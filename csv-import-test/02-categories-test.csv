@@ -1,0 +1,5 @@
+name,division,ageGroup,minWeightKg,maxWeightKg,format,rounds,roundDurationSeconds,breakDurationSeconds,goldenPointPolicy,repechagePolicy
+Men -58 kg,MEN,Senior,54,58,SINGLE_ELIMINATION,3,120,60,GOLDEN_POINT,
+Men -68 kg,MEN,Senior,58.01,68,SINGLE_ELIMINATION,3,120,60,GOLDEN_POINT,
+Women -49 kg,WOMEN,Senior,0,49,SINGLE_ELIMINATION,3,120,60,GOLDEN_POINT,
+Women -57 kg,WOMEN,Senior,49.01,57,SINGLE_ELIMINATION,3,120,60,GOLDEN_POINT,
