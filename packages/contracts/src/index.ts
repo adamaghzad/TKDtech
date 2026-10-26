@@ -51,6 +51,7 @@ export interface RoundSnapshot {
   bluePenalties: number;
   redPenalties: number;
   winner: Side | null;
+  decisionMethod?: string | null;
   startedAt: string | null;
   endedAt: string | null;
 }

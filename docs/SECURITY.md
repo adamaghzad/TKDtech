@@ -8,7 +8,7 @@
 | `TOURNAMENT_ADMIN` | Tournament/category/draw administration, match control, pairing, reports, sync requests |
 | `REGISTRATION_MANAGER` | Club/athlete registration and passing weigh-in records; cannot publish draws or control matches |
 | `MAT_OPERATOR` | Mat assignment, match/timer/scoring controls, device pairing; privileged previous-round correction remains administrator-only |
-| `REFEREE` | Restricted device commands: start/pause/resume, penalties, medical/video review, completion |
+| `REFEREE` | Restricted device commands: start/pause/resume, penalties, medical/video review, tied-round superiority recording, completion |
 | `CORNER_JUDGE` | Signed assigned-session scoring proposals only |
 | `PUBLIC_VIEWER` | Read-only public tournament/display data |
 

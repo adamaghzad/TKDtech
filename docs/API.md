@@ -73,6 +73,8 @@ The server checks authoritative running timers every 500 ms and persists expiry 
 
 During rounds and ordinary time-outs, the live display's large Blue/Red values are authoritative cumulative match points. Only `BREAK` switches to the after-round summary: large values count ended-round wins through `currentRound - 1`, and per-round points/winner markers appear separately. Future rounds cannot contribute. Cumulative point data remains authoritative throughout.
 
+For round-win results, an ended round with equal points requires an authorized `ROUND_SUPERIORITY` decision before the next round can start. The referee/operator supplies the officials' winning `side` and an audit `reason`. The server accepts it only for the just-ended tied round during rest or the final-round zero pause, stores `SUPERIORITY` on the round, and rejects attempts to overwrite an existing winner. The application records the officials' outcome rather than calculating technical/PSS superiority itself.
+
 When the break reaches zero it stays in `ROUND_BREAK`; it never starts the next round automatically. An operator or referee must explicitly start it. `NEXT_ROUND` from a paused round ends that round and starts the break; during a break it skips the remaining rest and starts the next round. `RESUME` resumes a paused break, or starts the next round when the break is running/expired. Final-round expiry pauses at zero without creating an extra round or break.
 
 A completed match-specific public display renders a dedicated result view from the snapshot's `winner`, `decisionMethod`, athlete, score, and round records. Its main Blue/Red values show ended-round wins unless `decisionMethod` is `TOTAL_POINTS`, in which case they show the authoritative cumulative points. The other total and per-round values remain visible for verification.
@@ -96,6 +98,7 @@ Command types:
 - `SCORE` with `side` and `pointType`, or operator manual `points` adjustment;
 - `GAM_JEOM` with `side`;
 - `MEDICAL_TIMEOUT`, `VIDEO_REVIEW`, `END_REVIEW`;
+- `ROUND_SUPERIORITY` with the officials' winning `side` and an audit `reason` for an ended tied round;
 - `COMPLETE`, `WALKOVER`;
 - `UNDO` with a reason for a reversible nonfinal scoring event.
 

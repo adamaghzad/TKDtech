@@ -20,6 +20,17 @@ describe('authoritative round breaks',()=>{
     clock.mockReturnValue(161500);expect(service.snapshot(matchId).timer.remainingMs).toBe(119500);
   });
 
+  it('records an audited superiority winner for a tied round before allowing the next round',()=>{
+    const{db,service,actor,matchId,tournamentId}=system();setRound(db,matchId,1,'IN_PROGRESS');db.prepare("UPDATE match_rounds SET blue_score=7,red_score=7,winner_side=NULL,decision_method=NULL WHERE match_id=? AND number=1").run(matchId);db.prepare('UPDATE matches SET blue_score=7,red_score=7 WHERE id=?').run(matchId);db.prepare('UPDATE match_rounds SET blue_score=0,red_score=0,blue_penalties=0,red_penalties=0,winner_side=NULL,decision_method=NULL,started_at=NULL,ended_at=NULL WHERE match_id=? AND number>1').run(matchId);vi.spyOn(Date,'now').mockReturnValue(101000);service.expireTimers(101000);
+    expect(service.snapshot(matchId).rounds[0]).toMatchObject({blueScore:7,redScore:7,winner:null,decisionMethod:null});expect(()=>service.execute(actor,matchId,{type:'RESUME'})).toThrow(/superiority decision/i);
+    const referee:Actor={id:'referee-integration',role:'REFEREE',tournamentIds:[tournamentId]};const decided=service.execute(referee,matchId,{type:'ROUND_SUPERIORITY',side:'RED',reason:'Officials selected Red after the superiority procedure'});
+    expect(decided).toMatchObject({state:'ROUND_BREAK',currentRound:2,blueScore:7,redScore:7});expect(decided.rounds[0]).toMatchObject({blueScore:7,redScore:7,winner:'RED',decisionMethod:'SUPERIORITY'});
+    expect(()=>service.execute(referee,matchId,{type:'ROUND_SUPERIORITY',side:'BLUE',reason:'Attempt to overwrite the decision'})).toThrow(/already has an authoritative winner/i);
+    const event=db.prepare("SELECT payload_json FROM match_events WHERE match_id=? AND event_type='round.superiority_decided'").get(matchId) as{payload_json:string};expect(JSON.parse(event.payload_json)).toMatchObject({round:1,side:'RED',blueScore:7,redScore:7,decisionMethod:'SUPERIORITY'});
+    const audit=db.prepare("SELECT actor_id,reason FROM audit_logs WHERE entity_id=? AND action='MATCH_ROUND_SUPERIORITY'").get(matchId) as{actor_id:string;reason:string};expect(audit).toMatchObject({actor_id:'referee-integration',reason:'Officials selected Red after the superiority procedure'});
+    expect(service.execute(actor,matchId,{type:'RESUME'})).toMatchObject({state:'IN_PROGRESS',currentRound:2});const completed=service.execute(actor,matchId,{type:'COMPLETE'});expect(completed).toMatchObject({state:'COMPLETED',winner:'RED',decisionMethod:'ROUND_WINS'});expect(completed.rounds[0]).toMatchObject({blueScore:7,redScore:7,winner:'RED',decisionMethod:'SUPERIORITY'});
+  });
+
   it('automatically recovers a paused zero non-final round into a running rest',()=>{
     const{db,service,matchId}=system();setRound(db,matchId,1,'PAUSED',0);vi.spyOn(Date,'now').mockReturnValue(101000);
     expect(service.expireTimers(101000)).toEqual([matchId]);

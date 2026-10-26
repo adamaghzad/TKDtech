@@ -87,6 +87,8 @@ export interface ResultRound {
   redScore: number;
   bluePenalties: number;
   redPenalties: number;
+  winner?: Side | null;
+  decisionMethod?: string | null;
   goldenPointWinner?: Side | null;
 }
 export interface MatchResult {
@@ -106,8 +108,9 @@ export function determineMatchResult(rounds: readonly ResultRound[], ruleset: Ru
   }
   let blueRoundWins = 0; let redRoundWins = 0;
   for (const round of rounds) {
-    if (round.blueScore > round.redScore) blueRoundWins++;
-    else if (round.redScore > round.blueScore) redRoundWins++;
+    const roundWinner = round.winner ?? (round.blueScore === round.redScore ? null : round.blueScore > round.redScore ? 'BLUE' : 'RED');
+    if (roundWinner === 'BLUE') blueRoundWins++;
+    else if (roundWinner === 'RED') redRoundWins++;
   }
   if (blueRoundWins !== redRoundWins) {
     return { winner: blueRoundWins > redRoundWins ? 'BLUE' : 'RED', decisionMethod: ruleset.resultValidation === 'TOTAL_POINTS' ? 'TOTAL_POINTS' : 'ROUND_WINS', blueRoundWins, redRoundWins: redRoundWins, reason: 'Match-winning policy satisfied.' };
