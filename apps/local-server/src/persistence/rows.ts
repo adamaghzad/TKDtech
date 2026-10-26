@@ -1,7 +1,7 @@
-import type { CornerJudgeRole, MatchSnapshot, RoundSnapshot, Ruleset, Side } from '@tkd/contracts';
+import type { CornerJudgeRole, MatchSnapshot, PointType, RoundSnapshot, Ruleset, Side } from '@tkd/contracts';
 import type { MatchJoinedRow, MatchRow } from '../types';
 import type { SqliteDatabase } from './database';
-import { buildScoringActivity, type PunchProposalRecord, type ScoringEventRecord } from '../domain/scoring-activity';
+import { buildScoringActivity, type JudgeProposalRecord, type ScoringEventRecord } from '../domain/scoring-activity';
 
 export const MATCH_SELECT = `
 SELECT m.*, t.name AS tournament_name, c.name AS category_name, m.phase AS phase_name,
@@ -35,8 +35,8 @@ export function snapshotFromRow(db: SqliteDatabase, row: MatchJoinedRow, now = D
   const currentRound = rounds.find(round => round.number === row.current_round);
   const ruleset = JSON.parse(row.ruleset_json) as Ruleset;
   const scoringEvents = (db.prepare(`SELECT event_id,event_type,payload_json FROM match_events WHERE match_id=? AND event_type IN ('score.manual','score.accepted','score.correction') ORDER BY sequence`).all(row.id) as Array<{event_id:string;event_type:string;payload_json:string}>).map(event => ({ eventId: event.event_id, eventType: event.event_type, payload: JSON.parse(event.payload_json) as Record<string,unknown> })) satisfies ScoringEventRecord[];
-  const punchProposals = currentRound ? (db.prepare(`SELECT p.side,p.status,p.decision_id,p.submitted_at,j.role AS judge_role FROM scoring_proposals p JOIN judge_sessions j ON j.id=p.judge_session_id WHERE p.match_id=? AND p.round_id=? AND p.point_type='BODY_PUNCH' ORDER BY p.submitted_at`).all(row.id,currentRound.id) as Array<{side:Side;status:string;decision_id:string|null;submitted_at:number;judge_role:CornerJudgeRole}>).map(proposal => ({ side: proposal.side, status: proposal.status, decisionId: proposal.decision_id, submittedAt: proposal.submitted_at, judgeRole: proposal.judge_role })) satisfies PunchProposalRecord[] : [];
-  const scoringActivity = currentRound ? buildScoringActivity({ round: row.current_round, roundId: currentRound.id, events: scoringEvents, punchProposals, now, consensusWindowMs: ruleset.consensusWindowMs, consensusThreshold: ruleset.consensusThreshold, punchPoints: ruleset.points.BODY_PUNCH }) : { round: row.current_round, blue: { headHits: 0, bodyHits: 0, punches: [] }, red: { headHits: 0, bodyHits: 0, punches: [] } };
+  const judgeProposals = currentRound ? (db.prepare(`SELECT p.side,p.point_type,p.status,p.decision_id,p.submitted_at,j.role AS judge_role FROM scoring_proposals p JOIN judge_sessions j ON j.id=p.judge_session_id WHERE p.match_id=? AND p.round_id=? ORDER BY p.submitted_at`).all(row.id,currentRound.id) as Array<{side:Side;point_type:PointType;status:string;decision_id:string|null;submitted_at:number;judge_role:CornerJudgeRole}>).map(proposal => ({ side: proposal.side, pointType: proposal.point_type, status: proposal.status, decisionId: proposal.decision_id, submittedAt: proposal.submitted_at, judgeRole: proposal.judge_role })) satisfies JudgeProposalRecord[] : [];
+  const scoringActivity = currentRound ? buildScoringActivity({ round: row.current_round, roundId: currentRound.id, events: scoringEvents, judgeProposals, now, consensusWindowMs: ruleset.consensusWindowMs, consensusThreshold: ruleset.consensusThreshold, points: ruleset.points }) : { round: row.current_round, blue: { headHits: 0, bodyHits: 0, hits: [], punches: [] }, red: { headHits: 0, bodyHits: 0, hits: [], punches: [] } };
   return {
     schemaVersion: 1, matchId: row.id, tournamentId: row.tournament_id, categoryId: row.category_id,
     matchNumber: row.match_number, matId: row.mat_id, matName: row.mat_name ?? 'Unassigned',

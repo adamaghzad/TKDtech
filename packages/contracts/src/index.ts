@@ -66,9 +66,16 @@ export interface PunchConfirmationSnapshot {
   points: number;
 }
 
+export interface HitConfirmationSnapshot extends PunchConfirmationSnapshot {
+  target: 'HEAD' | 'BODY';
+  pointType: 'HEAD_KICK' | 'TURNING_HEAD_KICK' | 'BODY_KICK' | 'TURNING_BODY_KICK';
+  source: 'JUDGES' | 'OPERATOR';
+}
+
 export interface SideScoringActivity {
   headHits: number;
   bodyHits: number;
+  hits: HitConfirmationSnapshot[];
   punches: PunchConfirmationSnapshot[];
 }
 

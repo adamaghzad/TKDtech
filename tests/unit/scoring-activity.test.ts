@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { PointType, Side } from '@tkd/contracts';
-import { buildScoringActivity, type PunchProposalRecord, type ScoringEventRecord } from '../../apps/local-server/src/domain/scoring-activity';
+import { buildScoringActivity, type JudgeProposalRecord, type ScoringEventRecord } from '../../apps/local-server/src/domain/scoring-activity';
 
+const pointValues: Record<PointType, number> = { BODY_PUNCH: 1, BODY_KICK: 2, HEAD_KICK: 3, TURNING_BODY_KICK: 4, TURNING_HEAD_KICK: 5 };
 let nextEvent = 0;
 function score(pointType: PointType, options: { side?: Side; roundId?: string; accepted?: boolean; decisionId?: string } = {}): ScoringEventRecord {
   nextEvent += 1;
@@ -12,7 +13,7 @@ function score(pointType: PointType, options: { side?: Side; roundId?: string; a
       side: options.side ?? 'BLUE',
       pointType,
       roundId: options.roundId ?? 'round-1',
-      points: pointType === 'BODY_PUNCH' ? 1 : 3,
+      points: pointValues[pointType],
       ...(options.decisionId ? { decisionId: options.decisionId, consensusThreshold: 2 } : {})
     }
   };
@@ -21,11 +22,11 @@ function correction(targetEventId: string): ScoringEventRecord {
   nextEvent += 1;
   return { eventId: `correction-${nextEvent}`, eventType: 'score.correction', payload: { targetEventId } };
 }
-function proposal(side: Side, judgeRole: 'J1'|'J2'|'J3', status: string, submittedAt: number, decisionId: string | null = null): PunchProposalRecord {
-  return { side, judgeRole, status, submittedAt, decisionId };
+function proposal(side: Side, judgeRole: 'J1'|'J2'|'J3', status: string, submittedAt: number, decisionId: string | null = null, pointType: PointType = 'BODY_PUNCH'): JudgeProposalRecord {
+  return { side, judgeRole, status, submittedAt, decisionId, pointType };
 }
-function build(events: ScoringEventRecord[] = [], punchProposals: PunchProposalRecord[] = [], now = 10_000) {
-  return buildScoringActivity({ round: 1, roundId: 'round-1', events, punchProposals, now, consensusWindowMs: 1_000, consensusThreshold: 2, punchPoints: 1 });
+function build(events: ScoringEventRecord[] = [], judgeProposals: JudgeProposalRecord[] = [], now = 10_000) {
+  return buildScoringActivity({ round: 1, roundId: 'round-1', events, judgeProposals, now, consensusWindowMs: 1_000, consensusThreshold: 2, points: pointValues });
 }
 
 describe('scoreboard scoring activity', () => {
@@ -42,6 +43,25 @@ describe('scoreboard scoring activity', () => {
     ]);
     expect(activity.blue).toMatchObject({ headHits: 1, bodyHits: 1, punches: [] });
     expect(activity.red).toMatchObject({ headHits: 0, bodyHits: 1, punches: [] });
+    expect(activity.blue.hits).toHaveLength(2);
+    expect(activity.red.hits).toHaveLength(1);
+    expect([...activity.blue.hits, ...activity.red.hits].every(hit => hit.source === 'OPERATOR' && hit.status === 'CONFIRMED')).toBe(true);
+  });
+
+  it('shows judge confirmations for pending and accepted head and body kicks', () => {
+    const accepted = score('HEAD_KICK', { accepted: true, decisionId: 'head-1' });
+    const acceptedJudges = [proposal('BLUE', 'J1', 'ACCEPTED', 8_000, 'head-1', 'HEAD_KICK'), proposal('BLUE', 'J2', 'ACCEPTED', 8_100, 'head-1', 'HEAD_KICK')];
+    const pendingBody = proposal('BLUE', 'J3', 'PENDING', 9_500, null, 'BODY_KICK');
+    const activity = build([accepted], [...acceptedJudges, pendingBody]);
+    expect(activity.blue).toMatchObject({ headHits: 1, bodyHits: 0 });
+    expect(activity.blue.hits).toHaveLength(2);
+    expect(activity.blue.hits[0]).toMatchObject({ target: 'HEAD', pointType: 'HEAD_KICK', source: 'JUDGES', status: 'CONFIRMED', confirmedJudges: ['J1', 'J2'], requiredConfirmations: 2, points: 3 });
+    expect(activity.blue.hits[1]).toMatchObject({ target: 'BODY', pointType: 'BODY_KICK', source: 'JUDGES', status: 'PENDING', confirmedJudges: ['J3'], requiredConfirmations: 2, points: 2 });
+
+    const afterExpiry = build([accepted], [...acceptedJudges, { ...pendingBody, status: 'EXPIRED' }]).blue.hits;
+    expect(afterExpiry).toHaveLength(1);
+    expect(afterExpiry[0]).toMatchObject({ target: 'HEAD', status: 'CONFIRMED', confirmedJudges: ['J1', 'J2'] });
+    expect(build([accepted, correction(accepted.eventId)], acceptedJudges).blue.hits).toEqual([]);
   });
 
   it('shows a pending punch with only the judges whose inputs are registered', () => {

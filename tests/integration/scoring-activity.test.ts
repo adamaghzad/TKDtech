@@ -27,15 +27,24 @@ describe('persisted scoreboard activity', () => {
     const { service, actor, matchId } = system();
     service.execute(actor, matchId, { type: 'RESUME' });
     const before = service.snapshot(matchId);
-    expect(before.scoringActivity).toEqual({ round: before.currentRound, blue: { headHits: 0, bodyHits: 1, punches: [] }, red: { headHits: 0, bodyHits: 0, punches: [] } });
+    expect(before.scoringActivity).toMatchObject({ round: before.currentRound, blue: { headHits: 0, bodyHits: 1, punches: [] }, red: { headHits: 0, bodyHits: 0, punches: [] } });
+    expect(before.scoringActivity.blue.hits).toEqual([{ target: 'BODY', pointType: 'TURNING_BODY_KICK', source: 'OPERATOR', status: 'CONFIRMED', confirmedJudges: [], requiredConfirmations: 0, points: 4 }]);
+    expect(before.scoringActivity.red.hits).toEqual([]);
     const roundId = before.rounds.find(round => round.number === before.currentRound)!.id;
     const j1 = service.exchangePairing(service.createPairing(actor, { matchId, role: 'J1', replace: true }).token, 'Activity J1');
     const j2 = service.exchangePairing(service.createPairing(actor, { matchId, role: 'J2', replace: true }).token, 'Activity J2');
 
     expect(service.submitProposal(j1.sessionToken, input(j1.session, roundId, 'HEAD_KICK', 1)).status).toBe('PENDING');
     expect(service.snapshot(matchId).scoringActivity.blue.headHits).toBe(0);
+    const pendingHits = service.snapshot(matchId).scoringActivity.blue.hits;
+    expect(pendingHits).toHaveLength(2);
+    expect(pendingHits[1]).toMatchObject({ target: 'HEAD', pointType: 'HEAD_KICK', source: 'JUDGES', status: 'PENDING', confirmedJudges: ['J1'], requiredConfirmations: 2, points: 3 });
     expect(service.submitProposal(j2.sessionToken, input(j2.session, roundId, 'HEAD_KICK', 1)).status).toBe('ACCEPTED');
     expect(service.snapshot(matchId).scoringActivity.blue).toMatchObject({ headHits: 1, bodyHits: 1, punches: [] });
+    const confirmedHits = service.snapshot(matchId).scoringActivity.blue.hits;
+    expect(confirmedHits).toHaveLength(2);
+    expect(confirmedHits[0]).toMatchObject({ target: 'BODY', source: 'OPERATOR', status: 'CONFIRMED' });
+    expect(confirmedHits[1]).toMatchObject({ target: 'HEAD', source: 'JUDGES', status: 'CONFIRMED', confirmedJudges: ['J1', 'J2'], requiredConfirmations: 2, points: 3 });
 
     service.execute(actor, matchId, { type: 'SCORE', side: 'RED', pointType: 'TURNING_BODY_KICK' });
     expect(service.submitProposal(j1.sessionToken, input(j1.session, roundId, 'BODY_PUNCH', 2)).status).toBe('PENDING');
