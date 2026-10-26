@@ -24,7 +24,7 @@ The public TV and operator scoreboard provide a clearly visible per-device sound
 
 ## Round and match result displays
 
-- During rounds and ordinary mid-round time-outs, the large Blue/Red numbers are **cumulative match points**. The round-win summary is not shown in these phases.
+- During rounds and ordinary mid-round time-outs, the large Blue/Red numbers are **current-round points**. Every new round starts at **0–0**; cumulative match totals remain stored for decisions and final results. The round-win summary is not shown in these phases.
 - Only after-round rest shows large **ended-round wins** plus the R1/R2/R3 points near the top. Wins count only through `currentRound - 1`, so upcoming rounds cannot contribute; for example, Red winning Round 1 by 7–2 produces a large Blue 0 / Red 1 rest score. The center panel keeps the completed round's points and shows a yellow round-winner banner; future rounds never receive a winner marker.
 - If a round ends with equal points under the round-win policy, the TV shows **SUPERIORITY REQUIRED** and the next round is blocked. An authorized referee/operator records the officials' final Blue/Red decision with an audit reason. The equal points stay unchanged; the selected athlete receives the round win, yellow marker, and superiority banner. An existing decision cannot be overwritten through this action.
 - Event officials remain responsible for their adopted technical/PSS/superiority procedure. The application records the final decision; it does not infer PSS hits, simulate officials' votes, or claim hardware equivalence.

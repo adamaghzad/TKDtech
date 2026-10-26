@@ -11,9 +11,10 @@ describe('match result display scores',()=>{
  it('shows ended round wins for a round-win result, not cumulative points or future rounds',()=>{
   const match=snapshot('ROUND_WINS');expect(endedRoundWins(match,'BLUE')).toBe(2);expect(endedRoundWins(match,'RED')).toBe(1);expect(matchResultScores(match)).toEqual({blue:2,red:1,label:'ROUND WINS'});
  });
- it('shows match points during rounds and time-outs, but ended-round wins only during after-round rest',()=>{
-  const base=snapshot('ROUND_WINS');const active={...base,currentRound:3,timer:{kind:'ROUND'}}as MatchSnapshot;expect(liveScoreboardScores(active)).toEqual({blue:12,red:9,label:'POINTS'});
-  const timeout={...active,state:'PAUSED'}as MatchSnapshot;expect(liveScoreboardScores(timeout)).toEqual({blue:12,red:9,label:'POINTS'});
+ it('shows current-round points during rounds and time-outs, resets a new round to 0–0, and reserves round wins for rest',()=>{
+  const base=snapshot('ROUND_WINS');const active={...base,currentRound:3,timer:{kind:'ROUND'}}as MatchSnapshot;expect(liveScoreboardScores(active)).toEqual({blue:4,red:2,label:'POINTS'});
+  const timeout={...active,state:'PAUSED'}as MatchSnapshot;expect(liveScoreboardScores(timeout)).toEqual({blue:4,red:2,label:'POINTS'});
+  const nextRound={...base,currentRound:4,timer:{kind:'ROUND'},rounds:base.rounds.map(round=>round.number===4?{...round,blueScore:0,redScore:0,winner:null}:round)}as MatchSnapshot;expect(nextRound.blueScore).toBe(12);expect(nextRound.redScore).toBe(9);expect(liveScoreboardScores(nextRound)).toEqual({blue:0,red:0,label:'POINTS'});
   const resting={...base,currentRound:2,timer:{kind:'BREAK'}}as MatchSnapshot;expect(liveScoreboardScores(resting)).toEqual({blue:1,red:0,label:'ROUND WINS'});
   const redWon={...resting,blueScore:2,redScore:7,rounds:resting.rounds.map(round=>round.number===1?{...round,blueScore:2,redScore:7,winner:'RED'}:round)}as MatchSnapshot;expect(liveScoreboardScores(redWon)).toEqual({blue:0,red:1,label:'ROUND WINS'});
  });
