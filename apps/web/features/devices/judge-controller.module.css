@@ -1,0 +1,571 @@
+.controller {
+  height: 100vh;
+  height: 100dvh;
+  max-width: 1500px;
+  margin: auto;
+  display: grid;
+  grid-template-rows: clamp(48px, 11vh, 76px) minmax(0, 1fr) clamp(
+      34px,
+      8vh,
+      52px
+    );
+  overflow: hidden;
+  background: #090d15;
+  border-inline: 1px solid #182235;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  color: #fff;
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 0 clamp(10px, 2vw, 24px);
+  background: #0e151f;
+  border-bottom: 1px solid #293448;
+  font-size: clamp(8px, 1.1vw, 13px);
+}
+
+.topLeft,
+.topRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.topRight {
+  justify-content: flex-end;
+}
+.role {
+  display: grid;
+  place-items: center;
+  min-width: 40px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: #1e64ea;
+  font-weight: 950;
+  font-size: 14px;
+  box-shadow: inset 0 1px #ffffff40;
+}
+.online {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #61dda0;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  white-space: nowrap;
+}
+.offline {
+  color: #ff8c99;
+}
+.dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 10px #61dda066;
+  flex: none;
+}
+.timer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f4ef41;
+  color: #090b00;
+  border-radius: 10px;
+  padding: 7px 18px;
+  box-shadow: 0 3px 0 #88841c;
+}
+.timer strong {
+  font-size: clamp(19px, 3.2vh, 31px);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.timer span {
+  font-size: 9px;
+  font-weight: 950;
+  line-height: 1.15;
+  letter-spacing: 0.08em;
+}
+.mode {
+  text-align: right;
+  color: #bdc7d8;
+  font-weight: 850;
+  line-height: 1.3;
+}
+.mode small {
+  display: block;
+  color: #718096;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+}
+.feedbackBadge {
+  white-space: nowrap;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(6px, 1vw, 14px) minmax(0, 1fr);
+  min-height: 0;
+  background: #05070b;
+}
+.pad {
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: clamp(22px, 7vh, 42px) minmax(0, 1fr);
+  padding: 0 clamp(7px, 1.4vw, 18px) clamp(7px, 1.8vh, 14px);
+}
+.blue {
+  background: linear-gradient(135deg, #0c1d3a, #091121 72%);
+}
+.red {
+  background: linear-gradient(225deg, #38111d, #140c14 72%);
+}
+.sideLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+  font-size: clamp(9px, 1.8vh, 14px);
+  font-weight: 950;
+  letter-spacing: 0.17em;
+}
+.sideLabel small {
+  font-size: clamp(6px, 1.2vh, 9px);
+  letter-spacing: 0.1em;
+  color: #74849c;
+}
+.blue .sideLabel {
+  color: #85adff;
+}
+.red .sideLabel {
+  color: #ff94a3;
+}
+
+.padGrid {
+  display: grid;
+  grid-template-columns: 1fr 1.12fr 1fr;
+  grid-template-rows: 1fr 1.12fr 1fr;
+  gap: clamp(6px, 1.4vh, 12px);
+  min-height: 0;
+}
+.hitButton {
+  appearance: none;
+  border: 1px solid;
+  border-radius: clamp(12px, 2.5vh, 24px);
+  color: #fff;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(5px, 1vw, 12px);
+  padding: 5px 8px;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px #ffffff24,
+    0 clamp(3px, 0.8vh, 6px) 0 var(--shadow),
+    0 8px 15px #0005;
+  transition:
+    transform 70ms,
+    filter 70ms,
+    box-shadow 70ms;
+}
+.hitButton:active {
+  transform: translateY(3px);
+  box-shadow:
+    inset 0 1px #ffffff24,
+    0 1px 0 var(--shadow);
+  filter: brightness(1.25);
+}
+.hitButton:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+.hitButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+.hitButton svg {
+  width: clamp(21px, 4.5vh, 38px);
+  height: clamp(21px, 4.5vh, 38px);
+  flex: none;
+}
+.points {
+  font-size: clamp(24px, 5.8vh, 52px);
+  font-weight: 950;
+  line-height: 0.9;
+  white-space: nowrap;
+}
+.label {
+  font-size: clamp(7px, 1.6vh, 12px);
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  line-height: 1.12;
+  text-transform: uppercase;
+}
+.sub {
+  display: block;
+  font-size: clamp(5px, 1vh, 8px);
+  color: #ffffff90;
+  letter-spacing: 0.08em;
+  margin-top: 3px;
+}
+.blue .hitButton {
+  background: linear-gradient(#153b78, #102c59);
+  border-color: #326fd2;
+  --shadow: #071a38;
+}
+.red .hitButton {
+  background: linear-gradient(#6e1c30, #4d1624);
+  border-color: #a4384d;
+  --shadow: #2b0a13;
+}
+.blue .body,
+.blue .punch {
+  background: linear-gradient(#2878ff, #1253cf);
+  border-color: #70a5ff;
+  --shadow: #082d74;
+}
+.red .body,
+.red .punch {
+  background: linear-gradient(#f0455c, #c3233b);
+  border-color: #ff8b9b;
+  --shadow: #741327;
+}
+
+.body {
+  grid-column: 2;
+  grid-row: 2;
+  flex-direction: column;
+  gap: 4px;
+}
+.body svg {
+  width: clamp(23px, 5vh, 43px);
+  height: clamp(23px, 5vh, 43px);
+}
+.body .points {
+  font-size: clamp(30px, 7.2vh, 62px);
+}
+.head {
+  grid-column: 2;
+  grid-row: 1;
+}
+.punch {
+  grid-column: 2;
+  grid-row: 3;
+}
+.blue .turnBody {
+  grid-column: 1;
+  grid-row: 2;
+}
+.blue .turnHead {
+  grid-column: 3;
+  grid-row: 2;
+}
+.red .turnHead {
+  grid-column: 1;
+  grid-row: 2;
+}
+.red .turnBody {
+  grid-column: 3;
+  grid-row: 2;
+}
+.turnBody,
+.turnHead {
+  flex-direction: column;
+  gap: 4px;
+  text-align: center;
+}
+.turnBody .points,
+.turnHead .points {
+  font-size: clamp(22px, 5.2vh, 43px);
+}
+.turnBadge {
+  position: absolute;
+  top: 6px;
+  right: 7px;
+  border: 1px solid #ffffff25;
+  border-radius: 99px;
+  padding: 2px 5px;
+  font-size: clamp(5px, 0.9vh, 7px);
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  color: #ffffff9c;
+}
+.centerDivider {
+  display: grid;
+  place-items: center;
+  background: #05070b;
+}
+.centerDivider span {
+  width: 3px;
+  height: 72%;
+  border-radius: 5px;
+  background: linear-gradient(transparent, #354052, transparent);
+}
+
+.feedback {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0 clamp(10px, 2vw, 24px);
+  padding-bottom: env(safe-area-inset-bottom);
+  background: #0e151f;
+  border-top: 1px solid #293448;
+  font-size: clamp(6px, 1.3vh, 10px);
+  font-weight: 850;
+  letter-spacing: 0.07em;
+  color: #7f8da2;
+}
+.feedbackLeft {
+  white-space: nowrap;
+}
+.last {
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  border-radius: 99px;
+  background: #15271f;
+  border: 1px solid #285d43;
+  color: #78e5a8;
+  padding: 5px 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.last > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.last.pending {
+  color: #f3e979;
+  background: #292711;
+  border-color: #5d5720;
+}
+.last.rejected {
+  color: #ff9aa7;
+  background: #32131b;
+  border-color: #702739;
+}
+.feedbackRight {
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hitButton:hover {
+    filter: brightness(1.13);
+  }
+}
+
+@media (orientation: portrait) {
+  .controller {
+    grid-template-rows: clamp(62px, 9vh, 84px) minmax(0, 1fr) clamp(
+        40px,
+        6vh,
+        50px
+      );
+  }
+  .topbar {
+    padding-inline: 12px;
+  }
+  .topRight .mode {
+    display: none;
+  }
+  .feedbackBadge {
+    font-size: 7px;
+  }
+  .controls {
+    grid-template-columns: minmax(0, 1fr) 7px minmax(0, 1fr);
+  }
+  .pad {
+    grid-template-rows: clamp(28px, 4.5vh, 42px) minmax(0, 1fr);
+    padding: 0 clamp(6px, 1.6vw, 12px) clamp(7px, 1.2vh, 12px);
+  }
+  .sideLabel small {
+    display: none;
+  }
+  .padGrid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1.13fr 1fr 0.92fr;
+    gap: clamp(7px, 1.2vh, 11px);
+  }
+  .head {
+    grid-column: 1 / 3;
+    grid-row: 1;
+  }
+  .body {
+    grid-column: 1 / 3;
+    grid-row: 2;
+    flex-direction: row;
+    gap: 10px;
+  }
+  .punch {
+    grid-column: 1 / 3;
+    grid-row: 3;
+  }
+  .blue .turnBody,
+  .red .turnBody {
+    grid-column: 1;
+    grid-row: 4;
+  }
+  .blue .turnHead,
+  .red .turnHead {
+    grid-column: 2;
+    grid-row: 4;
+  }
+  .points {
+    font-size: clamp(28px, 5.8vh, 52px);
+  }
+  .body .points {
+    font-size: clamp(32px, 6.5vh, 58px);
+  }
+  .turnBody .points,
+  .turnHead .points {
+    font-size: clamp(22px, 4.5vh, 38px);
+  }
+  .turnBody,
+  .turnHead {
+    gap: 2px;
+  }
+  .turnBadge {
+    top: 5px;
+    right: 5px;
+  }
+  .feedbackRight {
+    display: none;
+  }
+  .feedback {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .last {
+    padding-block: 4px;
+  }
+}
+
+@media (max-width: 430px) {
+  .role {
+    min-width: 34px;
+    height: 27px;
+    font-size: 12px;
+  }
+  .online {
+    font-size: 8px;
+  }
+  .topLeft {
+    gap: 6px;
+  }
+  .timer {
+    padding: 6px 11px;
+    gap: 7px;
+  }
+  .timer span {
+    font-size: 7px;
+  }
+  .topRight {
+    display: none;
+  }
+  .hitButton {
+    gap: 5px;
+    padding-inline: 5px;
+  }
+  .label {
+    font-size: 8px;
+  }
+  .hitButton svg {
+    width: 24px;
+    height: 24px;
+  }
+  .turnBody .label,
+  .turnHead .label {
+    font-size: 7px;
+  }
+  .feedback {
+    font-size: 7px;
+    gap: 6px;
+    padding-inline: 8px;
+  }
+  .last {
+    padding-inline: 8px;
+  }
+  .pad {
+    padding-inline: 5px;
+  }
+  .padGrid {
+    gap: 7px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 430px) {
+  .controller {
+    grid-template-rows: 46px minmax(0, 1fr) 32px;
+  }
+  .topbar {
+    padding-inline: 10px;
+  }
+  .role {
+    height: 25px;
+    min-width: 34px;
+    font-size: 11px;
+  }
+  .timer {
+    padding: 5px 12px;
+  }
+  .timer strong {
+    font-size: 20px;
+  }
+  .mode {
+    font-size: 8px;
+  }
+  .mode small {
+    font-size: 6px;
+  }
+  .pad {
+    grid-template-rows: 22px minmax(0, 1fr);
+    padding: 0 7px 7px;
+  }
+  .padGrid {
+    gap: 6px;
+  }
+  .hitButton {
+    border-radius: 12px;
+    padding: 3px 6px;
+    gap: 5px;
+  }
+  .points {
+    font-size: 27px;
+  }
+  .body .points {
+    font-size: 34px;
+  }
+  .turnBody .points,
+  .turnHead .points {
+    font-size: 24px;
+  }
+  .hitButton svg {
+    width: 23px;
+    height: 23px;
+  }
+  .last {
+    padding-block: 3px;
+  }
+  .turnBadge {
+    top: 4px;
+    right: 5px;
+  }
+}

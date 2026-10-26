@@ -17,6 +17,8 @@
 - Do not print long-term judge tokens on public brackets or send them to the TV display.
 - Presence comes from heartbeat timestamps, not from a stale socket label. Expired devices must reconnect/heartbeat before being considered online.
 - If a phone sleeps, reopen the session URL. Revoke and re-pair if its session expired or was replaced.
+- Corner judges use a responsive controller layout with all five techniques for each athlete: landscape places Head above, Body in the large center, Punch below, and turning techniques at the sides; portrait stacks the primary controls and keeps turning techniques on the bottom row. The layout preserves fixed touch zones without horizontal overflow at tested phone, tablet, and desktop sizes.
+- Judge feedback includes an immediate tap response plus distinct visual, vibration, and Web Audio cues for pending, accepted, and rejected server responses. Vibration and audio depend on device/browser support; test the actual judge devices and keep their pages open. Feedback never awards a point by itself—the authoritative server response and consensus policy remain decisive.
 
 ## Match and timer audio
 
