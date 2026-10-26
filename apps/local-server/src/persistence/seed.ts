@@ -35,8 +35,8 @@ export function seedDevelopment(db: SqliteDatabase): {matchId:string;tournamentI
   const service=new MatchService(db,repo);const command=(type:Parameters<MatchService['execute']>[2]['type'],side?:'BLUE'|'RED',pointType?:Parameters<MatchService['execute']>[2]['pointType'])=>service.execute(actor,active.id,{type,side,pointType});
   command('START');
   command('SCORE','BLUE','HEAD_KICK');command('SCORE','BLUE','BODY_KICK');command('SCORE','RED','BODY_KICK');command('PAUSE');command('NEXT_ROUND');command('RESUME');
-  command('SCORE','BLUE','TURNING_BODY_KICK');command('SCORE','RED','HEAD_KICK');command('PAUSE');command('NEXT_ROUND');command('RESUME');
-  command('SCORE','BLUE','HEAD_KICK');command('SCORE','RED','BODY_KICK');command('GAM_JEOM','BLUE');command('PAUSE');
+  command('SCORE','BLUE','HEAD_KICK');command('SCORE','RED','TURNING_BODY_KICK');command('PAUSE');command('NEXT_ROUND');command('RESUME');
+  command('SCORE','BLUE','TURNING_BODY_KICK');command('SCORE','RED','BODY_PUNCH');command('GAM_JEOM','BLUE');command('PAUSE');
   const current=db.prepare('SELECT timer_json FROM matches WHERE id=?').get(active.id) as {timer_json:string};const timer=JSON.parse(current.timer_json) as {remainingMs:number;running:boolean;authoritativeAt:number;kind:string};timer.remainingMs=84000;timer.running=false;timer.authoritativeAt=Date.now();db.prepare('UPDATE matches SET timer_json=?,match_number=\'203\' WHERE id=?').run(JSON.stringify(timer),active.id);
   for(const role of ['J1','J2','J3'] as const){const sessionId=randomUUID();const timestamp=Date.now();db.prepare('INSERT INTO judge_sessions(id,tournament_id,match_id,token_hash,role,device_name,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?)').run(sessionId,tournament.id,active.id,hashToken(randomUUID()),role,`Development ${role} tablet`,timestamp+12*3600*1000,isoNow());db.prepare('INSERT INTO device_presence(session_id,role,match_id,status,last_seen_at,connected_at) VALUES(?,?,?,\'ONLINE\',?,?)').run(sessionId,role,active.id,timestamp,timestamp);}
   return{matchId:active.id,tournamentId:tournament.id};

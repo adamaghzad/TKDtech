@@ -52,11 +52,29 @@ describe('authoritative round breaks',()=>{
     const next=service.execute(actor,matchId,{type:'NEXT_ROUND'});expect(next).toMatchObject({state:'IN_PROGRESS',currentRound:2});expect(next.timer).toMatchObject({kind:'ROUND',remainingMs:90000,running:true});
   });
 
+  it('automatically completes when the operator ends an athlete’s second won round',()=>{
+    const{db,service,actor,matchId}=system();setRound(db,matchId,2,'PAUSED',5000);db.prepare("UPDATE match_rounds SET blue_score=4,red_score=0,winner_side=NULL,decision_method=NULL,ended_at=NULL WHERE match_id=? AND number=2").run(matchId);db.prepare('UPDATE matches SET blue_score=9,red_score=2 WHERE id=?').run(matchId);
+    const resolved=service.execute(actor,matchId,{type:'NEXT_ROUND'});expect(resolved).toMatchObject({state:'COMPLETED',currentRound:2,winner:'BLUE',decisionMethod:'ROUND_WINS'});expect(resolved.timer.running).toBe(false);expect(resolved.rounds[1]).toMatchObject({blueScore:4,redScore:0,winner:'BLUE'});
+    expect(db.prepare('SELECT winner_athlete_id,decision_method FROM tournament_results WHERE match_id=?').get(matchId)).toMatchObject({winner_athlete_id:resolved.blue.id,decision_method:'ROUND_WINS'});
+    const event=db.prepare("SELECT payload_json FROM match_events WHERE match_id=? AND event_type='match.completed' ORDER BY sequence DESC LIMIT 1").get(matchId) as{payload_json:string};expect(JSON.parse(event.payload_json)).toMatchObject({automatic:true,roundResult:{number:2,winner:'BLUE'},matchResult:{winner:'BLUE',blueRoundWins:2,redRoundWins:0,round:2}});
+  });
+
+  it('automatically completes on timer expiry when the second round is won and never enters another break',()=>{
+    const{db,service,matchId}=system();setRound(db,matchId,2,'IN_PROGRESS');db.prepare("UPDATE match_rounds SET blue_score=4,red_score=0,winner_side=NULL,decision_method=NULL,ended_at=NULL WHERE match_id=? AND number=2").run(matchId);db.prepare('UPDATE matches SET blue_score=9,red_score=2 WHERE id=?').run(matchId);const clock=vi.spyOn(Date,'now').mockReturnValue(100000);
+    expect(service.expireTimers(100000)).toEqual([]);clock.mockReturnValue(101000);expect(service.expireTimers(101000)).toEqual([matchId]);const resolved=service.snapshot(matchId);expect(resolved).toMatchObject({state:'COMPLETED',currentRound:2,winner:'BLUE',decisionMethod:'ROUND_WINS'});expect(resolved.timer).toMatchObject({kind:'ROUND',remainingMs:0,running:false});expect(resolved.rounds[1]!.endedAt).not.toBeNull();expect(service.expireTimers(101000)).toEqual([]);
+  });
+
+  it('automatically completes when superiority supplies the second round win instead of starting rest',()=>{
+    const{db,service,matchId,tournamentId}=system();db.prepare("UPDATE match_rounds SET blue_score=7,red_score=7,winner_side=NULL,decision_method=NULL,ended_at=? WHERE match_id=? AND number=2").run(new Date(100000).toISOString(),matchId);db.prepare("UPDATE matches SET current_round=3,state='ROUND_BREAK',blue_score=12,red_score=9,timer_json=? WHERE id=?").run(JSON.stringify({remainingMs:60000,running:false,authoritativeAt:100000,kind:'BREAK',holdReason:'SUPERIORITY'}),matchId);vi.spyOn(Date,'now').mockReturnValue(106000);
+    const referee:Actor={id:'referee-second-round-win',role:'REFEREE',tournamentIds:[tournamentId]};const resolved=service.execute(referee,matchId,{type:'ROUND_SUPERIORITY',side:'BLUE',reason:'Officials selected Blue for the second round win'});expect(resolved).toMatchObject({state:'COMPLETED',currentRound:2,winner:'BLUE',decisionMethod:'ROUND_WINS'});expect(resolved.timer.running).toBe(false);expect(resolved.timer.holdReason).toBeUndefined();expect(resolved.rounds[1]).toMatchObject({blueScore:7,redScore:7,winner:'BLUE',decisionMethod:'SUPERIORITY'});
+    const event=db.prepare("SELECT payload_json FROM match_events WHERE match_id=? AND event_type='round.superiority_decided'").get(matchId) as{payload_json:string};expect(JSON.parse(event.payload_json)).toMatchObject({round:2,side:'BLUE',restStarted:false,matchResult:{winner:'BLUE',blueRoundWins:2,redRoundWins:0,round:2}});
+  });
+
   it('pauses at final-round expiry without inventing another break or round',()=>{
-    const{db,service,actor,matchId}=system();setRound(db,matchId,3,'IN_PROGRESS');vi.spyOn(Date,'now').mockReturnValue(101000);expect(service.expireTimers(101000)).toEqual([matchId]);
+    const{db,service,actor,matchId}=system();setRound(db,matchId,3,'IN_PROGRESS');db.prepare('UPDATE match_rounds SET blue_score=2,red_score=2,winner_side=NULL,decision_method=NULL WHERE match_id=? AND number=3').run(matchId);db.prepare('UPDATE matches SET blue_score=10,red_score=8 WHERE id=?').run(matchId);vi.spyOn(Date,'now').mockReturnValue(101000);expect(service.expireTimers(101000)).toEqual([matchId]);
     const snapshot=service.snapshot(matchId);expect(snapshot).toMatchObject({state:'PAUSED',currentRound:3});expect(snapshot.timer).toMatchObject({kind:'ROUND',remainingMs:0,running:false});expect(snapshot.rounds[2]!.endedAt).not.toBeNull();
     expect(service.expireTimers(101000)).toEqual([]);expect(service.snapshot(matchId)).toMatchObject({state:'PAUSED',currentRound:3});
-    expect(service.execute(actor,matchId,{type:'COMPLETE'})).toMatchObject({state:'COMPLETED',winner:'BLUE'});
+    expect(()=>service.execute(actor,matchId,{type:'COMPLETE'})).toThrow(/tied|unresolved/i);
   });
 
   it('recovers a running break as paused and resumes the remaining rest before the next round',()=>{

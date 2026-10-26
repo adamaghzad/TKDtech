@@ -57,6 +57,16 @@ export class MatchService {
         const previous=this.unresolvedBreakSuperiority(matchId,current.tournament_id,round);
         if(previous)throw new HttpError(409,'SUPERIORITY_REQUIRED',`Round ${previous.number} is tied. Record the officials' superiority decision before starting or resuming the next-round rest.`);
       };
+      const completeIfTwoRoundWins=(endedRound:number)=>{
+        if(ruleset.resultValidation!=='ROUND_WINS')return null;
+        const ended=this.db.prepare('SELECT number,blue_score,red_score,winner_side FROM match_rounds WHERE match_id=? AND number<=? AND ended_at IS NOT NULL ORDER BY number').all(matchId,endedRound) as Array<{number:number;blue_score:number;red_score:number;winner_side:Side|null}>;
+        let blueRoundWins=0;let redRoundWins=0;
+        for(const item of ended){const roundWinner=item.winner_side??(item.blue_score===item.red_score?null:item.blue_score>item.red_score?'BLUE':'RED');if(roundWinner==='BLUE')blueRoundWins+=1;else if(roundWinner==='RED')redRoundWins+=1;}
+        if(blueRoundWins>=2&&redRoundWins>=2)throw new HttpError(409,'RESULT_REVIEW_REQUIRED','Both athletes have two recorded round wins; authorized result review is required.');
+        if(blueRoundWins<2&&redRoundWins<2)return null;
+        winner=blueRoundWins>=2?'BLUE':'RED';decision='ROUND_WINS';round=endedRound;transition('COMPLETED');nextTimer={...pauseTimer(nextTimer,now),holdReason:undefined};actualEnd=new Date(now).toISOString();
+        return{winner,decisionMethod:decision,blueRoundWins,redRoundWins,round:endedRound,automatic:true};
+      };
       switch(command.type){
         case 'START': {
           if(!current.blue_athlete_id||!current.red_athlete_id)throw new HttpError(409,'ENTRANTS_UNKNOWN','Both athletes must be confirmed.');
@@ -104,8 +114,10 @@ export class MatchService {
           if(round>=timing.rounds)throw new HttpError(409,'FINAL_ROUND','The final round is already active. Complete the match after resolving the result.');
           const endedRound=round;const roundWinner=currentRound.blue_score===currentRound.red_score?null:currentRound.blue_score>currentRound.red_score?'BLUE':'RED';
           this.db.prepare('UPDATE match_rounds SET winner_side=?,decision_method=?,ended_at=? WHERE id=?').run(roundWinner,roundWinner?'SCORE':null,new Date(now).toISOString(),currentRound.id);
+          const roundResult={number:endedRound,blueScore:currentRound.blue_score,redScore:currentRound.red_score,winner:roundWinner};const matchResult=completeIfTwoRoundWins(endedRound);
+          if(matchResult){eventType='match.completed';payload={...payload,previousRound:endedRound,round:endedRound,automatic:true,roundResult,matchResult};break;}
           round+=1;transition('ROUND_BREAK');const breakTimer=resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now);nextTimer=ruleset.resultValidation==='ROUND_WINS'&&!roundWinner?{...breakTimer,holdReason:'SUPERIORITY' as const}:startTimer(breakTimer,now);eventType='match.round_changed';
-          payload={...payload,previousRound:endedRound,round,automatic:false,roundResult:{number:endedRound,blueScore:currentRound.blue_score,redScore:currentRound.red_score,winner:roundWinner}};break;
+          payload={...payload,previousRound:endedRound,round,automatic:false,roundResult};break;
         }
         case 'PREVIOUS_ROUND': {
           if(!['SUPER_ADMIN','TOURNAMENT_ADMIN'].includes(actor.role)||!command.reason)throw new HttpError(403,'AUTHORIZED_CORRECTION_REQUIRED','Previous-round correction requires an administrator and a reason.');
@@ -153,7 +165,8 @@ export class MatchService {
           if(nextTimer.kind==='ROUND'&&(state==='IN_PROGRESS'||pausedRoundRecovery)){
             const endedRound=round;const roundWinner=currentRound.blue_score===currentRound.red_score?null:currentRound.blue_score>currentRound.red_score?'BLUE':'RED';
             this.db.prepare('UPDATE match_rounds SET winner_side=?,decision_method=?,ended_at=? WHERE id=?').run(roundWinner,roundWinner?'SCORE':null,new Date(now).toISOString(),currentRound.id);
-            const roundResult={number:endedRound,blueScore:currentRound.blue_score,redScore:currentRound.red_score,winner:roundWinner};
+            const roundResult={number:endedRound,blueScore:currentRound.blue_score,redScore:currentRound.red_score,winner:roundWinner};const matchResult=completeIfTwoRoundWins(endedRound);
+            if(matchResult){eventType='match.completed';payload={...payload,previousRound:endedRound,round:endedRound,automatic:true,recoveredPaused:pausedRoundRecovery,roundResult,matchResult};break;}
             if(endedRound<timing.rounds){
               round+=1;transition('ROUND_BREAK');const breakTimer=resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now);nextTimer=ruleset.resultValidation==='ROUND_WINS'&&!roundWinner?{...breakTimer,holdReason:'SUPERIORITY' as const}:startTimer(breakTimer,now);eventType='match.round_changed';
               payload={...payload,previousRound:endedRound,round,automatic:true,recoveredPaused:pausedRoundRecovery,roundResult};
@@ -189,6 +202,8 @@ export class MatchService {
           if(target.blue_score!==target.red_score)throw new HttpError(409,'ROUND_NOT_TIED','Superiority is available only when round points are equal.');
           if(target.winner_side)throw new HttpError(409,'ROUND_ALREADY_RESOLVED','This round already has an authoritative winner. A dedicated correction is required.');
           this.db.prepare("UPDATE match_rounds SET winner_side=?,decision_method='SUPERIORITY' WHERE id=?").run(command.side,target.id);
+          const matchResult=completeIfTwoRoundWins(target.number);
+          if(matchResult){eventType='round.superiority_decided';payload={...payload,roundId:target.id,round:target.number,side:command.side,blueScore:target.blue_score,redScore:target.red_score,decisionMethod:'SUPERIORITY',reason:command.reason,restStarted:false,restRemainingMs:nextTimer.remainingMs,matchResult};break;}
           let restStarted=false;if(['ROUND_BREAK','PAUSED'].includes(state)&&nextTimer.kind==='BREAK'&&(!nextTimer.running||nextTimer.remainingMs<=0)){if(state==='PAUSED')transition('ROUND_BREAK');const duration=nextTimer.remainingMs>0?nextTimer.remainingMs:this.timing(current.category_id).breakDurationMs;nextTimer=startTimer(resetTimer({...nextTimer,kind:'BREAK'},duration,now),now);restStarted=true;}
           eventType='round.superiority_decided';payload={...payload,roundId:target.id,round:target.number,side:command.side,blueScore:target.blue_score,redScore:target.red_score,decisionMethod:'SUPERIORITY',reason:command.reason,restStarted,restRemainingMs:nextTimer.remainingMs};break;
         }
