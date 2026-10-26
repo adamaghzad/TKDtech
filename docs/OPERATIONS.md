@@ -20,7 +20,7 @@
 
 ## Match and timer audio
 
-At 10 seconds and above, match and rest clocks retain the `M:SS` display. Below 10 seconds they show hundredths (for example `0:09.95`), and expiry reads `0:00.00`. TV, operator, dashboard, and judge/referee clocks use the same formatter and the server's authoritative remaining milliseconds; no independent browser countdown was introduced. The existing 100 ms display refresh and authoritative expiry behavior are unchanged.
+At 10 seconds and above, match and rest clocks retain the `M:SS` display. Below 10 seconds they show seconds and hundredths without a minute prefix (for example `9.85`), and expiry reads `0.00`. TV, operator, dashboard, and judge/referee clocks use the same formatter and the server's authoritative remaining milliseconds; no independent browser countdown was introduced. The existing 100 ms display refresh and authoritative expiry behavior are unchanged.
 
 The public TV and operator scoreboard provide a clearly visible per-device sound control. Browsers require one tap on **Enable sound** after opening/reloading the page before audio can play. An authoritative blue/red score increase emits one short `1320 Hz` confirmation after the server accepts it; a judge tap alone, initial page load, duplicate snapshot, or score-lowering undo does not emit that confirmation. Round and rest timers emit short `880 Hz` beeps at 5, 4, 3, 2, and 1 seconds and an original competition-style dual `180/240 Hz` buzzer for 1.1 seconds at zero. This is not a proprietary PSS sound or a claim of hardware equivalence. Tones are generated locally with Web Audio and work without Internet access. Verify the TV/operator speakers before the event; audio is supplementary and never changes the authoritative score or timer.
 
@@ -111,7 +111,7 @@ Do not expose club contacts or full registration exports on the public TV browse
 
 | Symptom | Check |
 |---|---|
-| Rest stays at `0:00` before the next round | Confirm the deployed health includes `pausedZeroRecovery: NON_FINAL_ROUND_TO_BREAK`; a nonfinal paused-zero round should enter rest within 500 ms. At genuine rest expiry, `0:00.00 · REST ENDED` is expected and the operator/referee must start the next round. |
+| Rest stays at `0.00` before the next round | Confirm the deployed health includes `pausedZeroRecovery: NON_FINAL_ROUND_TO_BREAK`; a nonfinal paused-zero round should enter rest within 500 ms. At genuine rest expiry, `0.00 · REST ENDED` is expected and the operator/referee must start the next round. |
 | `WEB_UNAVAILABLE` | Ensure Next.js is running on internal port 3001 and `WEB_INTERNAL_URL` points to it |
 | LAN device cannot connect | Host firewall, Wi-Fi client isolation, correct interface/IP, port 3000, and that all devices use the same LAN |
 | Judge buttons disabled | Session status/expiry, heartbeat presence, match state, and whether the referee/operator started the round |
