@@ -119,15 +119,25 @@ describe('authoritative point-gap scoring', () => {
     expect(db.prepare('SELECT blue_score,red_score,decision_method FROM tournament_results WHERE match_id=?').get(matchId)).toMatchObject({ blue_score: 30, red_score: 10, decision_method: 'POINT_GAP' });
   });
 
-  it('evaluates Gam-Jeom opponent points for round gap', () => {
+  it('uses configured Gam-Jeom opponent points for round-gap evaluation', () => {
     const { db, service, actor, matchId, tournamentId } = system();
-    policy(db, tournamentId, { roundPointGapEnabled: true, roundPointGapThreshold: 3, matchPointGapEnabled: false });
+    policy(db, tournamentId, { roundPointGapEnabled: true, roundPointGapThreshold: 4, matchPointGapEnabled: false, gamJeomOpponentPoints: 2 });
     resetMatch(db, matchId); setRound(db, matchId, 1, 0, 2); db.prepare('UPDATE matches SET red_score=2 WHERE id=?').run(matchId); const baseline = service.snapshot(matchId).sequence;
     const result = service.execute(actor, matchId, { type: 'GAM_JEOM', side: 'BLUE' });
-    expect(result).toMatchObject({ state: 'ROUND_BREAK', currentRound: 2, redScore: 3, blueGamJeom: 1 });
+    expect(result).toMatchObject({ state: 'ROUND_BREAK', currentRound: 2, redScore: 4, blueGamJeom: 1 });
     expect(result.rounds[0]).toMatchObject({ winner: 'RED', decisionMethod: 'POINT_GAP' });
     const types = (db.prepare(`SELECT event_type FROM match_events WHERE match_id=? AND event_type IN ('penalty.accepted','match.round_changed') AND sequence>? ORDER BY sequence`).all(matchId, baseline) as Array<{ event_type: string }>).map(row => row.event_type);
     expect(types).toEqual(['penalty.accepted', 'match.round_changed']);
+  });
+
+  it('honors configured Gam-Jeom points and automatic disqualification threshold', () => {
+    const { db, service, actor, matchId, tournamentId } = system();
+    policy(db, tournamentId, { roundPointGapEnabled: false, matchPointGapEnabled: false, gamJeomOpponentPoints: 2, disqualificationThreshold: 2 });
+    resetMatch(db, matchId); db.prepare('UPDATE match_rounds SET blue_penalties=1 WHERE match_id=? AND number=1').run(matchId);
+    db.prepare('UPDATE matches SET blue_gam_jeom=1 WHERE id=?').run(matchId);
+    const result = service.execute(actor, matchId, { type: 'GAM_JEOM', side: 'BLUE' });
+    expect(result).toMatchObject({ state: 'DISQUALIFIED', winner: 'RED', decisionMethod: 'DISQUALIFICATION', redScore: 2, blueGamJeom: 2 });
+    expect(db.prepare('SELECT red_score,decision_method FROM tournament_results WHERE match_id=?').get(matchId)).toMatchObject({ red_score: 2, decision_method: 'DISQUALIFICATION' });
   });
 
   it('keeps disqualification ahead of a gap reached by the same penalty', () => {
@@ -160,7 +170,7 @@ describe('authoritative point-gap scoring', () => {
 });
 
 describe('versioned point-gap configuration', () => {
-  const input = { roundPointGapEnabled: true, roundPointGapThreshold: 12, matchPointGapEnabled: true, matchPointGapThreshold: 18, matchPointGapCompletionRound: 2, matchPointGapLiveFromRound: 3 };
+  const input = { roundPointGapEnabled: true, roundPointGapThreshold: 12, matchPointGapEnabled: true, matchPointGapThreshold: 18, matchPointGapCompletionRound: 2, matchPointGapLiveFromRound: 3, gamJeomOpponentPoints: 1, disqualificationThreshold: 5 };
 
   it('creates audited revisions, rejects stale versions, and locks active matches', () => {
     const { db, repository, actor, matchId, tournamentId } = system(); resetMatch(db, matchId, 1, 'READY');

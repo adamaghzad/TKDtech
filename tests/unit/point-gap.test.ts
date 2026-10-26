@@ -24,6 +24,8 @@ describe('configurable point-gap policy', () => {
   });
 
   it('validates thresholds and configured rounds', () => {
+    expect(validateRuleset({ ...rules, gamJeomOpponentPoints: -1 })).toContain('Gam-Jeom opponent points must be an integer between 0 and 20.');
+    expect(validateRuleset({ ...rules, disqualificationThreshold: 0 })).toContain('Gam-Jeom disqualification threshold must be an integer between 1 and 100.');
     expect(validateRuleset({ ...rules, roundPointGapThreshold: 0 })).toContain('Round point-gap threshold must be an integer between 1 and 999.');
     expect(validateRuleset({ ...rules, matchPointGapThreshold: 2.5 })).toContain('Match point-gap threshold must be an integer between 1 and 999.');
     expect(validateRuleset({ ...rules, matchPointGapCompletionRound: 4 })).toContain('Match point-gap completion round must be between 1 and the configured number of rounds.');

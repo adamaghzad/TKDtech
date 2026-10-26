@@ -20,6 +20,8 @@ export function validateRuleset(ruleset: Ruleset): string[] {
   if (ruleset.consensusThreshold < 1 || ruleset.consensusThreshold > 3) errors.push('Consensus threshold must be 1–3.');
   if (ruleset.consensusWindowMs < 100) errors.push('Consensus window must be at least 100ms.');
   if (Object.values(ruleset.points).some(value => !Number.isInteger(value) || value < 0)) errors.push('Point values must be non-negative integers.');
+  if (!Number.isInteger(ruleset.gamJeomOpponentPoints) || ruleset.gamJeomOpponentPoints < 0 || ruleset.gamJeomOpponentPoints > 20) errors.push('Gam-Jeom opponent points must be an integer between 0 and 20.');
+  if (!Number.isInteger(ruleset.disqualificationThreshold) || ruleset.disqualificationThreshold < 1 || ruleset.disqualificationThreshold > 100) errors.push('Gam-Jeom disqualification threshold must be an integer between 1 and 100.');
   if (ruleset.tieBreak === 'NONE' && ruleset.resultValidation === 'ROUND_WINS') errors.push('A tie policy is required for round-based results.');
   if (ruleset.roundPointGapThreshold !== undefined && (!Number.isInteger(ruleset.roundPointGapThreshold) || ruleset.roundPointGapThreshold < 1 || ruleset.roundPointGapThreshold > 999)) errors.push('Round point-gap threshold must be an integer between 1 and 999.');
   if (ruleset.matchPointGapThreshold !== undefined && (!Number.isInteger(ruleset.matchPointGapThreshold) || ruleset.matchPointGapThreshold < 1 || ruleset.matchPointGapThreshold > 999)) errors.push('Match point-gap threshold must be an integer between 1 and 999.');

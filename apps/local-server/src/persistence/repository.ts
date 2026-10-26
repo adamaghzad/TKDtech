@@ -9,7 +9,7 @@ import type { Actor, TournamentRow } from '../types';
 
 interface TournamentInput { name: string; description?: string; organizer?: string; venue?: string; country?: string; startDate: string; endDate: string; timezone?: string; matCount?: number; mode?: 'LOCAL'|'CLOUD' }
 interface AthleteInput { firstName: string; lastName: string; dateOfBirth: string; division: 'MEN'|'WOMEN'; nationality: string; countryCode: string; clubId?: string; externalNumber?: string; coach?: string; categoryId?: string; weightKg?: number; seed?: number }
-interface RulesetConfigurationInput { roundPointGapEnabled:boolean;roundPointGapThreshold:number;matchPointGapEnabled:boolean;matchPointGapThreshold:number;matchPointGapCompletionRound:number;matchPointGapLiveFromRound:number;expectedVersion?:string }
+interface RulesetConfigurationInput { roundPointGapEnabled:boolean;roundPointGapThreshold:number;matchPointGapEnabled:boolean;matchPointGapThreshold:number;matchPointGapCompletionRound:number;matchPointGapLiveFromRound:number;gamJeomOpponentPoints:number;disqualificationThreshold:number;expectedVersion?:string }
 interface CategoryInput { name: string; division: 'MEN'|'WOMEN'; ageGroup: string; minWeightKg: number; maxWeightKg: number; format: 'SINGLE_ELIMINATION'|'REPECHAGE'; rounds?: number; roundDurationMs?: number; breakDurationMs?: number; goldenPointPolicy?: string; repechagePolicy?: string }
 
 export class TournamentRepository {
@@ -129,7 +129,7 @@ export class TournamentRepository {
       const errors=validateRuleset(updated);if(errors.length)throw new HttpError(400,'INVALID_RULESET','Ruleset validation failed.',{errors});
       const id=randomUUID();const now=isoNow();
       this.db.prepare('INSERT INTO tournament_rulesets(id,tournament_id,version,name,config_json,effective_date,created_at) VALUES(?,?,?,?,?,?,?)').run(id,tournamentId,version,current.name,JSON.stringify(updated),current.effective_date,now);
-      const policy=(ruleset:Ruleset)=>({roundPointGapEnabled:ruleset.roundPointGapEnabled??false,roundPointGapThreshold:ruleset.roundPointGapThreshold??15,matchPointGapEnabled:ruleset.matchPointGapEnabled??false,matchPointGapThreshold:ruleset.matchPointGapThreshold??20,matchPointGapCompletionRound:ruleset.matchPointGapCompletionRound??2,matchPointGapLiveFromRound:ruleset.matchPointGapLiveFromRound??3});
+      const policy=(ruleset:Ruleset)=>({roundPointGapEnabled:ruleset.roundPointGapEnabled??false,roundPointGapThreshold:ruleset.roundPointGapThreshold??15,matchPointGapEnabled:ruleset.matchPointGapEnabled??false,matchPointGapThreshold:ruleset.matchPointGapThreshold??20,matchPointGapCompletionRound:ruleset.matchPointGapCompletionRound??2,matchPointGapLiveFromRound:ruleset.matchPointGapLiveFromRound??3,gamJeomOpponentPoints:ruleset.gamJeomOpponentPoints,disqualificationThreshold:ruleset.disqualificationThreshold});
       audit(this.db,{tournamentId,actorId:actor.id,action:'RULESET_UPDATED',entityType:'ruleset',entityId:id,before:{version:current.version,...policy(previous)},after:{version,...policy(updated)}});
     })();
     if(!updated)throw new HttpError(500,'RULESET_UPDATE_FAILED','Ruleset update did not complete.');
