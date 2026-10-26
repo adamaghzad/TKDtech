@@ -12,7 +12,7 @@ A production-oriented Taekwondo tournament administration and Kyorugi scoring sy
 |---|---|
 | Local tournament server | Implemented and tested: Express HTTP API, typed WebSockets, SQLite WAL persistence, authentication, permissions, audit history, restart recovery |
 | Tournament workflow | Tournament/club/athlete/category creation, registration validation, passing weigh-ins, random/seeded immutable draw versions, byes, elimination and configurable repechage, mat assignment, result advancement |
-| Live scoring | Server-authoritative state machine, timer controls, operator scoring, distinct-judge consensus, penalties, corrections, result finalization, transactional progression |
+| Live scoring | Server-authoritative state machine, timer controls, hundredth-second display below 10 seconds, operator scoring, distinct-judge consensus, penalties, corrections, result finalization, transactional progression |
 | Displays/devices | Read-only 16:9 public display, operator console, short-lived QR pairing, mobile J1/J2/J3 and referee controls, presence expiry and reconnection recovery |
 | Reports | Authenticated CSV and PDF exports; results and medal tables derive from stored records |
 | Browser/PWA | Responsive App Router UI, localization resources, installable manifest and application-shell service worker |
