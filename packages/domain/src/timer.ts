@@ -6,8 +6,9 @@ export function remainingAt(timer: TimerState, now: number): number {
 }
 
 export function startTimer(timer: TimerState, now: number): TimerState {
-  if (timer.running || timer.remainingMs <= 0) return { ...timer, authoritativeAt: now };
-  return { ...timer, running: true, authoritativeAt: now };
+ const base={...timer,holdReason:undefined};
+ if (base.running || base.remainingMs <= 0) return { ...base, authoritativeAt: now };
+ return { ...base, running: true, authoritativeAt: now };
 }
 
 export function pauseTimer(timer: TimerState, now: number): TimerState {
@@ -16,7 +17,7 @@ export function pauseTimer(timer: TimerState, now: number): TimerState {
 
 export function resetTimer(timer: TimerState, durationMs: number, now: number): TimerState {
   if (!Number.isFinite(durationMs) || durationMs <= 0) throw new Error('Timer duration must be positive.');
-  return { ...timer, remainingMs: Math.floor(durationMs), running: false, authoritativeAt: now };
+  return { ...timer, holdReason: undefined, remainingMs: Math.floor(durationMs), running: false, authoritativeAt: now };
 }
 
 export function reconcileTimer(persisted: TimerState, now: number): { timer: TimerState; expired: boolean; uncertain: boolean } {

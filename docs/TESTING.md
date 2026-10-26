@@ -8,7 +8,7 @@ Verified locally on **2026-10-26** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **91/91 tests passed across 14 files** |
+| `npm test` | **92/92 tests passed across 14 files** |
 | `npm run test:e2e` | **11/11 real Chromium tests passed** against the final Next 16 production preview |
 | `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
@@ -25,7 +25,7 @@ Verified locally on **2026-10-26** with **Node.js 22.23.4**, **Next.js 16.4.3**,
 - Timer-alert tracking emits one beep at each of 5/4/3/2/1 seconds and one round/rest end alert, with no initial-load replay, paused alert, unsupported-timer alert, or duplicate snapshot alert.
 - Score-alert tracking emits once for authoritative blue/red score increases, including multi-point scores, with no initial-load/match-change replay, duplicate-snapshot repeat, or undo sound; a later new score sounds normally.
 - Live large scores show current-round points during rounds and ordinary time-outs, including a verified 0–0 start to the next round while cumulative totals remain stored. Only after-round breaks show ended-round wins through `currentRound - 1`, exclude future rounds, and add the separate per-round summary. Completed-result scoring uses round wins for round-win/Golden Point results and authoritative cumulative points for a total-points decision.
-- An ended tied round blocks next-round startup until an authorized referee/operator records a reasoned superiority decision. The server preserves equal points, persists/audits the winner, rejects overwrite attempts, includes that winner in match results, and broadcasts the updated round-win summary.
+- An ended tied round holds the full rest with `SUPERIORITY`, blocks every rest/next-round resume path, and survives reset/review/recovery checks until an authorized referee/operator records a reasoned decision. Legacy running unresolved breaks are paused by the scheduler. The decision releases the hold, starts rest automatically, preserves equal points, persists/audits the winner, rejects overwrites, and feeds match results.
 - Club/category/athlete CSV parsing supports UTF-8 BOM, CRLF, quoted fields, and independent row failures with a 500-row cap. Real browser uploads create 4 clubs and 4 categories, reject repeated duplicates, then create 12 athletes whose club/category names resolve to the correct registrations and passing weigh-ins.
 - Role/tournament permissions and public denial.
 - Idempotent commands and optimistic version conflicts.
@@ -48,7 +48,7 @@ The Playwright suite verifies:
 4. Two independently paired mobile judges see the automatic return to two-judge consensus, submit distinct proposals for one accepted +3, and restore the score.
 5. A public round-rest display shows large Blue 1 / Red 0 round wins after Blue's 5–2 Round 1 win, a decreasing `REST TIME` clock, `ROUND 1 COMPLETE`, separate Blue 5 / Red 2 points, a yellow `BLUE WINS ROUND 1` banner, and a yellow marker only on ended Round 1—not future Round 2; the test then restores the showcase.
 6. A Round 1 time-out with Blue 2 / Red 7 shows those current-round points and hides the round-win/per-round summary. After expiry, rest alone switches to large Blue 0 / Red 1 round wins while Round 1 remains 2–7 with Red's marker/banner. Starting Round 2 then shows **0–0 round points** while the authoritative cumulative match total remains Blue 2 / Red 7.
-7. A tied 7–7 round initially shows **SUPERIORITY REQUIRED** and 0–0 round wins. The operator records Red's superiority decision with an audit reason; the public TV then shows **RED WINS ROUND 1 · SUPERIORITY**, Red's yellow marker, and 0–1 round wins while both Round 1 point values remain 7.
+7. A tied 7–7 round initially shows **AWAITING SUPERIORITY**, **SUPERIORITY REQUIRED**, 0–0 round wins, and a 30-second rest clock that remains unchanged over time. The operator records Red's superiority decision with an audit reason; the TV then starts **REST TIME** automatically and shows **RED WINS ROUND 1 · SUPERIORITY**, Red's yellow marker, and 0–1 round wins while both Round 1 point values remain 7.
 8. The real 500 ms server scheduler automatically turns a six-second running round into a visible decreasing rest countdown, then recovers a paused nonfinal `0:00` fixture into a separate running 30-second rest; both are checked on the public TV, not only through domain calls.
 9. After the browser-required sound unlock, a six-second TV rest emits five scheduled `880 Hz` warning tones and one original competition-style dual `180/240 Hz` end buzzer; the display then reads `REST ENDED`, and the test restores the normal 60-second break.
 10. Completing a match opens a dedicated **MATCH … RESULT** view on the match-specific public display; Chromium verifies the yellow winner banner, authoritative winner name/country, decision-aware Blue/Red result values, and total-point summary. The public mat display then automatically rolls to the next eligible queued match, whose timer remains stopped in `READY`.
@@ -64,6 +64,7 @@ Reviewed screenshots:
 - `artifacts/timeout-round-points-display.png`
 - `artifacts/red-round-win-display.png`
 - `artifacts/next-round-zero-display.png`
+- `artifacts/superiority-awaiting-display.png`
 - `artifacts/superiority-round-display.png`
 - `artifacts/automatic-round-rest.png`
 - `artifacts/automatic-paused-zero-rest.png`

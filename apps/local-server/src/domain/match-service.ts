@@ -35,6 +35,12 @@ export class MatchService {
     return {rounds:row.rounds,roundDurationMs:row.round_duration_ms,breakDurationMs:row.break_duration_ms};
   }
 
+  private unresolvedBreakSuperiority(matchId:string,tournamentId:string,currentRound:number):{number:number}|null{
+    if(this.ruleset(tournamentId).resultValidation!=='ROUND_WINS')return null;
+    const previous=this.db.prepare('SELECT number,blue_score,red_score,winner_side,ended_at FROM match_rounds WHERE match_id=? AND number=?').get(matchId,currentRound-1) as {number:number;blue_score:number;red_score:number;winner_side:Side|null;ended_at:string|null}|undefined;
+    return previous?.ended_at&&previous.blue_score===previous.red_score&&!previous.winner_side?previous:null;
+  }
+
   execute(actor: Actor, matchId: string, command: MatchCommand, idempotencyKey: string = randomUUID()): MatchSnapshot {
     const duplicate=this.db.prepare('SELECT event_id FROM match_events WHERE match_id=? AND idempotency_key=?').get(matchId,idempotencyKey);
     if(duplicate)return this.snapshot(matchId);
@@ -48,9 +54,8 @@ export class MatchService {
       const currentRound=this.db.prepare('SELECT * FROM match_rounds WHERE match_id=? AND number=?').get(matchId,round) as {id:string;number:number;blue_score:number;red_score:number;blue_penalties:number;red_penalties:number;winner_side:Side|null;decision_method:string|null;ended_at:string|null};
       const transition=(to:typeof state)=>{assertTransition(state,to);state=to;};
       const assertBreakSuperiorityResolved=()=>{
-        if(ruleset.resultValidation!=='ROUND_WINS')return;
-        const previous=this.db.prepare('SELECT number,blue_score,red_score,winner_side,ended_at FROM match_rounds WHERE match_id=? AND number=?').get(matchId,round-1) as {number:number;blue_score:number;red_score:number;winner_side:Side|null;ended_at:string|null}|undefined;
-        if(previous?.ended_at&&previous.blue_score===previous.red_score&&!previous.winner_side)throw new HttpError(409,'SUPERIORITY_REQUIRED',`Round ${previous.number} is tied. Record the officials' superiority decision before starting the next round.`);
+        const previous=this.unresolvedBreakSuperiority(matchId,current.tournament_id,round);
+        if(previous)throw new HttpError(409,'SUPERIORITY_REQUIRED',`Round ${previous.number} is tied. Record the officials' superiority decision before starting or resuming the next-round rest.`);
       };
       switch(command.type){
         case 'START': {
@@ -67,7 +72,7 @@ export class MatchService {
         }
         case 'RESUME': {
           if(state==='ROUND_BREAK'){
-            if(!timer.running&&nextTimer.remainingMs>0){nextTimer=startTimer(nextTimer,now);eventType='match.resumed';payload={...payload,round,breakResumed:true};break;}
+            if(!timer.running&&nextTimer.remainingMs>0){assertBreakSuperiorityResolved();nextTimer=startTimer(nextTimer,now);eventType='match.resumed';payload={...payload,round,breakResumed:true};break;}
             const timing=this.timing(current.category_id);assertBreakSuperiorityResolved();
             transition('IN_PROGRESS');nextTimer=startTimer(resetTimer({...nextTimer,kind:'ROUND'},timing.roundDurationMs,now),now);eventType='match.resumed';
             this.db.prepare('UPDATE match_rounds SET started_at=COALESCE(started_at,?) WHERE match_id=? AND number=?').run(new Date(now).toISOString(),matchId,round);
@@ -75,7 +80,7 @@ export class MatchService {
           }
           if(state!=='PAUSED')throw new HttpError(409,'INVALID_STATE','Resume requires a paused match or an active round break.');
           if(nextTimer.kind==='BREAK'){
-            transition('ROUND_BREAK');nextTimer=startTimer(nextTimer,now);eventType='match.resumed';payload={...payload,round,breakResumed:true};break;
+            assertBreakSuperiorityResolved();transition('ROUND_BREAK');nextTimer=startTimer(nextTimer,now);eventType='match.resumed';payload={...payload,round,breakResumed:true};break;
           }
           if(nextTimer.remainingMs<=0)throw new HttpError(409,'TIMER_EXPIRED','Reset the timer or advance the round before resuming.');
           if(nextTimer.kind==='MEDICAL'){nextTimer=startTimer(nextTimer,now);eventType='timer.medical_started';}
@@ -86,7 +91,7 @@ export class MatchService {
           if(!command.reason)throw new HttpError(400,'REASON_REQUIRED','A correction reason is required to reset the timer.');
           const timing=this.timing(current.category_id);
           const durationMs=nextTimer.kind==='BREAK'?timing.breakDurationMs:nextTimer.kind==='MEDICAL'?ruleset.medicalTimeoutMs:nextTimer.kind==='GOLDEN_POINT'?(ruleset.goldenPointDurationMs??timing.roundDurationMs):timing.roundDurationMs;
-          nextTimer=resetTimer(nextTimer,durationMs,now);eventType='timer.reset';payload={...payload,reason:command.reason,timerKind:nextTimer.kind};break;
+          nextTimer=resetTimer(nextTimer,durationMs,now);if(nextTimer.kind==='BREAK'&&this.unresolvedBreakSuperiority(matchId,current.tournament_id,round))nextTimer={...nextTimer,holdReason:'SUPERIORITY'};eventType='timer.reset';payload={...payload,reason:command.reason,timerKind:nextTimer.kind};break;
         }
         case 'NEXT_ROUND': {
           if(!['PAUSED','ROUND_BREAK'].includes(state))throw new HttpError(409,'INVALID_STATE','Pause the match before changing rounds.');
@@ -99,13 +104,13 @@ export class MatchService {
           if(round>=timing.rounds)throw new HttpError(409,'FINAL_ROUND','The final round is already active. Complete the match after resolving the result.');
           const endedRound=round;const roundWinner=currentRound.blue_score===currentRound.red_score?null:currentRound.blue_score>currentRound.red_score?'BLUE':'RED';
           this.db.prepare('UPDATE match_rounds SET winner_side=?,decision_method=?,ended_at=? WHERE id=?').run(roundWinner,roundWinner?'SCORE':null,new Date(now).toISOString(),currentRound.id);
-          round+=1;transition('ROUND_BREAK');nextTimer=startTimer(resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now),now);eventType='match.round_changed';
+          round+=1;transition('ROUND_BREAK');const breakTimer=resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now);nextTimer=ruleset.resultValidation==='ROUND_WINS'&&!roundWinner?{...breakTimer,holdReason:'SUPERIORITY' as const}:startTimer(breakTimer,now);eventType='match.round_changed';
           payload={...payload,previousRound:endedRound,round,automatic:false,roundResult:{number:endedRound,blueScore:currentRound.blue_score,redScore:currentRound.red_score,winner:roundWinner}};break;
         }
         case 'PREVIOUS_ROUND': {
           if(!['SUPER_ADMIN','TOURNAMENT_ADMIN'].includes(actor.role)||!command.reason)throw new HttpError(403,'AUTHORIZED_CORRECTION_REQUIRED','Previous-round correction requires an administrator and a reason.');
           if(state==='IN_PROGRESS'||round<=1)throw new HttpError(409,'INVALID_STATE','Pause and select a valid previous round.');
-          round-=1;nextTimer=pauseTimer(nextTimer,now);eventType='match.round_correction';payload={...payload,round,reason:command.reason};break;
+          round-=1;nextTimer={...pauseTimer(nextTimer,now),holdReason:undefined};eventType='match.round_correction';payload={...payload,round,reason:command.reason};break;
         }
         case 'SCORE': {
           if(!['IN_PROGRESS','PAUSED','GOLDEN_POINT'].includes(state))throw new HttpError(409,'INVALID_STATE','Scoring is closed in the current match state.');
@@ -144,7 +149,7 @@ export class MatchService {
             this.db.prepare('UPDATE match_rounds SET winner_side=?,decision_method=?,ended_at=? WHERE id=?').run(roundWinner,roundWinner?'SCORE':null,new Date(now).toISOString(),currentRound.id);
             const roundResult={number:endedRound,blueScore:currentRound.blue_score,redScore:currentRound.red_score,winner:roundWinner};
             if(endedRound<timing.rounds){
-              round+=1;transition('ROUND_BREAK');nextTimer=startTimer(resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now),now);eventType='match.round_changed';
+              round+=1;transition('ROUND_BREAK');const breakTimer=resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now);nextTimer=ruleset.resultValidation==='ROUND_WINS'&&!roundWinner?{...breakTimer,holdReason:'SUPERIORITY' as const}:startTimer(breakTimer,now);eventType='match.round_changed';
               payload={...payload,previousRound:endedRound,round,automatic:true,recoveredPaused:pausedRoundRecovery,roundResult};
             }else{
               transition('PAUSED');nextTimer=pauseTimer(nextTimer,now);eventType='match.paused';payload={...payload,reason:'ROUND_EXPIRED',round:endedRound,automatic:true,roundResult};
@@ -162,6 +167,11 @@ export class MatchService {
           }
           throw new HttpError(409,'INVALID_TIMER_STATE','The expired timer does not match the current match state.');
         }
+        case 'HOLD_FOR_SUPERIORITY': {
+          if(state!=='ROUND_BREAK'||nextTimer.kind!=='BREAK'||!timer.running)throw new HttpError(409,'INVALID_STATE','Only a running round break can be held for superiority.');
+          const target=this.unresolvedBreakSuperiority(matchId,current.tournament_id,round);if(!target)throw new HttpError(409,'SUPERIORITY_NOT_REQUIRED','This break does not have an unresolved tied round.');
+          nextTimer={...nextTimer,running:false,authoritativeAt:now,holdReason:'SUPERIORITY'};eventType='timer.superiority_hold';payload={...payload,round:target.number,reason:'SUPERIORITY_REQUIRED'};break;
+        }
         case 'ROUND_SUPERIORITY': {
           if(ruleset.resultValidation!=='ROUND_WINS')throw new HttpError(409,'INVALID_POLICY','Superiority round decisions apply to round-win results.');
           if(!command.side)throw new HttpError(400,'VALIDATION_ERROR','The officials’ winning side is required.');
@@ -173,7 +183,8 @@ export class MatchService {
           if(target.blue_score!==target.red_score)throw new HttpError(409,'ROUND_NOT_TIED','Superiority is available only when round points are equal.');
           if(target.winner_side)throw new HttpError(409,'ROUND_ALREADY_RESOLVED','This round already has an authoritative winner. A dedicated correction is required.');
           this.db.prepare("UPDATE match_rounds SET winner_side=?,decision_method='SUPERIORITY' WHERE id=?").run(command.side,target.id);
-          eventType='round.superiority_decided';payload={...payload,roundId:target.id,round:target.number,side:command.side,blueScore:target.blue_score,redScore:target.red_score,decisionMethod:'SUPERIORITY',reason:command.reason};break;
+          let restStarted=false;if(['ROUND_BREAK','PAUSED'].includes(state)&&nextTimer.kind==='BREAK'&&(!nextTimer.running||nextTimer.remainingMs<=0)){if(state==='PAUSED')transition('ROUND_BREAK');const duration=nextTimer.remainingMs>0?nextTimer.remainingMs:this.timing(current.category_id).breakDurationMs;nextTimer=startTimer(resetTimer({...nextTimer,kind:'BREAK'},duration,now),now);restStarted=true;}
+          eventType='round.superiority_decided';payload={...payload,roundId:target.id,round:target.number,side:command.side,blueScore:target.blue_score,redScore:target.red_score,decisionMethod:'SUPERIORITY',reason:command.reason,restStarted,restRemainingMs:nextTimer.remainingMs};break;
         }
         case 'COMPLETE': {
           if(!['IN_PROGRESS','PAUSED','ROUND_BREAK','GOLDEN_POINT','UNDER_REVIEW'].includes(state))throw new HttpError(409,'INVALID_STATE','The match cannot be completed from its current state.');
@@ -301,6 +312,9 @@ export class MatchService {
     const changed:string[]=[];
     for(const row of rows){
       const timer=JSON.parse(row.timer_json) as MatchSnapshot['timer'];
+      if(row.state==='ROUND_BREAK'&&timer.kind==='BREAK'&&timer.running&&this.unresolvedBreakSuperiority(row.id,row.tournament_id,row.current_round)){
+        this.execute({id:'system-timer',role:'SUPER_ADMIN',tournamentIds:[row.tournament_id]},row.id,{type:'HOLD_FOR_SUPERIORITY'},`superiority-hold:${row.id}:${timer.authoritativeAt}`);changed.push(row.id);continue;
+      }
       const runningExpired=timer.running&&remainingAt(timer,now)<=0;
       const pausedRoundRecovery=row.state==='PAUSED'&&timer.kind==='ROUND'&&timer.remainingMs<=0&&row.current_round<row.total_rounds;
       if(!runningExpired&&!pausedRoundRecovery)continue;

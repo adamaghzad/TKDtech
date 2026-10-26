@@ -32,6 +32,7 @@ export interface TimerState {
   running: boolean;
   authoritativeAt: number;
   kind: 'ROUND' | 'BREAK' | 'MEDICAL' | 'GOLDEN_POINT';
+  holdReason?: 'SUPERIORITY';
 }
 
 export interface MatchAthlete {
