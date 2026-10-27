@@ -1,30 +1,64 @@
-import{describe,expect,it}from'vitest';import type{MatchSnapshot}from'@tkd/contracts';import{endedRoundWins,liveScoreboardScores,matchResultScores}from'../../apps/web/lib/match-result';
+import { describe, expect, it } from 'vitest';
+import type { MatchSnapshot } from '@tkd/contracts';
+import { endedRoundWins, liveScoreboardScores, matchResultScores } from '../../apps/web/lib/match-result';
 
-function snapshot(decisionMethod:string):MatchSnapshot{return{decisionMethod,blueScore:12,redScore:9,rounds:[
- {id:'r1',number:1,blueScore:5,redScore:2,winner:'BLUE',endedAt:'2026-10-25T00:00:00Z'},
- {id:'r2',number:2,blueScore:3,redScore:5,winner:'RED',endedAt:'2026-10-25T00:01:00Z'},
- {id:'r3',number:3,blueScore:4,redScore:2,winner:'BLUE',endedAt:'2026-10-25T00:02:00Z'},
- {id:'r4',number:4,blueScore:0,redScore:9,winner:'RED',endedAt:null},
-]}as unknown as MatchSnapshot;}
+function snapshot(decisionMethod: string): MatchSnapshot {
+  return {
+    decisionMethod,
+    blueScore: 12,
+    redScore: 9,
+    rounds: [
+      { id: 'r1', number: 1, blueScore: 5, redScore: 2, winner: 'BLUE', endedAt: '2026-10-25T00:00:00Z' },
+      { id: 'r2', number: 2, blueScore: 3, redScore: 5, winner: 'RED', endedAt: '2026-10-25T00:01:00Z' },
+      { id: 'r3', number: 3, blueScore: 4, redScore: 2, winner: 'BLUE', endedAt: '2026-10-25T00:02:00Z' },
+      { id: 'r4', number: 4, blueScore: 0, redScore: 9, winner: 'RED', endedAt: null },
+    ],
+  } as unknown as MatchSnapshot;
+}
 
-describe('match result display scores',()=>{
- it('shows ended round wins for a round-win result, not cumulative points or future rounds',()=>{
-  const match=snapshot('ROUND_WINS');expect(endedRoundWins(match,'BLUE')).toBe(2);expect(endedRoundWins(match,'RED')).toBe(1);expect(matchResultScores(match)).toEqual({blue:2,red:1,label:'ROUND WINS'});
- });
- it('shows current-round points during rounds and time-outs, resets a new round to 0–0, and reserves round wins for rest',()=>{
-  const base=snapshot('ROUND_WINS');const active={...base,currentRound:3,timer:{kind:'ROUND'}}as MatchSnapshot;expect(liveScoreboardScores(active)).toEqual({blue:4,red:2,label:'POINTS'});
-  const timeout={...active,state:'PAUSED'}as MatchSnapshot;expect(liveScoreboardScores(timeout)).toEqual({blue:4,red:2,label:'POINTS'});
-  const nextRound={...base,currentRound:4,timer:{kind:'ROUND'},rounds:base.rounds.map(round=>round.number===4?{...round,blueScore:0,redScore:0,winner:null}:round)}as MatchSnapshot;expect(nextRound.blueScore).toBe(12);expect(nextRound.redScore).toBe(9);expect(liveScoreboardScores(nextRound)).toEqual({blue:0,red:0,label:'POINTS'});
-  const resting={...base,currentRound:2,timer:{kind:'BREAK'}}as MatchSnapshot;expect(liveScoreboardScores(resting)).toEqual({blue:1,red:0,label:'ROUND WINS'});
-  const redWon={...resting,blueScore:2,redScore:7,rounds:resting.rounds.map(round=>round.number===1?{...round,blueScore:2,redScore:7,winner:'RED'}:round)}as MatchSnapshot;expect(liveScoreboardScores(redWon)).toEqual({blue:0,red:1,label:'ROUND WINS'});
- });
- it('shows authoritative total points when total points decide the result',()=>{
-  expect(matchResultScores(snapshot('TOTAL_POINTS'))).toEqual({blue:12,red:9,label:'TOTAL POINTS'});
- });
- it('shows cumulative points for a match point-gap result',()=>{
-  expect(matchResultScores(snapshot('POINT_GAP'))).toEqual({blue:12,red:9,label:'TOTAL POINTS'});
- });
- it('keeps the round-win score visible for a Golden Point decision',()=>{
-  expect(matchResultScores(snapshot('GOLDEN_POINT'))).toEqual({blue:2,red:1,label:'ROUND WINS'});
- });
+describe('match result display scores', () => {
+  it('shows total ended round wins for a round-win result, not cumulative points or future rounds', () => {
+    const match = snapshot('ROUND_WINS');
+    expect(endedRoundWins(match, 'BLUE')).toBe(2);
+    expect(endedRoundWins(match, 'RED')).toBe(1);
+    expect(matchResultScores(match)).toEqual({ blue: 2, red: 1, label: 'TOTAL ROUND WINS' });
+  });
+
+  it('shows current-round points during rounds and time-outs, resets a new round to 0–0, and reserves round wins for rest', () => {
+    const base = snapshot('ROUND_WINS');
+    const active = { ...base, currentRound: 3, timer: { kind: 'ROUND' } } as MatchSnapshot;
+    expect(liveScoreboardScores(active)).toEqual({ blue: 4, red: 2, label: 'POINTS' });
+    const timeout = { ...active, state: 'PAUSED' } as MatchSnapshot;
+    expect(liveScoreboardScores(timeout)).toEqual({ blue: 4, red: 2, label: 'POINTS' });
+    const nextRound = { ...base, currentRound: 4, timer: { kind: 'ROUND' }, rounds: base.rounds.map((round) => round.number === 4 ? { ...round, blueScore: 0, redScore: 0, winner: null } : round) } as MatchSnapshot;
+    expect(nextRound.blueScore).toBe(12);
+    expect(nextRound.redScore).toBe(9);
+    expect(liveScoreboardScores(nextRound)).toEqual({ blue: 0, red: 0, label: 'POINTS' });
+    const resting = { ...base, currentRound: 2, timer: { kind: 'BREAK' } } as MatchSnapshot;
+    expect(liveScoreboardScores(resting)).toEqual({ blue: 1, red: 0, label: 'ROUND WINS' });
+    const redWon = { ...resting, blueScore: 2, redScore: 7, rounds: resting.rounds.map((round) => round.number === 1 ? { ...round, blueScore: 2, redScore: 7, winner: 'RED' } : round) } as MatchSnapshot;
+    expect(liveScoreboardScores(redWon)).toEqual({ blue: 0, red: 1, label: 'ROUND WINS' });
+  });
+
+  it('shows authoritative total points when total points explicitly decide the result', () => {
+    expect(matchResultScores(snapshot('TOTAL_POINTS'))).toEqual({ blue: 12, red: 9, label: 'TOTAL POINTS' });
+  });
+
+  it('shows 2–0 total round wins for the 46–19 point-gap result, with points kept secondary', () => {
+    const match = snapshot('POINT_GAP');
+    match.blueScore = 46;
+    match.redScore = 19;
+    match.rounds = [
+      { ...match.rounds[0]!, blueScore: 18, redScore: 0, winner: 'BLUE' },
+      { ...match.rounds[1]!, blueScore: 28, redScore: 19, winner: 'BLUE' },
+      { ...match.rounds[2]!, blueScore: 0, redScore: 0, winner: null, endedAt: null },
+    ];
+    expect(matchResultScores(match)).toEqual({ blue: 2, red: 0, label: 'TOTAL ROUND WINS' });
+    expect(match.blueScore).toBe(46);
+    expect(match.redScore).toBe(19);
+  });
+
+  it('keeps the total round-win score visible for a Golden Point decision', () => {
+    expect(matchResultScores(snapshot('GOLDEN_POINT'))).toEqual({ blue: 2, red: 1, label: 'TOTAL ROUND WINS' });
+  });
 });
