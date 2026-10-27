@@ -16,10 +16,17 @@ A production-oriented Taekwondo tournament administration and Kyorugi scoring sy
 | Displays/devices | Read-only 16:9 public display, operator console, short-lived QR pairing, responsive controller-style J1/J2/J3 controls with fixed Blue/Red touch zones and device feedback, referee controls, presence expiry and reconnection recovery |
 | Reports | Authenticated CSV and PDF exports; results and medal tables derive from stored records |
 | Browser/PWA | Responsive App Router UI, localization resources, installable manifest and application-shell service worker |
+| Portable Windows desktop | Electron launcher + bundled Node 22 + the same Express/Next.js/SQLite system; automatic startup, per-user persistence, supervised shutdown and LAN access. Windows x64 ZIP is a GitHub Release asset; physical-Windows verification remains required |
 | Supabase foundation | PostgreSQL schema, RLS, storage policies, Auth trigger, Realtime publication, typed clients, and idempotent event-ingest RPC included; migration executed successfully against local PostgreSQL 17 with Supabase-compatible validation stubs |
 | Live cloud deployment | **Not verified against a real Supabase project.** Full cloud administration/scoring parity and complete tournament provisioning/bidirectional synchronization remain work; do not treat the event-log push as a complete cloud backup |
 | Android server hosting | **Not implemented or claimed.** Use a laptop/dedicated Linux host. The browser PWA is not an offline tournament server |
 | PSS/IVR hardware | Not integrated. Browser judge buttons submit scoring proposals only |
+
+## Windows desktop: download and run everything locally
+
+Use the [website download page](https://p01--tkd-scoring--krbhnw2hlgh6.code.run/download) or the public `desktop-v1.0.0` GitHub Release. Download `TKD-Scoring-Windows-x64.zip` and its separate SHA-256 file, extract the entire archive, then run **`TKD Scoring.exe`**. Node.js installation and terminal commands are not required.
+
+The launcher automatically starts the existing Express, Next.js, SQLite and WebSocket system, opens the operator, and keeps the database in the Windows user profile. Press **Ctrl+Shift+L** for LAN addresses, data/logs and recovery controls. The portable release is unsigned, so Windows may show SmartScreen/unknown-publisher warnings. See [Desktop operation and packaging](docs/DESKTOP.md) before an official event.
 
 ## Quick start: development showcase
 
@@ -87,11 +94,14 @@ Register the initial organization at `/login`, then create a tournament. See [De
 | `npm run lint` | Noninteractive ESLint flat-config check |
 | `npm test` | Unit, integration, realtime, security-configuration, and sync tests |
 | `npm run test:integration` | SQLite persistence, WebSocket, and synchronization integration tests |
-| `npm run test:e2e` | Real Chromium dashboard/operator/public/mobile-judge tests |
+| `npm run test:e2e` | Real Chromium dashboard/operator/public/mobile-judge/download tests |
+| `npm run desktop:build` | Strictly compile the Electron main/preload launcher |
+| `npm run desktop:package` | Build and validate the portable Windows x64 ZIP and separate SHA-256 (large artifacts stay out of Git) |
+| `npm run test:desktop:runtime` | Optimized Express + Next.js + SQLite desktop-supervisor smoke, authenticated write and restart-persistence verification |
 | `npm run validate:migrations` | Fresh SQLite migration, required entities, and foreign-key validation |
 | `npm run validate:supabase` | Temporary PostgreSQL migration/RLS/trigger/RPC validation; requires PostgreSQL binaries |
 | `npm run backup -- /path/backup.db` | Consistent online SQLite backup followed by integrity check |
-| `npm run check` | Types, lint, tests, SQLite migration validation, and production build |
+| `npm run check` | Types, lint, tests, SQLite migration validation, desktop launcher compilation, and production build |
 
 For a new browser-test machine:
 
@@ -117,6 +127,8 @@ Local Express server :3000  ── proxies non-API traffic ──▶ Next.js :30
 Supabase cloud: separate PostgreSQL/Auth/RLS/Realtime/Storage authority
 ```
 
+The portable desktop wraps this same topology in an Electron launcher and bundled external Node supervisor. It does not replace the domain logic: Express remains the authority on port `3000`, Next.js remains loopback-only on `3001`, and SQLite moves to the desktop user's persistent data directory. IPC, heartbeat monitoring and per-instance runtime identity coordinate clean shutdown and orphan recovery.
+
 A service worker can cache the application shell but is never an authority. A cloud Next.js deployment cannot serve judges on an Internet-disconnected LAN. The local server must remain running on a network-accessible host for offline operation.
 
 ## Security defaults
@@ -128,6 +140,7 @@ A service worker can cache the application shell but is never an authority. A cl
 - Public tournament responses exclude DOB, club contact details, session/token records, and internal registration data.
 - The Supabase service-role key is read only by the local/server sync process, never by browser source.
 - Development seeding requires `SEED_DEVELOPMENT=true`; the demo endpoint separately requires `ALLOW_DEMO_LOGIN=true`.
+- Desktop staging excludes environment files, local databases and development dependencies, disables demo access, clears cloud service-role configuration, and uses isolated/sandboxed Electron renderer windows without Node integration.
 
 ## Documentation
 
@@ -135,6 +148,7 @@ A service worker can cache the application shell but is never an authority. A cl
 - [Northflank Sandbox container deployment](docs/NORTHFLANK_SANDBOX.md)
 - [Supabase activation for the configured project](docs/SUPABASE_ACTIVATION.md)
 - [Supabase/cloud setup and boundaries](docs/CLOUD.md)
+- [Portable Windows desktop operation, packaging, and release](docs/DESKTOP.md)
 - [Operations, backup, recovery, and troubleshooting](docs/OPERATIONS.md)
 - [HTTP/WebSocket API](docs/API.md)
 - [Security and roles](docs/SECURITY.md)

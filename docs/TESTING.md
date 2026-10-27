@@ -1,6 +1,6 @@
 # Verification record
 
-Verified locally on **2026-10-26** with **Node.js 22.16.0**, **Next.js 16.4.3**, **React 19**, **Zod 4.6.7**, and Chromium via Playwright.
+Verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**, **React 19**, **Zod 4.6.7**, **Electron 45**, and Chromium via Playwright.
 
 ## Automated checks
 
@@ -8,8 +8,10 @@ Verified locally on **2026-10-26** with **Node.js 22.16.0**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **122/122 tests passed across 19 files** |
-| `npm run test:e2e` | **13/13 real Chromium tests passed** against the final Next 16 production preview |
+| `npm test` | **139/139 tests passed across 22 files** |
+| `npm run test:e2e` | **14/14 real Chromium tests passed** against the Next 16 production preview |
+| `npm run desktop:build` | Passed strict Electron main/preload TypeScript compilation |
+| `npm run test:desktop:runtime` | Passed optimized desktop-supervisor startup, internal identity boundary, public download page, authenticated tournament write, clean shutdown and restart persistence |
 | `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
 | `npm run build` | Passed: optimized Next 16.4.3 App Router production build with proxy convention |
@@ -60,6 +62,7 @@ The Playwright suite verifies:
 11. The fifth cumulative Gam-Jeom against Blue immediately opens a dedicated **MATCH … RESULT** view on the match-specific public display; Chromium verifies Red's `DISQUALIFICATION` win, the yellow winner banner, authoritative winner name/country, decision-aware Blue/Red result values, and total-point summary. The public mat display then automatically rolls to the next eligible queued match, whose timer remains stopped in `READY`.
 12. Chromium opens the real tournament settings form, verifies the active-match save lock, saves round gap 12, match gap 18 with Round 2/Round 3 timing, Gam-Jeom +2, and disqualification at 6, reads back the `2025.1-example-r2` configuration through the authorized API, and confirms the persisted `RULESET_UPDATED` audit entry.
 13. In a fresh tournament, Chromium uploads `01-clubs-test.csv`, `02-categories-test.csv`, and `03-athletes-import.csv` in order. It verifies 4 clubs and 4 categories, duplicate rejection on repeated club/category uploads, then 12 athletes with correct name-based club/category assignments, 3 passing entries per category, and 12/12 successful athlete rows.
+14. An unauthenticated browser opens the public desktop download page, verifies the versioned ZIP/checksum/release links, extraction and firewall guidance, unsigned-build disclosure and persistent-data information, and checks 390 px mobile layout without horizontal overflow. The login page links to the download and, in production mode, shows blank credentials with no development-showcase button.
 
 Reviewed screenshots:
 
@@ -91,8 +94,18 @@ Reviewed screenshots:
 - `artifacts/gam-jeom-disqualification-display.png`
 - `artifacts/csv-import-athletes.png`
 - `artifacts/point-gap-settings.png`
+- `artifacts/desktop-download-page.png`
+- `artifacts/desktop-download-mobile.png`
 
 No browser page errors were observed in the dashboard/operator test.
+
+## Desktop and portable-package checks
+
+- Supervisor fault-injection tests start both services, verify graceful IPC shutdown, simulate launcher heartbeat loss, and stop the sibling service when one runtime exits. LAN selection tests reject public/loopback pairing addresses and deduplicate/private-sort usable IPv4 addresses.
+- The optimized production supervisor smoke creates a real organization and tournament through HTTP, checks the download page and loopback-only runtime identity route, closes both services, restarts against the same SQLite path, and verifies the tournament and authentication session survive.
+- The actual Electron 45 launcher was also executed on Linux under Xvfb with the real optimized application. It automatically opened the local operator, reported `RUNNING` through the isolated preload IPC, responded to **Ctrl+Shift+L**, started matching Express/Next.js instances, created a tournament, shut down cleanly with exit code 0, and preserved that tournament/session across a second full Electron launch and shutdown.
+- The Windows packaging script produced `TKD-Scoring-Windows-x64.zip`, extracted it again, and validated the EXE, bundled Node runtime, Windows `tsx`/esbuild, optimized Next.js output, migration and Windows SQLite prebuild. Native modules were checked as PE32+ x64; environment files and tournament databases were rejected. The Node archive was verified against official Node.js SHA-256 sums and the SQLite prebuild against pinned reviewed hashes.
+- The large ZIP and extracted staging directories are not tracked by Git. The release uses a separate `.sha256` asset so the package does not embed a self-invalidating hash.
 
 ## Runtime and recovery checks
 
@@ -105,6 +118,7 @@ No browser page errors were observed in the dashboard/operator test.
 
 ## Not verified / not claimed
 
+- The Windows x64 artifact was cross-packaged and statically validated on Linux, but **not executed on a physical Windows 10/11 machine**. Windows Explorer extraction, SmartScreen, Firewall prompts, win32 process-tree termination, real Windows LAN pairing, and the complete no-Node-installed Windows workflow still require the checklist in `docs/DESKTOP.md`. Linux Electron execution is not represented as Windows verification.
 - No hosted Supabase project was available. Hosted Auth, Realtime, Storage, project default privileges, and production cloud deployment remain unverified. PostgreSQL validation used local Supabase-compatible `auth`/`storage` stubs, not the hosted service.
 - Full cloud workflow parity, complete snapshot provisioning, and bidirectional conflict resolution are not complete.
 - Dedicated completed-result correction with safe downstream bracket reversal is not complete.

@@ -14,7 +14,7 @@
     "start": "concurrently -n LOCAL,WEB -c green,cyan \"tsx apps/local-server/src/index.ts\" \"wait-on tcp:127.0.0.1:3000 && next start apps/web -p 3001 -H 127.0.0.1\"",
     "build": "next build apps/web",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint apps/web apps/local-server packages tests scripts",
+    "lint": "eslint apps/web apps/local-server packages tests scripts desktop",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run tests/integration",
@@ -24,7 +24,10 @@
     "backup": "tsx scripts/backup.ts",
     "check:database": "tsx scripts/check-database.ts",
     "check:supabase": "tsx scripts/check-supabase.ts",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run validate:migrations && npm run build"
+    "desktop:build": "npm --prefix desktop run build",
+    "desktop:package": "node desktop/scripts/build-windows.mjs",
+    "test:desktop:runtime": "node scripts/smoke-desktop-runtime.mjs",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run validate:migrations && npm run desktop:build && npm run build"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -52,6 +55,7 @@
     "react-hook-form": "^7.91.0",
     "recharts": "^2.15.0",
     "tailwind-merge": "^2.6.0",
+    "tsx": "^4.19.2",
     "ws": "^8.18.0",
     "zod": "^4.6.7"
   },
@@ -73,7 +77,6 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "tailwindcss-animate": "^1.0.7",
-    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8",
     "wait-on": "^9.5.1"

@@ -51,6 +51,20 @@ The public TV and operator scoreboard provide a clearly visible per-device sound
 - Persist the event and match transaction first; only then acknowledge/broadcast.
 - Corrections require a reason and create new audit/history records. Never edit the database to erase a published mistake.
 
+## Portable Windows desktop operations
+
+For the portable app, extract the complete official Windows x64 ZIP and run `TKD Scoring.exe`; never run it inside the ZIP or move the EXE away from `resources`. No Node.js/npm setup is needed. The launcher starts the same Express/Next.js/SQLite/WebSocket system and opens the operator only after readiness. Register a real organization—desktop demo access is disabled.
+
+- Press **Ctrl+Shift+L** in the operator window for detected LAN addresses, startup state, retry, data and logs.
+- The database is `%APPDATA%\TKD Scoring\data\tkd-scoring.db`; logs are under `%APPDATA%\TKD Scoring\logs`.
+- Keep ports `3000` and `3001` free. Separate venue devices use the PC's LAN address on port `3000`, never the loopback-only `3001` port.
+- Allow private/local network access if Windows Firewall requests it, and check Wi-Fi client isolation. Do not expose the local port directly to the Internet.
+- The portable release is unsigned; expect possible SmartScreen/unknown-publisher warnings and verify the separate release SHA-256 before running.
+- Close the app before copying the whole data folder for backup. Replacing the portable folder does not intentionally delete per-user data.
+- Normal close uses supervised shutdown; heartbeat and per-instance identity checks handle launcher loss and orphan cleanup. After any abrupt failure, verify recovered match/timers with officials before resuming.
+
+See [Desktop operation and packaging](DESKTOP.md) for updates, release verification, and the required physical-Windows checklist.
+
 ## Process restart and power recovery
 
 Running timers are deliberately changed to a confirmation-safe paused state during recovery. A graceful shutdown persists the paused remaining time before the database closes; after an abrupt crash, officials must verify the recovered timer against their own records. A nonfinal round already at zero is treated as expired and automatically enters rest; non-tied rounds start counting down, while an unresolved tied round keeps its superiority hold. Final-round zero without a two-round winner remains paused for the result workflow. After a restart:
@@ -120,6 +134,9 @@ Do not expose club contacts or full registration exports on the public TV browse
 | Symptom | Check |
 |---|---|
 | Rest stays at `0.00` before the next round | Confirm the deployed health includes `pausedZeroRecovery: NON_FINAL_ROUND_TO_BREAK`; a nonfinal paused-zero round should enter rest within 500 ms. At genuine rest expiry, `0.00 · REST ENDED` is expected and the operator/referee must start the next round. |
+| Desktop does not open the operator | Extract the whole ZIP, keep `resources` beside the EXE, free ports 3000/3001, then open **Ctrl+Shift+L → Open logs**; use Retry after correcting the cause |
+| Windows warns about the desktop publisher | This portable release is unsigned; verify the official release SHA-256 and source before proceeding |
+| Desktop LAN pairing is unavailable | Check the status panel for a private LAN address, reconnect the PC to the venue network and restart; verify firewall/client isolation |
 | `WEB_UNAVAILABLE` | Ensure Next.js is running on internal port 3001 and `WEB_INTERNAL_URL` points to it |
 | LAN device cannot connect | Host firewall, Wi-Fi client isolation, correct interface/IP, port 3000, and that all devices use the same LAN |
 | Judge buttons disabled | Session status/expiry, heartbeat presence, match state, and whether the referee/operator started the round |

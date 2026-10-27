@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; font-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TKD Scoring · Local Desktop</title>
+  <style>
+    :root{color-scheme:dark;--bg:#080d18;--panel:#101827;--line:#263248;--muted:#94a3b8;--blue:#4f8cff;--yellow:#f0ff00;--red:#e53945}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% -10%,#15336b 0,transparent 38%),var(--bg);color:#f8fafc;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+    main{max-width:620px;margin:auto;padding:30px 30px 24px}.brand{display:flex;align-items:center;gap:12px;margin-bottom:26px}.brand svg{width:44px;height:44px}.name{font-size:20px;font-weight:900;font-style:italic;letter-spacing:.04em}.name span{color:var(--blue)}.sub{color:var(--muted);font-size:9px;letter-spacing:.15em;text-transform:uppercase}
+    .hero{border:1px solid var(--line);background:color-mix(in srgb,var(--panel) 92%,transparent);border-radius:20px;padding:24px;box-shadow:0 24px 70px #0005}.state{display:flex;align-items:center;gap:10px;margin-bottom:14px}.dot{width:11px;height:11px;border-radius:50%;background:var(--yellow);box-shadow:0 0 20px #f0ff0080}.dot.running{background:#36d399;box-shadow:0 0 20px #36d39980}.dot.failed{background:var(--red);box-shadow:0 0 20px #e5394580}.dot.starting{animation:pulse 1.3s infinite}@keyframes pulse{50%{opacity:.3;transform:scale(.75)}}
+    h1{font-size:21px;line-height:1.2;margin:0}#message{color:var(--muted);font-size:14px;margin:0 0 20px;min-height:44px}.section{border-top:1px solid var(--line);padding-top:17px;margin-top:17px}.label{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#7c8ba4;margin-bottom:8px}.url{font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:#dbeafe;overflow-wrap:anywhere}.lan{display:grid;gap:5px}.muted{color:var(--muted)}
+    .actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}button{appearance:none;border:1px solid var(--line);border-radius:10px;background:#182338;color:#f8fafc;padding:10px 14px;font:700 12px system-ui;cursor:pointer}button:hover:not(:disabled){border-color:var(--blue);background:#1d2d49}button.primary{background:var(--blue);border-color:var(--blue);color:#06101f}button:disabled{opacity:.4;cursor:not-allowed}.hidden{display:none!important}
+    .notes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}.note{border:1px solid var(--line);border-radius:14px;padding:15px;background:#0c1422}.note strong{display:block;font-size:12px;margin-bottom:5px}.note p{font-size:11px;color:var(--muted);margin:0}.foot{color:#718096;font-size:10px;margin-top:18px;text-align:center}kbd{border:1px solid #334155;border-radius:4px;padding:1px 4px;font:10px ui-monospace;color:#cbd5e1}@media(max-width:540px){main{padding:22px 18px}.notes{grid-template-columns:1fr}.hero{padding:20px}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="brand">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M7 12h48L45 25H34L23 59H8l12-34H7z" fill="#2068ff"/><path d="M36 29h21L45 59H31l9-23H28z" fill="#c91525"/><path d="m53 2 2.4 6.6L62 11l-6.6 2.4L53 20l-2.4-6.6L44 11l6.6-2.6z" fill="#f0ff00"/></svg>
+    <div><div class="name">TKD <span>SCORING</span></div><div class="sub">TKDTech Sports Management</div></div>
+  </div>
+  <section class="hero">
+    <div class="state"><span id="dot" class="dot starting"></span><h1 id="title">Starting local mode</h1></div>
+    <p id="message">Starting the complete local scoring system…</p>
+    <div class="section"><div class="label">Operator on this computer</div><div id="operator" class="url"></div></div>
+    <div class="section"><div class="label">Judge & referee LAN access</div><div id="lan" class="lan"></div></div>
+    <div class="actions">
+      <button id="open" class="primary" disabled>Open operator</button>
+      <button id="retry" class="hidden">Retry startup</button>
+      <button id="data">Open data folder</button>
+      <button id="logs">Open logs</button>
+    </div>
+  </section>
+  <div class="notes">
+    <div class="note"><strong>Persistent & offline</strong><p>Express, Next.js, SQLite and realtime WebSockets run locally. Your tournament data stays on this computer.</p></div>
+    <div class="note"><strong>First Windows run</strong><p>Extract the entire ZIP first. If Windows Firewall asks, allow local/private network access so judge devices can connect.</p></div>
+  </div>
+  <div class="foot">Portable desktop <span id="version"></span> · Press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>L</kbd> in the operator window to reopen this panel.</div>
+</main>
+<script>
+  const byId=(id)=>document.getElementById(id);
+  const titles={STARTING:'Starting local mode',RUNNING:'Local mode is ready',STOPPING:'Shutting down safely',STOPPED:'Local mode is stopped',FAILED:'Local mode needs attention'};
+  function render(status){
+    if(!status)return;
+    byId('title').textContent=titles[status.state]||'TKD Scoring desktop';
+    byId('message').textContent=status.message||'';
+    byId('operator').textContent=status.operatorUrl||'';
+    byId('version').textContent=status.version?`v${status.version}`:'';
+    byId('dot').className=`dot ${String(status.state||'').toLowerCase()}`;
+    byId('open').disabled=status.state!=='RUNNING';
+    byId('retry').classList.toggle('hidden',!['FAILED','STOPPED'].includes(status.state));
+    const lan=byId('lan');lan.replaceChildren();
+    if(status.lanUrls&&status.lanUrls.length){
+      for(const value of status.lanUrls){const row=document.createElement('div');row.className='url';row.textContent=value;lan.appendChild(row);}
+      const hint=document.createElement('div');hint.className='muted';hint.textContent='Use these addresses only on devices connected to the same local network.';lan.appendChild(hint);
+    }else{
+      const row=document.createElement('div');row.className='muted';row.textContent='No private LAN address detected. Connect this computer to the venue network, then restart the app.';lan.appendChild(row);
+    }
+  }
+  byId('open').addEventListener('click',()=>window.tkdDesktop.openOperator());
+  byId('retry').addEventListener('click',async()=>{byId('retry').disabled=true;try{await window.tkdDesktop.retry();}finally{byId('retry').disabled=false;}});
+  byId('data').addEventListener('click',()=>window.tkdDesktop.openData());
+  byId('logs').addEventListener('click',()=>window.tkdDesktop.openLogs());
+  window.tkdDesktop.onStatus(render);
+  window.tkdDesktop.getStatus().then(render);
+</script>
+</body>
+</html>
