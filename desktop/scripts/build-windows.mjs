@@ -106,9 +106,9 @@ function walk(directory) {
 function assertNoSecrets(directory) {
   const forbidden = walk(directory).filter((filename) => {
     const name = path.basename(filename).toLowerCase();
-    return name === '.env' || name.startsWith('.env.') || name === 'tkd-scoring.db' || name.endsWith('.sqlite') || name.endsWith('.db-wal') || name.endsWith('.db-shm');
+    return name === '.env' || name.startsWith('.env.') || name.endsWith('.tkdlicense') || (name.endsWith('.pem') && name.includes('private')) || name === 'tkd-scoring.db' || name.endsWith('.sqlite') || name.endsWith('.db-wal') || name.endsWith('.db-shm');
   });
-  if (forbidden.length) throw new Error(`Refusing to package environment files or local databases:\n${forbidden.join('\n')}`);
+  if (forbidden.length) throw new Error(`Refusing to package environment files, private keys, customer licenses, or local databases:\n${forbidden.join('\n')}`);
 }
 
 async function stageApplication(appRoot) {
@@ -119,6 +119,7 @@ async function stageApplication(appRoot) {
   copy(path.join(rootDir, 'apps', 'local-server', 'src'), path.join(appRoot, 'apps', 'local-server', 'src'));
   copy(path.join(rootDir, 'packages', 'contracts', 'src'), path.join(appRoot, 'packages', 'contracts', 'src'));
   copy(path.join(rootDir, 'packages', 'domain', 'src'), path.join(appRoot, 'packages', 'domain', 'src'));
+  copy(path.join(rootDir, 'packages', 'licensing', 'src'), path.join(appRoot, 'packages', 'licensing', 'src'));
   copy(path.join(rootDir, 'apps', 'web', '.next'), path.join(appRoot, 'apps', 'web', '.next'), {
     filter: (source) => !source.includes(`${path.sep}.next${path.sep}cache`) && !source.includes(`${path.sep}.next${path.sep}dev`),
   });
@@ -202,6 +203,8 @@ async function validatePortableDirectory(directory) {
     path.join(resources, 'desktop', 'control.html'),
     path.join(resources, 'app-root', 'apps', 'web', '.next', 'BUILD_ID'),
     path.join(resources, 'app-root', 'apps', 'local-server', 'src', 'persistence', 'migrations', '001_initial.sql'),
+    path.join(resources, 'app-root', 'apps', 'local-server', 'src', 'licensing', 'service.ts'),
+    path.join(resources, 'app-root', 'packages', 'licensing', 'src', 'key.ts'),
     path.join(resources, 'app-root', 'node_modules', 'tsx', 'dist', 'cli.mjs'),
     path.join(resources, 'app-root', 'node_modules', 'next', 'dist', 'bin', 'next'),
     path.join(resources, 'app-root', 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node'),
@@ -271,6 +274,7 @@ const releaseInfo = {
   node: nodeVersion,
   electron: desktopPackage.devDependencies.electron,
   betterSqlite3: sqliteVersion,
+  licensing: 'Ed25519-signed, device-bound offline desktop activation; private key and customer licenses excluded',
   sourceRevision: await git(['rev-parse', 'HEAD']),
   sourceTreeDirty: Boolean(await git(['status', '--porcelain'])),
   builtAt: new Date().toISOString(),
@@ -306,7 +310,7 @@ const [portableDirectory] = await packager({
   },
 });
 await validatePortableDirectory(portableDirectory);
-writeFileSync(path.join(portableDirectory, 'READ-ME-FIRST.txt'), `TKD SCORING ${version} — WINDOWS x64 PORTABLE\n\n1. Extract this entire folder from the ZIP. Do not run the EXE inside the ZIP.\n2. Run \"TKD Scoring.exe\". Keep the resources folder beside it.\n3. The complete local system starts automatically; Node.js installation and commands are not required.\n4. On first run, allow private/local network access if Windows Firewall asks. Judge devices must use the same LAN.\n5. Press Ctrl+Shift+L in the operator window to open local status, LAN addresses, data and logs.\n\nDATA\nYour SQLite database is stored in your Windows user profile under %APPDATA%\\TKD Scoring\\data. Close the app before backing up the whole data folder. Reinstalling or replacing the portable folder does not intentionally delete this database.\n\nPORTS\nOperator/API/LAN: 3000. Internal Next.js: 3001 (loopback only). Close other software using these ports before starting.\n\nSECURITY NOTICE\nThis portable build is not code-signed. Windows may show an unknown-publisher or SmartScreen warning. Download only from the official TKDtech GitHub release and verify the published SHA-256.\n\nOriginal TKD Scoring software by ADAM AGHZAF · TKDTech Sports Management.\n`);
+writeFileSync(path.join(portableDirectory, 'READ-ME-FIRST.txt'), `TKD SCORING ${version} — WINDOWS x64 PORTABLE\n\n1. Extract this entire folder from the ZIP. Do not run the EXE inside the ZIP.\n2. Run \"TKD Scoring.exe\". Keep the resources folder beside it.\n3. The complete local system starts automatically; Node.js installation and commands are not required.\n4. On first run, copy the installation code shown in Activation and request a paid license from TKDTech. Import the signed .tkdlicense file before creating tournament work.\n5. Allow private/local network access if Windows Firewall asks. Judge devices must use the same LAN.\n6. Press Ctrl+Shift+L in the operator window to open local status, LAN addresses, data and logs.\n\nDATA\nYour SQLite database is stored in your Windows user profile under %APPDATA%\\TKD Scoring\\data. Close the app before backing up the whole data folder. Reinstalling or replacing the portable folder does not intentionally delete this database.\n\nPORTS\nOperator/API/LAN: 3000. Internal Next.js: 3001 (loopback only). Close other software using these ports before starting.\n\nLICENSE\nA signed license is bound to this computer/installation and its paid validity period. Tournament records stay readable and exportable after expiry; new work is blocked, while an already in-progress tournament can be finished. Internet is not required for scoring after activation. Do not delete the license folder when moving or updating the portable folder; request a device transfer when changing computers.\n\nSECURITY NOTICE\nThis portable build is not code-signed. Windows may show an unknown-publisher or SmartScreen warning. Download only from the official TKDtech GitHub release and verify the published SHA-256.\n\nOriginal TKD Scoring software by ADAM AGHZAF · TKDTech Sports Management.\n`);
 
 console.log('[package] Creating ZIP…');
 await createZip(portableDirectory);

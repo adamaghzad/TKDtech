@@ -17,6 +17,7 @@ A production-oriented Taekwondo tournament administration and Kyorugi scoring sy
 | Reports | Authenticated CSV and PDF exports; results and medal tables derive from stored records |
 | Browser/PWA | Responsive App Router UI, localization resources, installable manifest and application-shell service worker |
 | Portable Windows desktop | Electron launcher + bundled Node 22 + the same Express/Next.js/SQLite system; automatic startup, per-user persistence, supervised shutdown and LAN access. Windows x64 ZIP is a GitHub Release asset; physical-Windows verification remains required |
+| Paid desktop licensing | Ed25519-signed, device-bound `.tkdlicense` files; private owner-only issuer, activation UI, server-side tournament/scoring enforcement, offline LAN operation, renewal warnings, and in-progress tournament continuation after expiry |
 | Supabase foundation | PostgreSQL schema, RLS, storage policies, Auth trigger, Realtime publication, typed clients, and idempotent event-ingest RPC included; migration executed successfully against local PostgreSQL 17 with Supabase-compatible validation stubs |
 | Live cloud deployment | **Not verified against a real Supabase project.** Full cloud administration/scoring parity and complete tournament provisioning/bidirectional synchronization remain work; do not treat the event-log push as a complete cloud backup |
 | Android server hosting | **Not implemented or claimed.** Use a laptop/dedicated Linux host. The browser PWA is not an offline tournament server |
@@ -26,7 +27,7 @@ A production-oriented Taekwondo tournament administration and Kyorugi scoring sy
 
 Use the [website download page](https://p01--tkd-scoring--krbhnw2hlgh6.code.run/download) or the public `desktop-v1.0.1` GitHub Release. Download `TKD-Scoring-Windows-x64.zip` and its separate SHA-256 file, extract the entire archive, then run **`TKD Scoring.exe`**. Node.js installation and terminal commands are not required.
 
-The launcher automatically starts the existing Express, Next.js, SQLite and WebSocket system, opens the operator, and keeps the database in the Windows user profile. Press **Ctrl+Shift+L** for LAN addresses, data/logs and recovery controls. The portable release is unsigned, so Windows may show SmartScreen/unknown-publisher warnings. See [Desktop operation and packaging](docs/DESKTOP.md) before an official event.
+The launcher automatically starts the existing Express, Next.js, SQLite and WebSocket system, opens activation when required, and keeps the database and signed license in the Windows user profile. Tournament work requires a paid, device-bound license; see [Paid desktop licensing](docs/LICENSING.md). Press **Ctrl+Shift+L** for LAN addresses, data/logs and recovery controls. The portable release is unsigned, so Windows may show SmartScreen/unknown-publisher warnings. See [Desktop operation and packaging](docs/DESKTOP.md) before an official event.
 
 ## Quick start: development showcase
 
@@ -110,7 +111,7 @@ npx playwright install --with-deps chromium
 npm run test:e2e
 ```
 
-The Playwright configuration reuses port `3000` when available or starts an isolated seeded development database.
+The Playwright configuration reuses port `3000` when available or builds and starts an isolated production server with a seeded test database and test-only demo API. The production login does not render a demo button. Before a full verification run, remove stale test state with `rm -f /tmp/tkd-e2e.db /tmp/tkd-e2e.db-shm /tmp/tkd-e2e.db-wal`; never use that test database for an official event.
 
 ## Architecture
 
@@ -139,6 +140,7 @@ A service worker can cache the application shell but is never an authority. A cl
 - Draw versions, match events, and completed results have immutable/append-only protections.
 - Public tournament responses exclude DOB, club contact details, session/token records, and internal registration data.
 - The Supabase service-role key is read only by the local/server sync process, never by browser source.
+- The desktop licensing private key remains outside Git and packages; only its Ed25519 public verification key is embedded. Express enforces activation on tournament/scoring mutations, not only the activation UI.
 - Development seeding requires `SEED_DEVELOPMENT=true`; the demo endpoint separately requires `ALLOW_DEMO_LOGIN=true`.
 - Desktop staging excludes environment files, local databases and development dependencies, disables demo access, clears cloud service-role configuration, and uses isolated/sandboxed Electron renderer windows without Node integration.
 
@@ -149,6 +151,7 @@ A service worker can cache the application shell but is never an authority. A cl
 - [Supabase activation for the configured project](docs/SUPABASE_ACTIVATION.md)
 - [Supabase/cloud setup and boundaries](docs/CLOUD.md)
 - [Portable Windows desktop operation, packaging, and release](docs/DESKTOP.md)
+- [Paid desktop licensing, issuance, key custody, and expiry](docs/LICENSING.md)
 - [Operations, backup, recovery, and troubleshooting](docs/OPERATIONS.md)
 - [HTTP/WebSocket API](docs/API.md)
 - [Security and roles](docs/SECURITY.md)

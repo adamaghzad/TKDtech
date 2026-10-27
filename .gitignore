@@ -14,7 +14,9 @@ coverage/
 .env.*
 !.env.example
 
-# Never commit tournament databases, SQLite sidecars, or generated evidence.
+# Never commit tournament databases, SQLite sidecars, customer licenses, or generated evidence.
+*.tkdlicense
+*private*.pem
 *.db
 *.db-*
 *.sqlite

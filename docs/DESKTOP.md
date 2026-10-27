@@ -16,10 +16,11 @@ On Windows 10/11 x64:
 2. Verify the ZIP with `certutil -hashfile TKD-Scoring-Windows-x64.zip SHA256` and compare the result with the published checksum.
 3. Use **Extract All** on the ZIP. Do not run the application from inside the compressed archive.
 4. Open the extracted `TKD-Scoring` folder and run **`TKD Scoring.exe`**. Keep `resources` and all DLLs beside the executable.
-5. Wait for automatic startup. The operator window opens only after the matching desktop Express instance and the Next.js frontend are ready.
-6. Register the initial organization and create a tournament. Demo seeding and demo login are deliberately disabled in the desktop runtime.
+5. Wait for automatic startup. The application opens only after the matching desktop Express instance and the Next.js frontend are ready.
+6. On an unlicensed computer, copy the installation code in **Activation**, request a paid signed license from TKDTech, and import the resulting `.tkdlicense` file. See [Paid desktop licensing](LICENSING.md).
+7. Register the initial organization and create a tournament. Demo seeding and demo login are deliberately disabled in the desktop runtime.
 
-No Node.js installation, npm command, installer, or administrator-level setup is required. Internet is needed to download/update the package, not to run scoring on the venue LAN afterward.
+No Node.js installation, npm command, installer, or administrator-level setup is required. Internet is needed to download/update the package and request/renew a license, not to run activated scoring on the venue LAN afterward.
 
 ### Unsigned-release warning
 
@@ -77,10 +78,11 @@ Per-user Windows locations:
 |---|---|
 | SQLite database | `%APPDATA%\TKD Scoring\data\tkd-scoring.db` |
 | SQLite WAL sidecars while running | Beside the database |
+| Installation identity and signed desktop license | `%APPDATA%\TKD Scoring\license` |
 | Launcher and runtime log | `%APPDATA%\TKD Scoring\logs\desktop.log` |
 | Supervisor heartbeat/runtime status | `%APPDATA%\TKD Scoring\desktop-*.json` |
 
-The database is outside the portable folder. Replacing the portable folder with a newer release does not intentionally delete tournament data.
+The database and signed license are outside the portable folder. Replacing the portable folder with a newer release does not intentionally delete tournament data or activation. Do not delete the `license` folder during an update. A different computer/installation requires a device-transfer license; tournament backups and customer license files should be kept separate.
 
 **Backup:** close the application and copy the whole `data` folder, not only an active `.db` file. WAL content may not yet be checkpointed into the main file. Keep an additional off-PC backup for an official event.
 
@@ -129,12 +131,12 @@ The build:
 
 1. creates an optimized local-mode Next.js build with cloud public environment values empty;
 2. compiles strict Electron main/preload TypeScript;
-3. copies only required server/domain sources, migrations, public files and the optimized `.next` output (excluding `.next/cache`);
+3. copies only required server/domain/licensing sources, migrations, public files and the optimized `.next` output (excluding `.next/cache` and `.next/dev`);
 4. runs `npm ci --omit=dev --ignore-scripts --os=win32 --cpu=x64` in isolated staging;
 5. downloads the official Node 22 Windows runtime and validates it against the official `SHASUMS256.txt`;
 6. installs the pinned, hash-verified `better-sqlite3` Node-v127 Windows x64 prebuild;
 7. packages Electron with the branded EXE/icon and external resources;
-8. refuses environment files and tournament databases, checks required migrations/runtime files, and verifies native binaries as PE32+ x64;
+8. refuses environment files, licensing private keys, customer `.tkdlicense` files and tournament databases; checks required migrations/licensing/runtime files; and verifies native binaries as PE32+ x64;
 9. creates the ZIP, extracts it again for structure validation, and writes a separate SHA-256 plus release manifest.
 
 The checksum is deliberately a separate release asset. Embedding the ZIP's own hash inside its bundled download page would change the ZIP and invalidate that hash.
@@ -143,7 +145,7 @@ The checksum is deliberately a separate release asset. Embedding the ZIP's own h
 
 Build from a clean committed source tree so `resources/desktop/release.json` records the correct source revision and `sourceTreeDirty: false`. Create GitHub Release `desktop-v<desktop package version>` and upload both the ZIP and `.sha256`. Include the actual SHA-256, file size, local data behavior, firewall note, unsigned warning, source commit, and verification limits in the release notes.
 
-Keep the large ZIP, extracted package and staging directories out of Git. The website's `apps/web/lib/desktop-release.ts` points to the stable release asset URLs; it does not embed the artifact hash.
+Keep the large ZIP, extracted package and staging directories out of Git. The website's `apps/web/lib/desktop-release.ts` points to the stable release asset URLs; it does not embed the artifact hash. For licensed releases, also verify activation on a physical Windows PC and explicitly decide whether older unlicensed release assets should remain downloadable. Publishing a new ZIP cannot deactivate copies already distributed.
 
 ## Verification boundary
 
@@ -151,8 +153,9 @@ Linux validation can execute the equivalent production Express/Next.js/SQLite to
 
 1. download and checksum the public asset;
 2. extract and launch with no Node.js installed;
-3. register, restart, and confirm the same tournament returns;
-4. connect two judge/referee devices over the real LAN;
-5. test scoring/reconnection and a clean close;
-6. test launcher/process failure recovery and confirm no orphan remains;
-7. verify backup/restore and the Windows Firewall/SmartScreen prompts.
+3. confirm tournament creation is rejected before activation, reject a wrong-device file, activate with the correctly bound signed file, and restart into the same licensed state;
+4. register, restart, and confirm the same tournament returns;
+5. connect two judge/referee devices over the real LAN;
+6. test scoring/reconnection and a clean close;
+7. test launcher/process failure recovery and confirm no orphan remains;
+8. verify backup/restore, renewal/device transfer, expiry behavior on a disposable fixture, and the Windows Firewall/SmartScreen prompts.

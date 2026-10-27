@@ -8,10 +8,10 @@ Verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **143/143 tests passed across 23 files** |
-| `npm run test:e2e` | **14/14 real Chromium tests passed** against the Next 16 production preview |
+| `npm test` | **166/166 tests passed across 26 files** |
+| `npm run test:e2e` | **18/18 real Chromium tests passed** against the Next 16 production server |
 | `npm run desktop:build` | Passed strict Electron main/preload TypeScript compilation |
-| `npm run test:desktop:runtime` | Passed optimized desktop-supervisor startup, internal identity boundary, public download page, authenticated tournament write, clean shutdown and restart persistence |
+| `npm run test:desktop:runtime` | Passed real signed-license issuance, unlicensed/invalid/wrong-device API rejection, valid activation, exports, optimized desktop-supervisor startup, internal identity boundary, authenticated tournament write, clean shutdown and restart license/data persistence |
 | `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
 | `npm run build` | Passed: optimized Next 16.4.3 App Router production build with proxy convention |
@@ -45,6 +45,14 @@ Verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**,
 - Sync full-log replay, server acknowledgement, duplicate handling, and conflict jobs never marked complete.
 - Category + passing-weigh-in athlete creation → draw generation with real tournament UUID → immutable publication.
 
+## Desktop licensing checks
+
+- Independent temporary Ed25519 keys verify active signed licenses, payload tampering, wrong-device binding, wrong keys, malformed tokens, future/expired validity, and stable non-identifying installation codes.
+- Persistent service tests verify owner-only file permissions, activation/restart recovery, rejected wrong-device/future/expired/invalid files, unchanged non-desktop behavior, and the exact expiry boundary: new work and draft tournaments are blocked while an existing `IN_PROGRESS` tournament can finish.
+- A static security audit checks every Express tournament/scoring mutation for a licensing assertion, with only explicit authentication/activation/heartbeat/revocation/backup exceptions. Packaging must include verification code and refuse private keys/customer licenses.
+- The owner-only runtime smoke uses the real production issuer and public key, never a test backdoor. It proves HTTP 403/`LICENSE_REQUIRED` before activation, HTTP 400 for a malformed file, HTTP 403/`LICENSE_DEVICE_MISMATCH` for another device, successful signed activation and tournament creation afterward, report export, and the same installation/license after restart.
+- Chromium verifies unlicensed startup routing, responsive installation-code/request actions, file import and activation, visible wrong-device errors, active-license dashboard entry, and the 14-day renewal warning. Desktop/mobile screenshots were reviewed without horizontal overflow.
+
 ## Browser checks
 
 The Playwright suite verifies:
@@ -63,6 +71,10 @@ The Playwright suite verifies:
 12. Chromium opens the real tournament settings form, verifies the active-match save lock, saves round gap 12, match gap 18 with Round 2/Round 3 timing, Gam-Jeom +2, and disqualification at 6, reads back the `2025.1-example-r2` configuration through the authorized API, and confirms the persisted `RULESET_UPDATED` audit entry.
 13. In a fresh tournament, Chromium uploads `01-clubs-test.csv`, `02-categories-test.csv`, and `03-athletes-import.csv` in order. It verifies 4 clubs and 4 categories, duplicate rejection on repeated club/category uploads, then 12 athletes with correct name-based club/category assignments, 3 passing entries per category, and 12/12 successful athlete rows.
 14. An unauthenticated browser opens the public desktop download page, verifies the versioned ZIP/checksum/release links, extraction and firewall guidance, unsigned-build disclosure and persistent-data information, and checks 390 px mobile layout without horizontal overflow. The login page links to the download and, in production mode, shows blank credentials with no development-showcase button.
+15. An unlicensed desktop root route opens Activation, shows the installation code and approved WhatsApp contact, preserves access to saved records, and remains within a 390 px mobile viewport.
+16. Chromium imports a `.tkdlicense` file, submits its complete token to the activation endpoint, and continues to production sign-in after a valid response.
+17. A wrong-device activation response remains visible on the Activation page without redirecting or reporting success.
+18. An active desktop license opens the dashboard normally; a 10-day fixture displays the renewal warning and its Activation link.
 
 Reviewed screenshots:
 
@@ -96,6 +108,9 @@ Reviewed screenshots:
 - `artifacts/point-gap-settings.png`
 - `artifacts/desktop-download-page.png`
 - `artifacts/desktop-download-mobile.png`
+- `artifacts/desktop-activation-unlicensed.png`
+- `artifacts/desktop-activation-mobile.png`
+- `artifacts/dashboard-license-renewal.png`
 
 No browser page errors were observed in the dashboard/operator test.
 
@@ -103,7 +118,7 @@ No browser page errors were observed in the dashboard/operator test.
 
 - Supervisor fault-injection tests start both services, verify graceful IPC shutdown, simulate launcher heartbeat loss, and stop the sibling service when one runtime exits. LAN selection tests reject public/loopback pairing addresses and deduplicate/private-sort usable IPv4 addresses.
 - UUID compatibility tests cover native `randomUUID`, deterministic RFC v4 bytes through `getRandomValues`, 200 unique fallback IDs, and a useful error when secure randomness is unavailable. The real mobile-judge Chromium scenario also disables `randomUUID` before pairing and scoring.
-- The optimized production supervisor smoke creates a real organization and tournament through HTTP, checks the download page and loopback-only runtime identity route, closes both services, restarts against the same SQLite path, and verifies the tournament and authentication session survive.
+- The optimized production supervisor smoke rejects pre-activation and wrong-device operations, issues/imports a real Ed25519-signed license through the owner-only CLI, creates a real organization/tournament and exports a report through HTTP, checks the download/activation pages and loopback-only runtime identity route, closes both services, then restarts against the same SQLite/license paths and verifies the tournament, authentication session, installation code and active license survive.
 - The actual Electron 45 launcher was also executed on Linux under Xvfb with the real optimized application. It automatically opened the local operator, reported `RUNNING` through the isolated preload IPC, responded to **Ctrl+Shift+L**, started matching Express/Next.js instances, created a tournament, shut down cleanly with exit code 0, and preserved that tournament/session across a second full Electron launch and shutdown.
 - The Windows packaging script produced `TKD-Scoring-Windows-x64.zip`, extracted it again, and validated the EXE, bundled Node runtime, Windows `tsx`/esbuild, optimized Next.js output, migration and Windows SQLite prebuild. Native modules were checked as PE32+ x64; environment files, tournament databases, and transient Next.js development/compiler output were rejected. The Node archive was verified against official Node.js SHA-256 sums and the SQLite prebuild against pinned reviewed hashes.
 - The large ZIP and extracted staging directories are not tracked by Git. The release uses a separate `.sha256` asset so the package does not embed a self-invalidating hash.
@@ -119,7 +134,7 @@ No browser page errors were observed in the dashboard/operator test.
 
 ## Not verified / not claimed
 
-- The Windows x64 artifact was cross-packaged and statically validated on Linux, but **not executed on a physical Windows 10/11 machine**. Windows Explorer extraction, SmartScreen, Firewall prompts, win32 process-tree termination, real Windows LAN pairing, and the complete no-Node-installed Windows workflow still require the checklist in `docs/DESKTOP.md`. Linux Electron execution is not represented as Windows verification.
+- The Windows x64 artifact was cross-packaged and statically validated on Linux, but **not executed on a physical Windows 10/11 machine**. Windows Explorer extraction, SmartScreen, Firewall prompts, win32 process-tree termination, real Windows LAN pairing, Windows MachineGuid/registry fallback behavior, physical license activation/device transfer, and the complete no-Node-installed Windows workflow still require the checklist in `docs/DESKTOP.md`. Linux Electron execution is not represented as Windows verification.
 - No hosted Supabase project was available. Hosted Auth, Realtime, Storage, project default privileges, and production cloud deployment remain unverified. PostgreSQL validation used local Supabase-compatible `auth`/`storage` stubs, not the hosted service.
 - Full cloud workflow parity, complete snapshot provisioning, and bidirectional conflict resolution are not complete.
 - Dedicated completed-result correction with safe downstream bracket reversal is not complete.
