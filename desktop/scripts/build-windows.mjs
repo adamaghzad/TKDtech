@@ -120,7 +120,7 @@ async function stageApplication(appRoot) {
   copy(path.join(rootDir, 'packages', 'contracts', 'src'), path.join(appRoot, 'packages', 'contracts', 'src'));
   copy(path.join(rootDir, 'packages', 'domain', 'src'), path.join(appRoot, 'packages', 'domain', 'src'));
   copy(path.join(rootDir, 'apps', 'web', '.next'), path.join(appRoot, 'apps', 'web', '.next'), {
-    filter: (source) => !source.includes(`${path.sep}.next${path.sep}cache`),
+    filter: (source) => !source.includes(`${path.sep}.next${path.sep}cache`) && !source.includes(`${path.sep}.next${path.sep}dev`),
   });
   copy(path.join(rootDir, 'apps', 'web', 'public'), path.join(appRoot, 'apps', 'web', 'public'));
   copyFileSync(path.join(rootDir, 'apps', 'web', 'next.config.mjs'), path.join(appRoot, 'apps', 'web', 'next.config.mjs'));
@@ -207,6 +207,10 @@ async function validatePortableDirectory(directory) {
     path.join(resources, 'app-root', 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node'),
   ];
   for (const filename of required) if (!existsSync(filename)) throw new Error(`Portable package is missing ${filename}`);
+  const nextOutput = path.join(resources, 'app-root', 'apps', 'web', '.next');
+  for (const transient of ['cache', 'dev']) {
+    if (existsSync(path.join(nextOutput, transient))) throw new Error(`Portable package must not contain Next.js ${transient} artifacts.`);
+  }
   assertPe64(required[0]);
   assertPe64(required[1]);
   assertPe64(required[required.length - 1]);

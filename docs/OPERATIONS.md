@@ -138,7 +138,8 @@ Do not expose club contacts or full registration exports on the public TV browse
 | Windows warns about the desktop publisher | This portable release is unsigned; verify the official release SHA-256 and source before proceeding |
 | Desktop LAN pairing is unavailable | Check the status panel for a private LAN address, reconnect the PC to the venue network and restart; verify firewall/client isolation |
 | `WEB_UNAVAILABLE` | Ensure Next.js is running on internal port 3001 and `WEB_INTERNAL_URL` points to it |
-| LAN device cannot connect | Host firewall, Wi-Fi client isolation, correct interface/IP, port 3000, and that all devices use the same LAN |
+| LAN device cannot connect | Confirm the current hotspot IP and issue a new QR after network changes; use a Private network profile, allow bundled `node.exe`/TCP 3000, and check Wi-Fi client isolation. “No internet connection” alone is normal on an offline LAN |
+| `crypto.randomUUID is not a function` while pairing | Fixed in desktop **1.0.1**: plain-HTTP LAN browsers use secure `getRandomValues()` event IDs. Install the new portable release, then issue a fresh QR; do not disable browser security features |
 | Judge buttons disabled | Session status/expiry, heartbeat presence, match state, and whether the referee/operator started the round |
 | Points not accepted | Need distinct judge agreement; inspect rejected/expired proposal reason and server event history |
 | `MATCH_VERSION_CONFLICT` | Reload the authoritative snapshot; do not bypass expected versions |

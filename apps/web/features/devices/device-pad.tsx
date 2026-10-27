@@ -21,6 +21,7 @@ import type {
   Side,
 } from "@tkd/contracts";
 import { api, post } from "@/lib/api";
+import { createClientUuid } from "@/lib/uuid";
 import { useMatch } from "@/lib/use-match";
 import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
@@ -340,7 +341,7 @@ function JudgePad({ session, token }: { session: Session; token: string }) {
       String(sequence.current),
     );
     const proposal: ScoreProposalInput = {
-      eventId: crypto.randomUUID(),
+      eventId: createClientUuid(),
       matchId: snapshot.matchId,
       roundId: round.id,
       judgeSessionId: session.id,
@@ -348,7 +349,7 @@ function JudgePad({ session, token }: { session: Session; token: string }) {
       pointType,
       submittedAt,
       sequence: sequence.current,
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: createClientUuid(),
     };
     try {
       const result = await api<{
@@ -543,7 +544,7 @@ function RefereePad({ session, token }: { session: Session; token: string }) {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
-            "Idempotency-Key": crypto.randomUUID(),
+            "Idempotency-Key": createClientUuid(),
           },
           body: JSON.stringify({
             type,

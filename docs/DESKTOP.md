@@ -41,6 +41,8 @@ Judges/referees/displays: http://PC-LAN-ADDRESS:3000
 
 The external Node runtime runs the same `apps/local-server/src/index.ts`, optimized `apps/web/.next`, contracts/domain packages, migrations, and `better-sqlite3` database used by the existing production-style local topology. The Next.js server is loopback-only; venue devices cross the Express HTTP/WebSocket authorization boundary on port `3000`.
 
+Some browsers hide `crypto.randomUUID()` on plain-HTTP LAN pages. Client-created event/idempotency UUIDs therefore use native `randomUUID()` when present and a secure `crypto.getRandomValues()` RFC v4 fallback otherwise. Pairing, authentication and device-session credentials remain server-generated; the compatibility path does not weaken token generation.
+
 The package includes Windows x64 binaries for Electron, Node, esbuild/`tsx`, SQLite and optional Next.js native dependencies. A Linux native SQLite or esbuild binary is never substituted into the Windows archive.
 
 ## Status panel and LAN pairing
@@ -53,7 +55,17 @@ Press **Ctrl+Shift+L** while the operator window is focused to reopen the deskto
 
 The launcher selects a private or link-local IPv4 address for `APP_PUBLIC_URL` when one is available. It does not deliberately use a public, loopback, or otherwise unsuitable address as a claimed LAN pairing URL. If no suitable interface exists, the status panel says so. Connect the PC to the venue LAN and restart the application if the address changes.
 
-On the first run, Windows Firewall may request network permission. Private/local-network access is required for separate judge devices. Also check router client isolation and confirm that every device is on the same LAN. Do not expose port `3000` directly to the public Internet; use the documented authenticated TLS deployment when remote access is required.
+On the first run, Windows Firewall may request network permission. Private/local-network access is required for separate judge devices. The listening process is the bundled **Node.js JavaScript Runtime / `node.exe`**, not only `TKD Scoring.exe`; allow it on **Private** networks or create an inbound TCP `3000` rule limited to the Private profile. Also check router client isolation and confirm that every device is on the same LAN. Do not expose port `3000` directly to the public Internet; use the documented authenticated TLS deployment when remote access is required.
+
+### Hotspot timeout checklist
+
+A phone showing **No internet connection** can be normal on an offline scoring LAN. `ERR_CONNECTION_TIMED_OUT` is a network reachability problem, not an Internet or pairing-token problem:
+
+1. On the Windows PC, open `http://127.0.0.1:3000/api/v1/health`. If this fails, the desktop runtime is not ready; open **Ctrl+Shift+L → Open logs**.
+2. Check the PC's current hotspot IPv4 address with `ipconfig`. If it differs from the address in the judge URL, close the desktop app, reconnect both devices to the same hotspot, restart the app, and issue a **new QR code**. `APP_PUBLIC_URL` is selected at startup, so an old QR can contain the previous network's IP.
+3. On the PC, also open `http://PC-LAN-IP:3000/api/v1/health` (for example the address shown in the status panel). Then try that same base address on the phone, without the `/judge/...` token first.
+4. Set the Windows hotspot/Wi-Fi network profile to **Private**. Allow bundled Node.js/`node.exe` through the firewall, or use **Windows Security → Firewall & network protection → Advanced settings → Inbound Rules → New Rule → Port → TCP 3000 → Allow → Private**.
+5. If the PC health URL works locally but the phone still times out, the hotspot is likely blocking client-to-client traffic. Disable AP/client isolation where available, temporarily disable the phone's mobile-data/smart-network-switch feature, or use a dedicated router/Windows Mobile Hotspot instead.
 
 Ports `3000` and `3001` must be free. The desktop launcher uses a single-application-instance lock and does not silently connect to an unrelated service already using those ports.
 
@@ -129,7 +141,7 @@ The checksum is deliberately a separate release asset. Embedding the ZIP's own h
 
 ## Publish a release
 
-Build from a clean committed source tree so `resources/desktop/release.json` records the correct source revision and `sourceTreeDirty: false`. Create GitHub Release `desktop-v1.0.0` (or the current desktop package version) and upload both the ZIP and `.sha256`. Include the actual SHA-256, file size, local data behavior, firewall note, unsigned warning, source commit, and verification limits in the release notes.
+Build from a clean committed source tree so `resources/desktop/release.json` records the correct source revision and `sourceTreeDirty: false`. Create GitHub Release `desktop-v<desktop package version>` and upload both the ZIP and `.sha256`. Include the actual SHA-256, file size, local data behavior, firewall note, unsigned warning, source commit, and verification limits in the release notes.
 
 Keep the large ZIP, extracted package and staging directories out of Git. The website's `apps/web/lib/desktop-release.ts` points to the stable release asset URLs; it does not embed the artifact hash.
 
