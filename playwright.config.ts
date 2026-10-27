@@ -1,2 +1,23 @@
-import{defineConfig}from'@playwright/test';
-export default defineConfig({testDir:'./tests/e2e',timeout:45_000,expect:{timeout:10_000},workers:1,reporter:[['list'],['html',{outputFolder:'artifacts/playwright-report',open:'never'}]],use:{baseURL:'http://127.0.0.1:3000',viewport:{width:1440,height:1000},screenshot:'only-on-failure',trace:'retain-on-failure'},webServer:{command:'SEED_DEVELOPMENT=true ALLOW_DEMO_LOGIN=true TKD_DATABASE_PATH=/tmp/tkd-e2e.db npm run dev',url:'http://127.0.0.1:3000/api/v1/health',reuseExistingServer:true,timeout:120_000}});
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './tests/e2e',
+  timeout: 45_000,
+  expect: { timeout: 10_000 },
+  workers: 1,
+  reporter: [['list'], ['html', { outputFolder: 'artifacts/playwright-report', open: 'never' }]],
+  use: {
+    baseURL: 'http://127.0.0.1:3000',
+    viewport: { width: 1440, height: 1000 },
+    screenshot: 'only-on-failure',
+    trace: 'retain-on-failure',
+  },
+  webServer: {
+    // Production UI is required: the download-page test asserts that no demo
+    // button is exposed, while the test-only demo API authenticates fixtures.
+    command: 'npm run build && SEED_DEVELOPMENT=true ALLOW_DEMO_LOGIN=true TKD_DATABASE_PATH=/tmp/tkd-e2e.db NODE_ENV=production npm start',
+    url: 'http://127.0.0.1:3000/api/v1/health',
+    reuseExistingServer: true,
+    timeout: 120_000,
+  },
+});

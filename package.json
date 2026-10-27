@@ -22,6 +22,7 @@
     "validate:migrations": "tsx scripts/validate-migrations.ts",
     "validate:supabase": "bash scripts/validate-supabase.sh",
     "backup": "tsx scripts/backup.ts",
+    "license:issue": "tsx scripts/issue-license.ts",
     "check:database": "tsx scripts/check-database.ts",
     "check:supabase": "tsx scripts/check-supabase.ts",
     "desktop:build": "npm --prefix desktop run build",

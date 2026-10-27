@@ -29,6 +29,7 @@ const included = [
   ['Complete local runtime', 'Express, Next.js and realtime WebSockets start together automatically.'],
   ['Persistent SQLite', 'Match events and tournament records stay on your computer and recover after restart.'],
   ['LAN judge access', 'Pair judge and referee browsers on the same venue network without internet.'],
+  ['Signed offline license', 'Activate the control PC after payment, then keep scoring locally for the licensed period.'],
 ] as const;
 
 export default function DownloadDesktop() {
@@ -51,7 +52,7 @@ export default function DownloadDesktop() {
           The whole control desk.<br/><span className="text-[#6f9eff]">One download.</span>
         </h1>
         <p className="mt-6 max-w-2xl text-base leading-7 text-muted sm:text-lg">
-          Run the complete TKD Scoring system on your computer. No Node.js installation, no terminal commands, and no internet connection needed at the venue after download.
+          Run the complete TKD Scoring system on your computer. No Node.js installation, no terminal commands, and no internet connection needed at the venue after download and signed-license activation.
         </p>
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
           <a href={desktopRelease.downloadUrl} className="inline-flex min-h-12 items-center justify-center gap-3 rounded-xl bg-primary px-6 py-3 text-sm font-extrabold text-white shadow-[0_12px_36px_rgba(32,104,255,.28)] transition hover:bg-[#4f83ff] focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background">
@@ -64,6 +65,7 @@ export default function DownloadDesktop() {
         <p className="mt-4 text-xs leading-5 text-muted">
           Version {desktopRelease.version} · ZIP · Windows 10/11 64-bit · Extract and run <span className="font-semibold text-white">TKD Scoring.exe</span>
         </p>
+        <p className="mt-2 text-xs leading-5 text-[#9db4df]">Free installer · a paid, device-bound signed license is required for tournament operations. <a href="https://adamaghzad.github.io/tkd-scoring/subscription/" target="_blank" rel="noreferrer" className="font-semibold text-primary hover:underline">View subscriptions</a></p>
         <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-xs text-muted">
           <span className="flex items-center gap-2"><Check className="size-4 text-success"/>No installation</span>
           <span className="flex items-center gap-2"><Check className="size-4 text-success"/>No commands</span>
@@ -95,7 +97,7 @@ export default function DownloadDesktop() {
         <div className="grid gap-5 md:grid-cols-3">
           {[
             { icon: FolderArchive, step: '01', title: 'Extract the entire ZIP', text: 'Use “Extract All” in Windows. Do not run the EXE from inside the compressed ZIP, and keep the resources folder beside it.' },
-            { icon: Monitor, step: '02', title: 'Run TKD Scoring.exe', text: 'The launcher starts the local database, API, web application and realtime services, then opens the operator automatically.' },
+            { icon: Monitor, step: '02', title: 'Run TKD Scoring.exe', text: 'The launcher starts the complete local system. Copy your installation code, request your paid license, then import the signed .tkdlicense file to activate tournament work.' },
             { icon: Network, step: '03', title: 'Connect your venue devices', text: 'Allow private-network access if Windows Firewall asks. Judges and referees use the LAN addresses in the desktop status panel.' },
           ].map(({ icon: Icon, step, title, text }) => <article key={step} className="panel p-6">
             <div className="mb-5 flex items-center justify-between"><Icon className="size-6 text-[#79a4ff]"/><span className="numeric text-2xl text-[#42506a]">{step}</span></div>
@@ -118,7 +120,7 @@ export default function DownloadDesktop() {
 
       <article className="panel p-6 sm:p-7">
         <div className="mb-5 flex items-center gap-3"><div className="rounded-xl bg-primary/10 p-3"><Wifi className="size-6 text-[#79a4ff]"/></div><div><p className="text-[10px] font-bold uppercase tracking-[.14em] text-primary">Offline at the venue</p><h2 className="text-xl font-bold">Local network, not a cloud shortcut</h2></div></div>
-        <p className="text-sm leading-6 text-muted">The Windows PC hosts the real HTTP and WebSocket server. Judges, referees and read-only displays connect to that PC over the same local network. Internet is only needed to download the package or obtain future updates.</p>
+        <p className="text-sm leading-6 text-muted">The Windows PC hosts the real HTTP and WebSocket server. Judges, referees and read-only displays connect to that PC over the same local network. Internet is only needed to download the package, request or renew a license, or obtain future updates; activated scoring remains local.</p>
         <ul className="mt-5 space-y-3 text-xs leading-5 text-muted">
           <li className="flex gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-success"/>Server-authoritative scoring, consensus, timers and audit trails remain enforced.</li>
           <li className="flex gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-success"/>The internal Next.js port is loopback-only; venue devices use the operator/API port.</li>

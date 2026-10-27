@@ -20,11 +20,13 @@ if (!hasSingleInstanceLock) {
   app.setAppUserModelId('com.tkdtech.scoring');
   const userData = app.getPath('userData');
   const dataDirectory = path.join(userData, 'data');
+  const licenseDirectory = path.join(userData, 'license');
   const logsDirectory = path.join(userData, 'logs');
   const controlFile = path.join(userData, 'desktop-control.json');
   const runtimeFile = path.join(userData, 'desktop-runtime.json');
   const databasePath = path.join(dataDirectory, 'tkd-scoring.db');
   mkdirSync(dataDirectory, { recursive: true });
+  mkdirSync(licenseDirectory, { recursive: true, mode: 0o700 });
   mkdirSync(logsDirectory, { recursive: true });
   app.setPath('logs', logsDirectory);
   const logFile = path.join(logsDirectory, 'desktop.log');
@@ -264,7 +266,7 @@ if (!hasSingleInstanceLock) {
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
       if (isOperatorUrl(url)) {
         void mainWindow?.loadURL(url);
-      } else if (url.startsWith('https://')) {
+      } else if (url.startsWith('https://') || url.startsWith('mailto:')) {
         void shell.openExternal(url);
       }
       return { action: 'deny' };
@@ -272,7 +274,7 @@ if (!hasSingleInstanceLock) {
     mainWindow.webContents.on('will-navigate', (event, url) => {
       if (!isOperatorUrl(url)) {
         event.preventDefault();
-        if (url.startsWith('https://')) void shell.openExternal(url);
+        if (url.startsWith('https://') || url.startsWith('mailto:')) void shell.openExternal(url);
       }
     });
     mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -326,6 +328,8 @@ if (!hasSingleInstanceLock) {
       TKD_WEB_PORT: String(WEB_PORT),
       WEB_INTERNAL_URL: `http://127.0.0.1:${WEB_PORT}`,
       TKD_DATABASE_PATH: databasePath,
+      TKD_DESKTOP_LICENSE_REQUIRED: 'true',
+      TKD_LICENSE_DIRECTORY: licenseDirectory,
       TKD_APP_ROOT: paths.appRoot,
       TKD_DESKTOP_CONTROL_FILE: controlFile,
       TKD_DESKTOP_RUNTIME_FILE: runtimeFile,

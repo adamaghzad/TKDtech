@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { fork } from 'node:child_process';
+import { fork, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -13,6 +13,7 @@ const temporary = path.join(tmpdir(), `tkd-desktop-runtime-smoke-${randomUUID()}
 const databasePath = path.join(temporary, 'data', 'tkd-scoring.db');
 const controlFile = path.join(temporary, 'control.json');
 const runtimeFile = path.join(temporary, 'runtime.json');
+const licenseDirectory = path.join(temporary, 'license');
 mkdirSync(path.dirname(databasePath), { recursive: true });
 let active = null;
 
@@ -29,6 +30,24 @@ function writeControl(instanceId) {
   const temp = `${controlFile}.tmp`;
   writeFileSync(temp, JSON.stringify({ instanceId, pid: process.pid, updatedAt: Date.now() }));
   renameSync(temp, controlFile);
+}
+
+async function issueLicense(deviceCode, output) {
+  const tsxCli = path.join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  const issuer = path.join(root, 'scripts', 'issue-license.ts');
+  await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [tsxCli, issuer, '--club', 'Desktop Runtime Smoke Club', '--plan', 'CLUB', '--device', deviceCode, '--days', '30', '--output', output], {
+      cwd: root,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let outputText = '';
+    child.stdout.on('data', (chunk) => { outputText += chunk; });
+    child.stderr.on('data', (chunk) => { outputText += chunk; });
+    child.on('error', reject);
+    child.on('exit', (code) => code === 0 ? resolve() : reject(new Error(`License issuer exited with ${code}.\n${outputText}`)));
+  });
+  return readFileSync(output, 'utf8');
 }
 
 async function start(instanceId, port, webPort) {
@@ -48,6 +67,8 @@ async function start(instanceId, port, webPort) {
       TKD_WEB_PORT: String(webPort),
       TKD_APP_ROOT: root,
       TKD_DATABASE_PATH: databasePath,
+      TKD_DESKTOP_LICENSE_REQUIRED: 'true',
+      TKD_LICENSE_DIRECTORY: licenseDirectory,
       TKD_DESKTOP_CONTROL_FILE: controlFile,
       TKD_DESKTOP_RUNTIME_FILE: runtimeFile,
       TKD_DESKTOP_INSTANCE_ID: instanceId,
@@ -96,6 +117,8 @@ async function stop(runtime) {
 }
 
 try {
+  const privateKeyPath = process.env.TKD_LICENSE_PRIVATE_KEY || path.join(homedir(), '.config', 'tkd-scoring-licensing', 'ed25519-private.pem');
+  if (!existsSync(privateKeyPath)) throw new Error('The licensed desktop runtime smoke requires the owner-only TKD_LICENSE_PRIVATE_KEY file; it is never bundled or committed.');
   const port = await freePort();
   const webPort = await freePort();
   const base = `http://127.0.0.1:${port}`;
@@ -103,6 +126,13 @@ try {
   const health = await (await fetch(`${base}/api/v1/health`)).json();
   assert.equal(health.data.mode, 'LOCAL');
   assert.equal(health.data.database, 'SQLite');
+  const initialLicenseResponse = await fetch(`${base}/api/v1/licensing/status`);
+  const initialLicense = (await initialLicenseResponse.json()).data;
+  assert.equal(initialLicenseResponse.status, 200);
+  assert.equal(initialLicense.required, true);
+  assert.equal(initialLicense.status, 'UNLICENSED');
+  assert.match(initialLicense.installationCode, /^TKD(?:-[0-9A-F]{4}){5}$/);
+  assert.equal((await fetch(`${base}/activation`)).status, 200);
   const internalRuntime = await fetch(`http://127.0.0.1:${webPort}/api/desktop-runtime`);
   assert.equal(internalRuntime.status, 200);
   assert.equal((await internalRuntime.json()).desktopInstance, first.instanceId);
@@ -120,6 +150,31 @@ try {
   assert.equal(registration.status, 201, await registration.text());
   const cookie = registration.headers.get('set-cookie')?.split(';')[0];
   assert.ok(cookie?.startsWith('tkd_session='));
+  const blockedCreation = await fetch(`${base}/api/v1/tournaments`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ name: 'Unlicensed Creation Attempt', startDate: '2026-11-01', endDate: '2026-11-02', mode: 'LOCAL' }),
+  });
+  const blockedCreationBody = await blockedCreation.text();
+  assert.equal(blockedCreation.status, 403, blockedCreationBody);
+  assert.equal(JSON.parse(blockedCreationBody).error.code, 'LICENSE_REQUIRED');
+  const invalidActivation = await fetch(`${base}/api/v1/licensing/activate`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: 'not-a-license' }),
+  });
+  assert.equal(invalidActivation.status, 400);
+  const wrongDeviceToken = await issueLicense('TKD-0000-1111-2222-3333-4444', path.join(temporary, 'wrong-device.tkdlicense'));
+  const wrongDeviceActivation = await fetch(`${base}/api/v1/licensing/activate`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: wrongDeviceToken }),
+  });
+  assert.equal(wrongDeviceActivation.status, 403);
+  assert.equal((await wrongDeviceActivation.json()).error.code, 'LICENSE_DEVICE_MISMATCH');
+  const licenseToken = await issueLicense(initialLicense.installationCode, path.join(temporary, 'valid.tkdlicense'));
+  const activation = await fetch(`${base}/api/v1/licensing/activate`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: licenseToken }),
+  });
+  const activationBody = await activation.text();
+  assert.equal(activation.status, 200, activationBody);
+  assert.equal(JSON.parse(activationBody).data.status, 'ACTIVE');
   const created = await fetch(`${base}/api/v1/tournaments`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie },
@@ -129,10 +184,15 @@ try {
   assert.equal(created.status, 201, createdBody);
   const tournament = JSON.parse(createdBody).data;
   assert.ok(tournament.id);
+  const exported = await fetch(`${base}/api/v1/reports/results.csv?tournamentId=${tournament.id}`, { headers: { cookie } });
+  assert.equal(exported.status, 200, await exported.text());
   assert.ok(existsSync(databasePath), 'Desktop SQLite database was not created.');
   await stop(first);
 
   const second = await start(randomUUID(), port, webPort);
+  const restartedLicense = (await (await fetch(`${base}/api/v1/licensing/status`)).json()).data;
+  assert.equal(restartedLicense.status, 'ACTIVE');
+  assert.equal(restartedLicense.installationCode, initialLicense.installationCode);
   const tournaments = await fetch(`${base}/api/v1/tournaments`, { headers: { cookie } });
   const tournamentsBody = await tournaments.text();
   assert.equal(tournaments.status, 200, tournamentsBody);
@@ -141,7 +201,7 @@ try {
   const anonymous = await fetch(`${base}/api/v1/auth/me`);
   assert.equal(anonymous.status, 401);
   await stop(second);
-  console.log('Desktop production-runtime smoke passed: Express + Next.js + SQLite, download page, authenticated writes, clean shutdown, restart persistence, and anonymous authorization.');
+  console.log('Licensed desktop production-runtime smoke passed: activation boundary, wrong-device/invalid rejection, signed activation, Express + Next.js + SQLite, exports, authenticated writes, clean shutdown, restart license/data persistence, and anonymous authorization.');
 } finally {
   if (active) {
     clearInterval(active.heartbeat);
