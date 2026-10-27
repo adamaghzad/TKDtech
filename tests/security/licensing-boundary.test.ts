@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { licenseKeyFingerprint, productionLicenseKey } from '../../packages/licensing/src/key';
 
 const server = readFileSync('apps/local-server/src/index.ts', 'utf8');
+const delivery = readFileSync('apps/local-server/src/licensing/delivery.ts', 'utf8');
 
 describe('desktop licensing security boundary', () => {
   it('embeds only the reviewed public verification key', () => {
@@ -23,6 +24,7 @@ describe('desktop licensing security boundary', () => {
       '/api/v1/device/heartbeat',
       '/api/v1/sessions/:id',
       '/api/v1/sync/push',
+      '/api/v1/admin/license-deliveries',
     ]);
     const routes = [...server.matchAll(/app\.(?:post|patch|delete)\('([^']+)'/g)];
     expect(routes.length).toBeGreaterThan(15);
@@ -55,6 +57,15 @@ describe('desktop licensing security boundary', () => {
     expect(server).toContain("app.get('/api/v1/licensing/status'");
     expect(server).toContain("app.get('/api/v1/reports/:type.csv',requireAuth");
     expect(server).toContain("app.post('/api/v1/sync/push',requireAuth");
+  });
+
+  it('restricts license email delivery to authenticated owner operations', () => {
+    expect(server).toContain("app.get('/api/v1/admin/license-deliveries',requireAuth");
+    expect(server).toContain("app.post('/api/v1/admin/license-deliveries',requireAuth,authLimiter");
+    expect(delivery).toContain("actor.role !== 'SUPER_ADMIN'");
+    expect(delivery).toContain("paymentConfirmed: z.boolean().refine");
+    expect(delivery).not.toContain('NEXT_PUBLIC_');
+    expect(delivery).not.toContain('BEGIN PRIVATE KEY');
   });
 
   it('packages verification code but refuses private keys and customer licenses', () => {

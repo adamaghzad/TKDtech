@@ -50,6 +50,32 @@ Use `--days N` for a duration starting now, or `--expires YYYY-MM-DD` for the en
 
 Send only the resulting `.tkdlicense` file to the customer. Keep an issuance record containing license ID, club, device code, plan, payment confirmation, issue date, and expiry in the business's private records.
 
+## Approve and email from the private admin
+
+The hosted owner tool at `/license-delivery` automates delivery after a manual payment decision. It does not process cards or activate a license merely because a form was submitted.
+
+1. Receive the client's installation code, club name, email, plan and paid period through the existing sales flow.
+2. Sign in as `SUPER_ADMIN` and open **System → License delivery**.
+3. Enter the request, select the exact paid-until date and confirm payment explicitly.
+4. Click **Approve & email license**. The server signs and verifies the device-bound token, then sends the `.tkdlicense` attachment through Gmail/SMTP.
+5. Check the delivery history and ask the client to confirm that Activation reports **Active**.
+
+Only `SUPER_ADMIN` can read delivery history or issue through this tool. The API also applies authentication, same-origin/CSRF checks, rate limiting, request validation and idempotency. Repeating the same approval does not send twice; changing its details requires a new approval. Records contain metadata and delivery status, not the signing private key or full customer token. `SENT` means the SMTP service accepted the message, not a guarantee of inbox placement; `FAILED` means delivery was not confirmed and should be checked before retrying.
+
+For Gmail, enable 2-Step Verification and create a Google **app password**. Do not use the normal Gmail password. Configure these only as hosted server secrets:
+
+```bash
+TKD_LICENSE_PRIVATE_KEY_PEM="<server-secret-PEM-with-escaped-newlines>"
+TKD_LICENSE_EMAIL_HOST=smtp.gmail.com
+TKD_LICENSE_EMAIL_PORT=465
+TKD_LICENSE_EMAIL_SECURE=true
+TKD_LICENSE_EMAIL_USER=adam.aghzaf@gmail.com
+TKD_LICENSE_EMAIL_PASSWORD="the-google-app-password"
+TKD_LICENSE_EMAIL_FROM="TKDTech <adam.aghzaf@gmail.com>"
+```
+
+`TKD_LICENSE_PRIVATE_KEY_PEM` accepts real or escaped newlines. `TKD_LICENSE_PRIVATE_KEY=/secure/path/ed25519-private.pem` remains supported on the owner/build machine. Never place any of these values in `NEXT_PUBLIC_*` variables, Git, the static product website, the desktop ZIP or a customer message. The admin remains disabled safely until the signing key and email credentials are configured.
+
 ## Key custody
 
 The production key pair was generated outside Git. On the owner's build machine its default location is:
@@ -138,6 +164,8 @@ npm run test:e2e
 # Owner-only real signature + production topology smoke:
 export TKD_LICENSE_PRIVATE_KEY="$HOME/.config/tkd-scoring-licensing/ed25519-private.pem"
 npm run test:desktop:runtime
+# Real production signature + exact mock email attachment; sends no real email:
+npm run test:license:delivery
 ```
 
 Unit/integration tests generate temporary independent Ed25519 keys and do not need the production private key. Browser activation tests mock API responses. The owner-only runtime smoke uses the real issuer to prove unlicensed API rejection, invalid/wrong-device rejection, valid activation, exports, restart persistence, and authenticated writes in the production Express/Next.js/SQLite topology.

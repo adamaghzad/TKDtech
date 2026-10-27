@@ -21,8 +21,9 @@ import type {MatchCommand} from './types';
 import {streamPdfReport} from './reports';
 import {SyncService} from './sync/sync-service';
 import {DesktopLicenseService} from './licensing/service';
+import {LicenseDeliveryService} from './licensing/delivery';
 
-const app=express();const server=createServer(app);const db=openDatabase();const repository=new TournamentRepository(db);const licensing=new DesktopLicenseService(db);const matches=new MatchService(db,repository);const seeded=process.env.SEED_DEVELOPMENT==='true'?seedDevelopment(db):null;const realtime=new RealtimeGateway(matches);const syncService=new SyncService(db);const recovered=matches.recoverTimers();for(const id of recovered)console.log(`[recovery] Match ${id} paused for operator confirmation.`);const recoveredMats=repository.recoverResolvedMatAssignments();for(const item of recoveredMats)console.log(`[recovery] Mat ${item.matId} released from resolved match ${item.matchId}${item.nextMatchId?`; queued ${item.nextMatchId}`:''}.`);
+const app=express();const server=createServer(app);const db=openDatabase();const repository=new TournamentRepository(db);const licensing=new DesktopLicenseService(db);const licenseDeliveries=new LicenseDeliveryService(db);const matches=new MatchService(db,repository);const seeded=process.env.SEED_DEVELOPMENT==='true'?seedDevelopment(db):null;const realtime=new RealtimeGateway(matches);const syncService=new SyncService(db);const recovered=matches.recoverTimers();for(const id of recovered)console.log(`[recovery] Match ${id} paused for operator confirmation.`);const recoveredMats=repository.recoverResolvedMatAssignments();for(const item of recoveredMats)console.log(`[recovery] Mat ${item.matId} released from resolved match ${item.matchId}${item.nextMatchId?`; queued ${item.nextMatchId}`:''}.`);
 app.set('trust proxy',1);app.disable('x-powered-by');app.use(helmet({contentSecurityPolicy:false,crossOriginEmbedderPolicy:false}));app.use(express.json({limit:'1mb'}));app.use(cookieParser());
 const proxy=httpProxy.createProxyServer({target:process.env.WEB_INTERNAL_URL||'http://127.0.0.1:3001',ws:true,changeOrigin:true});proxy.on('error',(error,_req,res)=>{console.error('[web-proxy]',error.message);if(res&&'writeHead' in res){(res as Response).status(502).json({error:{code:'WEB_UNAVAILABLE',message:'The Next.js frontend is not ready.'}});}});
 interface AuthedRequest extends Request{actor?:Actor}
@@ -49,6 +50,9 @@ app.post('/api/v1/auth/demo',authLimiter,asyncRoute((req,res)=>{if(process.env.A
 app.post('/api/v1/auth/logout',asyncRoute((req,res)=>{const token=getCookie(req);if(token)repository.revokeAuthToken(token);res.clearCookie('tkd_session',{path:'/'});ok(res,{signedOut:true});}));
 app.get('/api/v1/auth/me',requireAuth,asyncRoute((req,res)=>{const actor=actorOf(req);const user=repository.userForProfile(actor.id);ok(res,{user,mode:process.env.TKD_MODE||'LOCAL'});}));
 app.get('/api/v1/bootstrap',requireAuth,asyncRoute((req,res)=>ok(res,{...repository.dashboard(actorOf(req)),user:repository.userForProfile(actorOf(req).id),mode:process.env.TKD_MODE||'LOCAL',serverTime:Date.now()})));
+
+app.get('/api/v1/admin/license-deliveries',requireAuth,asyncRoute((req,res)=>ok(res,licenseDeliveries.getDashboard(actorOf(req)))));
+app.post('/api/v1/admin/license-deliveries',requireAuth,authLimiter,asyncRoute(async(req,res)=>{const result=await licenseDeliveries.issueAndSend(actorOf(req),req.body,String(req.headers['idempotency-key']||''));ok(res,result,result.duplicate?200:201);}));
 
 app.get('/api/v1/public/tournaments',asyncRoute((_req,res)=>{const tournaments=repository.listTournaments().map(row=>({id:row.id,name:row.name,slug:row.slug,venue:row.venue,country:row.country,startDate:row.start_date,endDate:row.end_date,status:row.status,isDevelopmentSeed:Boolean(row.is_development_seed)}));ok(res,tournaments);}));
 app.get('/api/v1/public/tournaments/:id',asyncRoute((req,res)=>{const details=repository.getPublicTournament(req.params.id!);const tournament=details.tournament as {status:string};if(['DRAFT','CANCELLED'].includes(tournament.status))throw new HttpError(404,'NOT_FOUND','Public tournament not found.');ok(res,details);}));

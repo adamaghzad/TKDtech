@@ -20,7 +20,7 @@ export function openDatabase(filename?: string): SqliteDatabase {
 export function migrate(db: SqliteDatabase): void {
   db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))`);
   const migrationDir = path.join(here, 'migrations');
-  const files = ['001_initial.sql'];
+  const files = ['001_initial.sql', '002_license_deliveries.sql'];
   for (const file of files) {
     const version = Number(file.split('_')[0]);
     const applied = db.prepare('SELECT version FROM schema_migrations WHERE version = ?').get(version);

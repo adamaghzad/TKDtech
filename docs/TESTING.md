@@ -8,11 +8,12 @@ Verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**,
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **166/166 tests passed across 26 files** |
-| `npm run test:e2e` | **18/18 real Chromium tests passed** against the Next 16 production server |
+| `npm test` | **173/173 tests passed across 27 files** |
+| `npm run test:e2e` | **21/21 real Chromium tests passed** against the Next 16 production server |
 | `npm run desktop:build` | Passed strict Electron main/preload TypeScript compilation |
 | `npm run test:desktop:runtime` | Passed real signed-license issuance, unlicensed/invalid/wrong-device API rejection, valid activation, exports, optimized desktop-supervisor startup, internal identity boundary, authenticated tournament write, clean shutdown and restart license/data persistence |
-| `npm run validate:migrations` | Passed: SQLite migration 1, 28 required entities, foreign keys enforced |
+| `npm run test:license:delivery` | Passed real production-key signing, intended-device activation, wrong-device rejection and exact mock email attachment; no real email sent |
+| `npm run validate:migrations` | Passed: SQLite migration 2, 29 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
 | `npm run build` | Passed: optimized Next 16.4.3 App Router production build with proxy convention |
 | `npm audit --omit=dev --audit-level=high` | **0 vulnerabilities** after dependency upgrades/removal of unused vulnerable packages |
@@ -52,6 +53,7 @@ Verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**,
 - A static security audit checks every Express tournament/scoring mutation for a licensing assertion, with only explicit authentication/activation/heartbeat/revocation/backup exceptions. Packaging must include verification code and refuse private keys/customer licenses.
 - The owner-only runtime smoke uses the real production issuer and public key, never a test backdoor. It proves HTTP 403/`LICENSE_REQUIRED` before activation, HTTP 400 for a malformed file, HTTP 403/`LICENSE_DEVICE_MISMATCH` for another device, successful signed activation and tournament creation afterward, report export, and the same installation/license after restart.
 - Chromium verifies unlicensed startup routing, responsive installation-code/request actions, file import and activation, visible wrong-device errors, active-license dashboard entry, and the 14-day renewal warning. Desktop/mobile screenshots were reviewed without horizontal overflow.
+- License-delivery integration tests use independent temporary Ed25519 keys and a mock sender to verify signed device binding, exact email attachments, metadata-only persistence, owner/payment requirements, idempotency/conflicts, safe SMTP failure records, missing configuration and mismatched-key rejection. The owner-only `npm run test:license:delivery` smoke additionally verifies the real production key pair and wrong-device rejection without sending email.
 
 ## Browser checks
 
@@ -75,6 +77,9 @@ The Playwright suite verifies:
 16. Chromium imports a `.tkdlicense` file, submits its complete token to the activation endpoint, and continues to production sign-in after a valid response.
 17. A wrong-device activation response remains visible on the Activation page without redirecting or reporting success.
 18. An active desktop license opens the dashboard normally; a 10-day fixture displays the renewal warning and its Activation link.
+19. A SUPER_ADMIN opens the private license-delivery page, validates the form, approves a paid device-bound request, sees the accepted email status and refreshed history, and remains within a 390 px mobile viewport.
+20. An unconfirmed SMTP result stays visible, is recorded as FAILED, and is never presented as a successful email.
+21. Missing server email secrets show a setup warning and disable the approval button.
 
 Reviewed screenshots:
 
@@ -111,6 +116,8 @@ Reviewed screenshots:
 - `artifacts/desktop-activation-unlicensed.png`
 - `artifacts/desktop-activation-mobile.png`
 - `artifacts/dashboard-license-renewal.png`
+- `artifacts/license-email-delivery.png`
+- `artifacts/license-email-delivery-mobile.png`
 
 No browser page errors were observed in the dashboard/operator test.
 
@@ -130,9 +137,10 @@ No browser page errors were observed in the dashboard/operator test.
 - Actual process recovery restored the showcase at blue 12, red 8, round 3 in `PAUSED` state.
 - A subsequent graceful-stop drill logged the running match as paused/persisted before close; after restart the timer difference reflected only the stop-call interval (under three seconds), not server downtime.
 - `npm run backup -- /tmp/tkd-backup-test.db` completed using SQLite online backup and integrity verification.
-- `npm run check:database -- /tmp/tkd-backup-test.db` reported migration 1, integrity ok, and foreign keys ok.
+- `npm run check:database -- /tmp/tkd-backup-test.db` previously reported migration 1, integrity ok, and foreign keys ok; the separate migration validator now passes migration 2.
 
 ## Not verified / not claimed
+- Real Gmail/SMTP delivery has not been attempted. Email tests use a mock sender; production app-password configuration, hosted secrets, Northflank deployment of this branch, inbox/spam placement and client receipt remain unverified. `SENT` means only that an SMTP service accepted a message.
 
 - The Windows x64 artifact was cross-packaged and statically validated on Linux, but **not executed on a physical Windows 10/11 machine**. Windows Explorer extraction, SmartScreen, Firewall prompts, win32 process-tree termination, real Windows LAN pairing, Windows MachineGuid/registry fallback behavior, physical license activation/device transfer, and the complete no-Node-installed Windows workflow still require the checklist in `docs/DESKTOP.md`. Linux Electron execution is not represented as Windows verification.
 - No hosted Supabase project was available. Hosted Auth, Realtime, Storage, project default privileges, and production cloud deployment remain unverified. PostgreSQL validation used local Supabase-compatible `auth`/`storage` stubs, not the hosted service.

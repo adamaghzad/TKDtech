@@ -203,10 +203,13 @@ async function validatePortableDirectory(directory) {
     path.join(resources, 'desktop', 'control.html'),
     path.join(resources, 'app-root', 'apps', 'web', '.next', 'BUILD_ID'),
     path.join(resources, 'app-root', 'apps', 'local-server', 'src', 'persistence', 'migrations', '001_initial.sql'),
+    path.join(resources, 'app-root', 'apps', 'local-server', 'src', 'persistence', 'migrations', '002_license_deliveries.sql'),
     path.join(resources, 'app-root', 'apps', 'local-server', 'src', 'licensing', 'service.ts'),
+    path.join(resources, 'app-root', 'apps', 'local-server', 'src', 'licensing', 'delivery.ts'),
     path.join(resources, 'app-root', 'packages', 'licensing', 'src', 'key.ts'),
     path.join(resources, 'app-root', 'node_modules', 'tsx', 'dist', 'cli.mjs'),
     path.join(resources, 'app-root', 'node_modules', 'next', 'dist', 'bin', 'next'),
+    path.join(resources, 'app-root', 'node_modules', 'nodemailer', 'dist', 'cjs', 'nodemailer.js'),
     path.join(resources, 'app-root', 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node'),
   ];
   for (const filename of required) if (!existsSync(filename)) throw new Error(`Portable package is missing ${filename}`);
