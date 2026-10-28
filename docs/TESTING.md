@@ -9,7 +9,7 @@ Verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**,
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
 | `npm test` | **173/173 tests passed across 27 files** |
-| `npm run test:e2e` | **22/22 real Chromium tests passed** against the Next 16 production server |
+| `npm run test:e2e` | **23/23 real Chromium tests passed** against the Next 16 production server |
 | `npm run desktop:build` | Passed strict Electron main/preload TypeScript compilation |
 | `npm run test:desktop:runtime` | Passed real signed-license issuance, unlicensed/invalid/wrong-device API rejection, valid activation, exports, optimized desktop-supervisor startup, internal identity boundary, authenticated tournament write, clean shutdown and restart license/data persistence |
 | `npm run test:license:delivery` | Passed real production-key signing, intended-device activation, wrong-device rejection and exact mock email attachment; no real email sent |
@@ -29,6 +29,7 @@ Verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**,
 - Timer-alert tracking emits one beep at each of 5/4/3/2/1 seconds and one round/rest end alert, with no initial-load replay, paused alert, unsupported-timer alert, or duplicate snapshot alert.
 - Score-alert tracking emits once for authoritative blue/red score increases, including multi-point scores, with no initial-load/match-change replay, duplicate-snapshot repeat, or undo sound; a later new score sounds normally.
 - Live large scores show current-round points during rounds and ordinary time-outs, including a verified 0–0 start to the next round while cumulative totals remain stored. Only after-round breaks show ended-round wins through `currentRound - 1`, exclude future rounds, and add the separate per-round summary. Completed-result scoring uses total ended-round wins for round-win, Golden Point and match point-gap results, and authoritative cumulative points only for explicit total-points decisions; cumulative points remain visible as secondary information.
+- Public mat displays use a dedicated KPNP-style `WAITING` view both when no match is assigned and while a `PENDING`/`READY`/`CALLED` match awaits Round 1. The waiting view hides athlete identities, scores, timers and Gam-Jeom counts; assignment and Round 1 start replace it automatically, while the operator preview and error states remain unchanged.
 - Two ended round wins automatically complete the match with `ROUND_WINS` after operator round end and authoritative timer expiry; the first win still enters rest, future rounds cannot contribute, and no third round starts. A superiority decision that supplies the second win completes immediately without starting rest, while a tied final round with no two-round winner remains paused and unresolved.
 - Configurable point-gap policy verifies exact boundaries and timing: legacy omissions stay disabled; Red 14–0 continues under a 15-point round rule; exactly 15–0 persists the accepted score then a separate `POINT_GAP` round decision; a second such round win completes by `ROUND_WINS`; timer-expiry recovery honors an already-persisted gap. Cumulative 20-point match gap completes at the end of Round 2 or live in Round 3, takes priority over ordinary two-round-win finalization at round completion, and leaves a live unfinished Round 3 explicitly unended. Operator, judge-consensus, and configured Gam-Jeom points all trigger evaluation, while the configured cumulative disqualification threshold keeps `DISQUALIFICATION` priority. A custom +2 Gam-Jeom is verified both in a round-gap result and in automatic disqualification at a custom threshold of two penalties. Duplicate commands remain idempotent and below-threshold evaluation adds no no-op event/version.
 - Tournament-admin ruleset saves create audited `RULESET_UPDATED` revisions for point gap and Gam-Jeom opponent points/disqualification threshold, preserve unrelated scoring fields, reject stale versions and invalid round numbers, restrict registration managers, and lock whenever a tournament match is active. Latest-ruleset joins select one deterministic revision for snapshots and proposal expiry.
@@ -81,6 +82,7 @@ The Playwright suite verifies:
 20. A SUPER_ADMIN opens the private license-delivery page, validates the form, approves a paid device-bound request, sees the accepted email status and refreshed history, and remains within a 390 px mobile viewport.
 21. An unconfirmed SMTP result stays visible, is recorded as FAILED, and is never presented as a successful email.
 22. Missing server email secrets show a setup warning and disable the approval button.
+23. A real empty mat first shows `WAITING FOR NEXT MATCH`, including a 390 px no-horizontal-overflow check. The real assignment API changes it to `WAITING FOR ROUND 1` with match/round numbers but no athlete names or score elements; the real `START` command then reveals the ordinary 0–0 scoreboard. The existing completed-match mat rollover also verifies its next READY match in waiting mode.
 
 Reviewed screenshots:
 
@@ -113,6 +115,9 @@ Reviewed screenshots:
 - `artifacts/gam-jeom-disqualification-display.png`
 - `artifacts/csv-import-athletes.png`
 - `artifacts/point-gap-settings.png`
+- `artifacts/empty-mat-waiting-display.png`
+- `artifacts/empty-mat-waiting-mobile.png`
+- `artifacts/ready-match-waiting-display.png`
 - `artifacts/desktop-download-page.png`
 - `artifacts/desktop-download-mobile.png`
 - `artifacts/desktop-activation-unlicensed.png`

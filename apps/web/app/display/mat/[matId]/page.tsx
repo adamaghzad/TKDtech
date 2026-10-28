@@ -6,7 +6,8 @@ import type { MatchSnapshot } from '@tkd/contracts';
 import { ApiRequestError } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 import { PublicDisplay } from '@/features/scoreboard/public-display';
-import { EmptyState, ErrorState, Loading } from '@/components/ui/states';
+import { ErrorState, Loading } from '@/components/ui/states';
+import { WaitingView } from '@/features/scoreboard/waiting-view';
 
 const ASSIGNMENT_POLL_MS = 3_000;
 
@@ -21,7 +22,7 @@ export default function MatDisplay() {
 
   if (loading && !data && !error) return <Loading label="Finding active mat assignment…" />;
   if (error instanceof ApiRequestError && error.code === 'NO_ACTIVE_MATCH') {
-    return <div className="flex min-h-screen items-center justify-center bg-black"><EmptyState title="Mat available" description="No active match is assigned. This display checks for the next queued match automatically." /></div>;
+    return <WaitingView />;
   }
   if (error) return <div className="flex min-h-screen items-center justify-center bg-black"><ErrorState error={error} retry={refresh} /></div>;
   return data ? <PublicDisplay key={data.matchId} matchId={data.matchId} /> : null;
