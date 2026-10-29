@@ -1,6 +1,6 @@
 # Verification record
 
-Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**, **React 19**, **Zod 4.6.7**, **Electron 45**, and Chromium via Playwright. The offline-LAN and Public TV updates were rechecked on **2026-10-29** with the same toolchain: the complete application check passed with **190/190 tests**, and all **25/25 Chromium tests** passed against a fresh database.
+Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**, **React 19**, **Zod 4.6.7**, **Electron 45**, and Chromium via Playwright. The offline-LAN, Public TV and hosted-pairing updates were rechecked on **2026-10-29** with the same toolchain: the complete application check passed with **192/192 tests**, and all **25/25 Chromium tests** passed against a fresh database.
 
 ## Automated checks
 
@@ -8,7 +8,7 @@ Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **190/190 tests passed across 28 files** |
+| `npm test` | **192/192 tests passed across 28 files** |
 | `npm run test:e2e` | **25/25 real Chromium tests passed** against the Next 16 production server |
 | `npm run desktop:build` | Passed strict Electron main/preload TypeScript compilation |
 | `npm run test:desktop:runtime` | Passed real signed-license issuance, unlicensed/invalid/wrong-device API rejection, valid activation, exports, optimized desktop-supervisor startup, internal identity boundary, authenticated tournament write, clean shutdown and restart license/data persistence |
@@ -36,7 +36,7 @@ Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 
 - Tournament-admin ruleset saves create audited `RULESET_UPDATED` revisions for point gap and Gam-Jeom opponent points/disqualification threshold, preserve unrelated scoring fields, reject stale versions and invalid round numbers, restrict registration managers, and lock whenever a tournament match is active. Latest-ruleset joins select one deterministic revision for snapshots and proposal expiry.
 - An ended tied round holds the full rest with `SUPERIORITY`, blocks every rest/next-round resume path, and survives reset/review/recovery checks until an authorized referee/operator records a reasoned decision. Legacy running unresolved breaks are paused by the scheduler. The decision releases the hold, starts rest automatically, preserves equal points, persists/audits the winner, rejects overwrites, and feeds match results.
 - Club/category/athlete CSV parsing supports UTF-8 BOM, CRLF, quoted fields, and independent row failures with a 500-row cap. Real browser uploads create 4 clubs and 4 categories, reject repeated duplicates, then create 12 athletes whose club/category names resolve to the correct registrations and passing weigh-ins.
-- Offline LAN address selection requires no gateway or Internet, filters public/loopback duplicates, and places link-local addresses last. New pairing links resolve current interfaces instead of retaining a stale startup IP, preserve a private address that actually served the operator, reject arbitrary public Host headers for local pairing, and retain configured-origin behavior outside local mode. Desktop LAN links refresh after adapter/IP changes.
+- Offline LAN address selection requires no gateway or Internet, filters public/loopback duplicates, and places link-local addresses last. New pairing links resolve current interfaces instead of retaining a stale startup IP, preserve a private address that actually served the operator, reject arbitrary public Host headers for local pairing, and retain configured-origin behavior outside local mode. Desktop LAN links refresh after adapter/IP changes. Hosted `LOCAL` SQLite pairing prefers an explicit public HTTPS origin over unreachable container addresses for both public and private proxy Host values.
 - Role/tournament permissions and public denial.
 - Idempotent commands and optimistic version conflicts.
 - Pending-proposal diagnostics identify earlier matching proposals that expired before server arrival without changing the configured consensus policy. The 500 ms scheduler also persists pending-punch expiry and broadcasts its removal from the public display.

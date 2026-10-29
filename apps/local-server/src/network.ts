@@ -64,6 +64,11 @@ export function pairingOrigin(host: string | undefined, options: {
     return configured ?? request?.origin ?? `http://127.0.0.1:${options.port}`;
   }
 
+  // Hosted Northflank deployments also use LOCAL mode for SQLite. An explicit
+  // HTTPS public origin must win over container/private interfaces, which judge
+  // devices cannot reach. Desktop launchers configure HTTP LAN origins instead.
+  if (configured?.startsWith('https://')) return configured;
+
   // A request that arrived over a private LAN address proves which address the
   // operator actually used, so preserve it instead of a stale startup value.
   if (request && isPrivateIpv4(request.hostname)) return request.origin;

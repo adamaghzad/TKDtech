@@ -44,6 +44,18 @@ describe('offline LAN addresses and pairing origins', () => {
     })).toBe('http://192.168.0.50:3000');
   });
 
+  it.each(['p01--tkd-scoring--krbhnw2hlgh6.code.run', '10.56.165.40:3000'])(
+    'prefers the configured hosted HTTPS origin over container LAN addresses for Host %s',
+    (host) => {
+      expect(pairingOrigin(host, {
+        port: 3000,
+        mode: 'LOCAL',
+        configuredUrl: 'https://p01--tkd-scoring--krbhnw2hlgh6.code.run',
+        interfaces: { container: [entry('10.56.165.40')] },
+      })).toBe('https://p01--tkd-scoring--krbhnw2hlgh6.code.run');
+    },
+  );
+
   it('retains configured-origin behavior outside local mode', () => {
     expect(pairingOrigin('127.0.0.1:3000', {
       port: 3000,

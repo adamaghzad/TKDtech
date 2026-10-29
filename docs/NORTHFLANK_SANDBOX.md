@@ -154,7 +154,7 @@ Failure threshold: 3
 
 5. Save and restart/redeploy when Northflank requests it.
 
-`APP_PUBLIC_URL` is used when generating judge and referee pairing URLs. It must be the public HTTPS origin, not `localhost`, `127.0.0.1`, or an internal service name.
+`APP_PUBLIC_URL` is used when generating judge and referee pairing URLs. It must be the public HTTPS origin, not `localhost`, `127.0.0.1`, or an internal service name. Hosted pairing prefers this explicit HTTPS origin over container/private interfaces even though the service uses `LOCAL` SQLite mode. Do not append `:3000` to the public `code.run` URL; Northflank routes HTTPS to the internal port. After correcting this variable, redeploy and issue a new five-minute QR code.
 
 ## 6. First-run verification
 
