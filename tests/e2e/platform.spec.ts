@@ -137,3 +137,29 @@ test('public mat display waits for an assignment and for Round 1 before revealin
   await command(page,id,'START');await expect(waiting).toHaveCount(0);await expect(display.getByTestId('blue-points')).toHaveText('0');await expect(display.getByTestId('red-points')).toHaveText('0');await expect(display.getByLabel(`BLUE athlete ${before.blue.name}`)).toBeVisible();await command(page,id,'PAUSE');
  }finally{await display.close();}
 });
+
+test('Public TV opens a separate mat popup and supports clean fullscreen keyboard controls',async({page})=>{
+ await page.goto('/');await expect(page).toHaveURL(/\/dashboard/);const id=await matchId(page);const current=await snapshot(page,id);expect(current.matId).toBeTruthy();await page.goto(`/scoreboard/${id}`);const operatorUrl=page.url();let display:Page|undefined;
+ try{
+  const popup=page.waitForEvent('popup');await page.getByRole('link',{name:'Public TV',exact:true}).click();display=await popup;await display.waitForURL(/\/display\/mat\//);await display.waitForLoadState('domcontentloaded');expect(page.url()).toBe(operatorUrl);expect(display.url()).toContain(`/display/mat/${current.matId}`);
+  const controls=display.getByTestId('public-display-controls');const root=display.getByTestId('public-display');await expect(controls).toBeVisible();await expect(display.getByTestId('blue-points')).toBeVisible();const initialFlip=await root.getAttribute('data-flipped');
+  await display.getByRole('button',{name:'Fullscreen',exact:true}).click();await expect.poll(()=>display!.evaluate(()=>Boolean(document.fullscreenElement))).toBe(true);await expect(controls).toHaveCount(0);
+  await display.keyboard.press('f');await expect(root).toHaveAttribute('data-flipped',initialFlip==='true'?'false':'true');
+  await display.keyboard.press('m');await display.screenshot({path:'artifacts/public-tv-fullscreen-clean.png',fullPage:true});
+  await display.keyboard.press('Escape');await expect.poll(()=>display!.evaluate(()=>Boolean(document.fullscreenElement))).toBe(false);await expect(controls).toBeVisible();await expect(display.getByRole('button',{name:'Mute match sounds'})).toBeVisible();
+  await display.keyboard.press('F11');await expect.poll(()=>display!.evaluate(()=>Boolean(document.fullscreenElement))).toBe(true);await expect(controls).toHaveCount(0);
+  await display.keyboard.press('F11');await expect.poll(()=>display!.evaluate(()=>Boolean(document.fullscreenElement))).toBe(false);await expect(controls).toBeVisible();
+ }finally{if(display)await display.close();}
+});
+
+test('result waiting shortcut toggles and an authoritative live state restores the scoreboard',async({page,browser})=>{
+ await page.goto('/');await expect(page).toHaveURL(/\/dashboard/);const id=createWaitingMatch();setPointGapResultFixture(id);const resolved=await snapshot(page,id);const display=await browser.newPage({viewport:{width:1440,height:900}});
+ try{
+  await display.goto(`/display/${id}`);const result=display.getByRole('heading',{name:`MATCH ${resolved.matchNumber} RESULT`,exact:true});const waiting=display.getByTestId('waiting-view');await expect(result).toBeVisible();
+  await display.keyboard.press('w');await expect(waiting).toBeVisible();await expect(waiting).toHaveAttribute('data-waiting-reason','NEXT_MATCH');await expect(result).toHaveCount(0);
+  await display.keyboard.press('w');await expect(result).toBeVisible();await expect(waiting).toHaveCount(0);
+  await display.keyboard.press('w');await expect(waiting).toBeVisible();
+  const timer=JSON.stringify({remainingMs:84000,running:true,authoritativeAt:Date.now(),kind:'ROUND'});const db=openDatabase(process.env.TKD_DATABASE_PATH||'/tmp/tkd-e2e.db');try{db.prepare("UPDATE matches SET state='IN_PROGRESS',winner_side=NULL,decision_method=NULL,actual_end_at=NULL,timer_json=? WHERE id=?").run(timer,id);}finally{db.close();}
+  await display.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(waiting).toHaveCount(0);await expect(display.getByTestId('blue-points')).toBeVisible();await expect(display.getByTestId('red-points')).toBeVisible();
+ }finally{await display.close();setPointGapResultFixture(id);}
+});

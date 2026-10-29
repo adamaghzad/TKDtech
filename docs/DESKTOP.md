@@ -58,6 +58,14 @@ The launcher selects a private or link-local IPv4 address for `APP_PUBLIC_URL` w
 
 On the first run, Windows Firewall may request network permission. Private/local-network access is required for separate judge devices. The listening process is the bundled **Node.js JavaScript Runtime / `node.exe`**, not only `TKD Scoring.exe`; allow it on **Private** networks or create an inbound TCP `3000` rule limited to the Private profile. Also check router client isolation and confirm that every device is on the same LAN. Do not expose port `3000` directly to the public Internet; use the documented authenticated TLS deployment when remote access is required.
 
+### Public TV window and keyboard controls
+
+- **Public TV / Open TV** opens a separate resizable popup and leaves the operator page open. Active operator/live-match buttons open the mat display so assignment and Round 1 transitions appear automatically; historical match links remain match-specific.
+- Fullscreen hides the connection, sound, Flip and fullscreen controls from the TV image.
+- **M** toggles sound, **F** flips the display sides, **F11** toggles fullscreen, and **Esc** exits fullscreen.
+- After a completed/disqualified result, **W** toggles the waiting screen. An authoritative live state automatically restores the scoreboard; **W** is deliberately ignored during live play.
+- If the browser blocks the popup, allow popups for the local TKD Scoring origin and click Public TV again. The operator page is never intentionally replaced by the TV display.
+
 ### Hotspot timeout checklist
 
 A phone showing **No internet connection** can be normal on an offline scoring LAN. `ERR_CONNECTION_TIMED_OUT` is a network reachability problem, not an Internet or pairing-token problem:

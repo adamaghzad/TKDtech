@@ -1,6 +1,6 @@
 # Verification record
 
-Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**, **React 19**, **Zod 4.6.7**, **Electron 45**, and Chromium via Playwright. The offline-LAN update was rechecked on **2026-10-29** with the same toolchain: the complete application check passed with **190/190 tests**, and all **23/23 Chromium tests** passed against a fresh database.
+Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**, **React 19**, **Zod 4.6.7**, **Electron 45**, and Chromium via Playwright. The offline-LAN and Public TV updates were rechecked on **2026-10-29** with the same toolchain: the complete application check passed with **190/190 tests**, and all **25/25 Chromium tests** passed against a fresh database.
 
 ## Automated checks
 
@@ -9,7 +9,7 @@ Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
 | `npm test` | **190/190 tests passed across 28 files** |
-| `npm run test:e2e` | **23/23 real Chromium tests passed** against the Next 16 production server |
+| `npm run test:e2e` | **25/25 real Chromium tests passed** against the Next 16 production server |
 | `npm run desktop:build` | Passed strict Electron main/preload TypeScript compilation |
 | `npm run test:desktop:runtime` | Passed real signed-license issuance, unlicensed/invalid/wrong-device API rejection, valid activation, exports, optimized desktop-supervisor startup, internal identity boundary, authenticated tournament write, clean shutdown and restart license/data persistence |
 | `npm run test:license:delivery` | Passed real production-key signing, intended-device activation, wrong-device rejection and exact mock email attachment; no real email sent |
@@ -30,6 +30,7 @@ Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 
 - Score-alert tracking emits once for authoritative blue/red score increases, including multi-point scores, with no initial-load/match-change replay, duplicate-snapshot repeat, or undo sound; a later new score sounds normally.
 - Live large scores show current-round points during rounds and ordinary time-outs, including a verified 0–0 start to the next round while cumulative totals remain stored. Only after-round breaks show ended-round wins through `currentRound - 1`, exclude future rounds, and add the separate per-round summary. Completed-result scoring uses total ended-round wins for round-win, Golden Point and match point-gap results, and authoritative cumulative points only for explicit total-points decisions; cumulative points remain visible as secondary information.
 - Public mat displays use a dedicated KPNP-style `WAITING` view both when no match is assigned and while a `PENDING`/`READY`/`CALLED` match awaits Round 1. The waiting view hides athlete identities, scores, timers and Gam-Jeom counts; assignment and Round 1 start replace it automatically, while the operator preview and error states remain unchanged.
+- Desktop TV buttons open a separate resizable mat popup without replacing the operator page. Fullscreen removes all overlay controls; real keyboard input verifies sound, flip, fullscreen and exit shortcuts. A result-only waiting override toggles with **W**, cannot hide live play, and clears automatically when an authoritative live state arrives.
 - Two ended round wins automatically complete the match with `ROUND_WINS` after operator round end and authoritative timer expiry; the first win still enters rest, future rounds cannot contribute, and no third round starts. A superiority decision that supplies the second win completes immediately without starting rest, while a tied final round with no two-round winner remains paused and unresolved.
 - Configurable point-gap policy verifies exact boundaries and timing: legacy omissions stay disabled; Red 14–0 continues under a 15-point round rule; exactly 15–0 persists the accepted score then a separate `POINT_GAP` round decision; a second such round win completes by `ROUND_WINS`; timer-expiry recovery honors an already-persisted gap. Cumulative 20-point match gap completes at the end of Round 2 or live in Round 3, takes priority over ordinary two-round-win finalization at round completion, and leaves a live unfinished Round 3 explicitly unended. Operator, judge-consensus, and configured Gam-Jeom points all trigger evaluation, while the configured cumulative disqualification threshold keeps `DISQUALIFICATION` priority. A custom +2 Gam-Jeom is verified both in a round-gap result and in automatic disqualification at a custom threshold of two penalties. Duplicate commands remain idempotent and below-threshold evaluation adds no no-op event/version.
 - Tournament-admin ruleset saves create audited `RULESET_UPDATED` revisions for point gap and Gam-Jeom opponent points/disqualification threshold, preserve unrelated scoring fields, reject stale versions and invalid round numbers, restrict registration managers, and lock whenever a tournament match is active. Latest-ruleset joins select one deterministic revision for snapshots and proposal expiry.
@@ -84,11 +85,14 @@ The Playwright suite verifies:
 21. An unconfirmed SMTP result stays visible, is recorded as FAILED, and is never presented as a successful email.
 22. Missing server email secrets show a setup warning and disable the approval button.
 23. A real empty mat first shows `WAITING FOR NEXT MATCH`, including a 390 px no-horizontal-overflow check. The real assignment API changes it to `WAITING FOR ROUND 1` with match/round numbers but no athlete names or score elements; the real `START` command then reveals the ordinary 0–0 scoreboard. The existing completed-match mat rollover also verifies its next READY match in waiting mode.
+24. The operator's Public TV button opens the mat display in a separate popup while the operator URL remains unchanged. Chromium enters fullscreen and verifies that the entire control overlay disappears, then exercises **F** flip, **M** sound, **Esc** exit and two complete **F11** enter/exit transitions. The clean flipped fullscreen screenshot is reviewed.
+25. On an independent completed result, **W** switches to `WAITING FOR NEXT MATCH` and back to the result. After **W** is selected again, an authoritative `IN_PROGRESS` snapshot automatically removes the override and restores both live score panels; the fixture is restored afterward.
 
 Reviewed screenshots:
 
 - `artifacts/dashboard.png`
 - `artifacts/public-scoreboard.png`
+- `artifacts/public-tv-fullscreen-clean.png`
 - `artifacts/judge-mobile.png`
 - `artifacts/judge-single-mobile.png`
 - `artifacts/judge-controller-live-phone-portrait.png`

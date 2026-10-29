@@ -25,7 +25,7 @@ A production-oriented Taekwondo tournament administration and Kyorugi scoring sy
 
 ## Windows desktop: download and run everything locally
 
-Use the [website download page](https://p01--tkd-scoring--krbhnw2hlgh6.code.run/download) or the public `desktop-v1.2.0` GitHub Release. Download `TKD-Scoring-Windows-x64.zip` and its separate SHA-256 file, extract the entire archive, then run **`TKD Scoring.exe`**. Node.js installation and terminal commands are not required.
+Use the [website download page](https://p01--tkd-scoring--krbhnw2hlgh6.code.run/download) or the public `desktop-v1.2.1` GitHub Release. Download `TKD-Scoring-Windows-x64.zip` and its separate SHA-256 file, extract the entire archive, then run **`TKD Scoring.exe`**. Node.js installation and terminal commands are not required.
 
 The launcher automatically starts the existing Express, Next.js, SQLite and WebSocket system, opens activation when required, and keeps the database and signed license in the Windows user profile. Tournament work requires a paid, device-bound license; see [Paid desktop licensing](docs/LICENSING.md). Press **Ctrl+Shift+L** for LAN addresses, data/logs and recovery controls. The portable release is unsigned, so Windows may show SmartScreen/unknown-publisher warnings. See [Desktop operation and packaging](docs/DESKTOP.md) before an official event.
 
