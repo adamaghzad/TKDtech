@@ -76,6 +76,12 @@ if (!hasSingleInstanceLock) {
     }
   }
 
+  const networkRefresh = setInterval(() => {
+    const nextUrls = lanUrls(PORT);
+    if (nextUrls.join('\n') !== status.lanUrls.join('\n')) publishStatus({});
+  }, 5_000);
+  networkRefresh.unref();
+
   function resourcePaths(): { appRoot: string; supervisor: string; node: string; controlHtml: string; icon: string } {
     if (app.isPackaged) {
       return {
