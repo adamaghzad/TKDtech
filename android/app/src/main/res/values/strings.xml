@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TKD Scoring</string>
+    <string name="host_channel">Offline tournament host</string>
+    <string name="host_notification">Preparing the local scoring service…</string>
+    <string name="host_running">Offline host running · judge devices can connect locally</string>
+</resources>

@@ -25,6 +25,9 @@ describe('desktop licensing security boundary', () => {
       '/api/v1/sessions/:id',
       '/api/v1/sync/push',
       '/api/v1/admin/license-deliveries',
+      // Local process control is not a tournament mutation. It is restricted
+      // separately to the Android loopback channel and its per-start token.
+      '/api/v1/android/shutdown',
     ]);
     const routes = [...server.matchAll(/app\.(?:post|patch|delete)\('([^']+)'/g)];
     expect(routes.length).toBeGreaterThan(15);
@@ -50,6 +53,13 @@ describe('desktop licensing security boundary', () => {
       '/api/v1/judge/proposals',
       '/api/v1/referee/commands',
     ]));
+  });
+
+  it('keeps Android process control on an authenticated loopback-only channel', () => {
+    expect(server).toContain("app.post('/api/v1/android/shutdown'");
+    expect(server).toContain('if(!validAndroidControl(req))');
+    expect(server).toContain("['127.0.0.1','::1','::ffff:127.0.0.1']");
+    expect(server).toContain('TKD_ANDROID_CONTROL_TOKEN');
   });
 
   it('keeps authentication, activation, heartbeat, revocation, and backup exceptions explicit', () => {

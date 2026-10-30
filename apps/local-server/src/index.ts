@@ -5,8 +5,9 @@ import {rateLimit} from 'express-rate-limit';
 import httpProxy from 'http-proxy';
 import {createServer} from 'node:http';
 import type {Socket} from 'node:net';
+import path from 'node:path';
 import {lanUrls as networkLanUrls, pairingOrigin} from './network';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,timingSafeEqual} from 'node:crypto';
 import {z} from 'zod';
 import {scoreProposalSchema} from '@tkd/contracts';
 import {InvalidTransitionError} from '@tkd/domain';
@@ -26,6 +27,13 @@ import {LicenseDeliveryService} from './licensing/delivery';
 const app=express();const server=createServer(app);const db=openDatabase();const repository=new TournamentRepository(db);const licensing=new DesktopLicenseService(db);const licenseDeliveries=new LicenseDeliveryService(db);const matches=new MatchService(db,repository);const seeded=process.env.SEED_DEVELOPMENT==='true'?seedDevelopment(db):null;const realtime=new RealtimeGateway(matches);const syncService=new SyncService(db);const recovered=matches.recoverTimers();for(const id of recovered)console.log(`[recovery] Match ${id} paused for operator confirmation.`);const recoveredMats=repository.recoverResolvedMatAssignments();for(const item of recoveredMats)console.log(`[recovery] Mat ${item.matId} released from resolved match ${item.matchId}${item.nextMatchId?`; queued ${item.nextMatchId}`:''}.`);
 app.set('trust proxy',1);app.disable('x-powered-by');app.use(helmet({contentSecurityPolicy:false,crossOriginEmbedderPolicy:false}));app.use(express.json({limit:'1mb'}));app.use(cookieParser());
 const proxy=httpProxy.createProxyServer({target:process.env.WEB_INTERNAL_URL||'http://127.0.0.1:3001',ws:true,changeOrigin:true});proxy.on('error',(error,_req,res)=>{console.error('[web-proxy]',error.message);if(res&&'writeHead' in res){(res as Response).status(502).json({error:{code:'WEB_UNAVAILABLE',message:'The Next.js frontend is not ready.'}});}});
+let embeddedNextHandler:((req:Request,res:Response)=>void)|null=null;
+if(process.env.TKD_EMBEDDED_NEXT==='true'){
+  const {default:next}=await import('next');
+  const nextApp=next({dev:false,dir:path.resolve(process.cwd(),'apps/web')});
+  embeddedNextHandler=nextApp.getRequestHandler();
+  await nextApp.prepare();
+}
 interface AuthedRequest extends Request{actor?:Actor}
 const actorOf=(req:Request):Actor=>{const actor=(req as AuthedRequest).actor;if(!actor)throw new HttpError(401,'UNAUTHENTICATED','Sign in is required.');return actor;};
 const tournamentIdForMatch=(id:string)=>{const row=db.prepare('SELECT tournament_id FROM matches WHERE id=?').get(id) as {tournament_id:string}|undefined;if(!row)throw new HttpError(404,'NOT_FOUND','Match not found.');return row.tournament_id;};
@@ -33,6 +41,14 @@ const tournamentIdForCategory=(id:string)=>{const row=db.prepare('SELECT tournam
 const tournamentIdForDraw=(id:string)=>{const row=db.prepare('SELECT c.tournament_id FROM draws d JOIN categories c ON c.id=d.category_id WHERE d.id=?').get(id) as {tournament_id:string}|undefined;if(!row)throw new HttpError(404,'NOT_FOUND','Draw not found.');return row.tournament_id;};
 const getCookie=(req:Request):string|undefined=>(req.cookies as Record<string,string|undefined>).tkd_session;
 function setSessionCookie(req:Request,res:Response,token:string){const forwarded=req.headers['x-forwarded-proto'];res.cookie('tkd_session',token,{httpOnly:true,sameSite:'lax',secure:req.secure||forwarded==='https',maxAge:7*24*3600*1000,path:'/'});}
+function validAndroidControl(req:Request):boolean{
+  const expected=process.env.TKD_ANDROID_CONTROL_TOKEN;
+  const remote=req.socket.remoteAddress;
+  if(!expected||!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(remote||''))return false;
+  const supplied=String(req.headers.authorization||'').replace(/^Bearer /,'');
+  const left=Buffer.from(supplied);const right=Buffer.from(expected);
+  return left.length===right.length&&left.length>0&&timingSafeEqual(left,right);
+}
 function optionalAuth(req:Request,_res:Response,next:NextFunction){const token=getCookie(req);const user=repository.userForToken(token);if(user)(req as AuthedRequest).actor=repository.actor(user);next();}
 function requireAuth(req:Request,_res:Response,next:NextFunction){try{actorOf(req);next();}catch(error){next(error);}}
 function csrfGuard(req:Request,res:Response,next:NextFunction){if(['GET','HEAD','OPTIONS'].includes(req.method)||!getCookie(req))return next();const origin=req.headers.origin;if(!origin)return next();try{if(new URL(origin).host!==req.headers.host)return res.status(403).json({error:{code:'CSRF_ORIGIN_REJECTED',message:'Cross-origin command rejected.'}});return next();}catch{return res.status(403).json({error:{code:'CSRF_ORIGIN_REJECTED',message:'Invalid request origin.'}});}}
@@ -43,7 +59,8 @@ const asyncRoute=(handler:(req:Request,res:Response)=>unknown)=>(req:Request,res
 
 app.get('/api/v1/licensing/status',asyncRoute((_req,res)=>ok(res,licensing.getStatus())));
 app.post('/api/v1/licensing/activate',authLimiter,asyncRoute((req,res)=>{const input=z.object({token:z.string().min(1).max(16_384)}).parse(req.body);ok(res,licensing.activate(input.token));}));
-app.get('/api/v1/health',(_req,res)=>ok(res,{status:'ok',mode:process.env.TKD_MODE||'LOCAL',database:'SQLite',time:new Date().toISOString(),consensusTiming:'SERVER_RECEIPT',matQueue:'AUTO_ADVANCE_ON_COMPLETION',roundBreak:'AUTO_START_ON_ROUND_EXPIRY',pausedZeroRecovery:'NON_FINAL_ROUND_TO_BREAK',judgeConsensus:'ADAPTIVE_ONE_OR_TWO_JUDGES',gamJeom:'AUTO_DISQUALIFICATION_AT_THRESHOLD',roundWin:'AUTO_COMPLETE_AT_TWO_ROUND_WINS',timerAudio:'COUNTDOWN_AND_COMPETITION_BUZZER',timerPrecision:'SECONDS_AND_HUNDREDTHS_UNDER_10',scoreAudio:'AUTHORITATIVE_SCORE_INCREASE',resultDisplay:'ROUND_WINNERS_AND_MATCH_RESULT',pointGap:'CONFIGURABLE_ROUND_AND_MATCH',liveScore:'CURRENT_ROUND_POINTS',roundBreakScore:'ENDED_ROUND_WINS',superiority:'AUTHORIZED_ROUND_DECISION',superiorityRest:'HOLD_UNTIL_DECISION',registrationCsv:'CLUBS_CATEGORIES_ATHLETES',desktopInstance:process.env.TKD_DESKTOP_INSTANCE_ID??null,seededMatchId:seeded?.matchId??null}));
+app.get('/api/v1/health',(_req,res)=>ok(res,{status:'ok',mode:process.env.TKD_MODE||'LOCAL',database:'SQLite',time:new Date().toISOString(),consensusTiming:'SERVER_RECEIPT',matQueue:'AUTO_ADVANCE_ON_COMPLETION',roundBreak:'AUTO_START_ON_ROUND_EXPIRY',pausedZeroRecovery:'NON_FINAL_ROUND_TO_BREAK',judgeConsensus:'ADAPTIVE_ONE_OR_TWO_JUDGES',gamJeom:'AUTO_DISQUALIFICATION_AT_THRESHOLD',roundWin:'AUTO_COMPLETE_AT_TWO_ROUND_WINS',timerAudio:'COUNTDOWN_AND_COMPETITION_BUZZER',timerPrecision:'SECONDS_AND_HUNDREDTHS_UNDER_10',scoreAudio:'AUTHORITATIVE_SCORE_INCREASE',resultDisplay:'ROUND_WINNERS_AND_MATCH_RESULT',pointGap:'CONFIGURABLE_ROUND_AND_MATCH',liveScore:'CURRENT_ROUND_POINTS',roundBreakScore:'ENDED_ROUND_WINS',superiority:'AUTHORIZED_ROUND_DECISION',superiorityRest:'HOLD_UNTIL_DECISION',registrationCsv:'CLUBS_CATEGORIES_ATHLETES',desktopInstance:process.env.TKD_DESKTOP_INSTANCE_ID??null,mobileHost:process.env.TKD_ANDROID_HOST==='true',embeddedNext:process.env.TKD_EMBEDDED_NEXT==='true',seededMatchId:seeded?.matchId??null}));
+app.post('/api/v1/android/shutdown',asyncRoute((req,res)=>{if(!validAndroidControl(req))throw new HttpError(404,'NOT_FOUND','Route not found.');ok(res,{stopping:true});setTimeout(shutdown,25).unref();}));
 app.post('/api/v1/auth/login',authLimiter,asyncRoute((req,res)=>{const input=z.object({email:z.string().email(),password:z.string().min(1).max(200)}).parse(req.body);const session=repository.authenticate(input.email,input.password);setSessionCookie(req,res,session.token);ok(res,{user:session.user,mode:'LOCAL'});}));
 app.post('/api/v1/auth/register',authLimiter,asyncRoute((req,res)=>{const input=z.object({name:z.string().min(2).max(120),fullName:z.string().min(2).max(120),email:z.string().email(),password:z.string().min(10).max(200)}).parse(req.body);const session=repository.registerOrganization(input);setSessionCookie(req,res,session.token);ok(res,{user:session.user,mode:'LOCAL'},201);}));
 app.post('/api/v1/auth/demo',authLimiter,asyncRoute((req,res)=>{if(process.env.ALLOW_DEMO_LOGIN!=='true')throw new HttpError(404,'NOT_FOUND','Demo login is disabled.');const session=repository.authenticate('admin@demo.tkd','DemoAdmin2026!');setSessionCookie(req,res,session.token);ok(res,{user:session.user,mode:'LOCAL',development:true});}));
@@ -93,10 +110,10 @@ app.get('/api/v1/reports/:type.csv',requireAuth,asyncRoute((req,res)=>{const act
 
 app.use('/api',(_req,_res,next)=>next(new HttpError(404,'API_NOT_FOUND','API route not found.')));
 app.use((error:unknown,_req:Request,res:Response,_next:NextFunction)=>{if(error instanceof HttpError)return res.status(error.status).json({error:{code:error.code,message:error.message,details:error.details}});if(error instanceof z.ZodError)return res.status(400).json({error:{code:'VALIDATION_ERROR',message:'Request validation failed.',details:error.flatten()}});if(error instanceof InvalidTransitionError)return res.status(409).json({error:{code:'INVALID_MATCH_TRANSITION',message:error.message}});if(error instanceof Error&&/UNIQUE constraint/.test(error.message))return res.status(409).json({error:{code:'CONFLICT',message:'A unique record already exists.',details:error.message}});if(error instanceof Error&&/Match not found/.test(error.message))return res.status(404).json({error:{code:'NOT_FOUND',message:error.message}});console.error('[api-error]',error);return res.status(500).json({error:{code:'INTERNAL_ERROR',message:'The server could not complete this operation.'}});});
-app.all('*',(req,res)=>proxy.web(req,res));
-server.on('upgrade',(req,socket,head)=>{if(req.url?.startsWith('/ws'))realtime.upgrade(req,socket as Socket,head);else proxy.ws(req,socket,head);});
+app.all('*',(req,res)=>{if(embeddedNextHandler)embeddedNextHandler(req,res);else proxy.web(req,res);});
+server.on('upgrade',(req,socket,head)=>{if(req.url?.startsWith('/ws'))realtime.upgrade(req,socket as Socket,head);else if(!embeddedNextHandler)proxy.ws(req,socket,head);else socket.destroy();});
 function networkAddresses():string[]{return networkLanUrls(Number(process.env.PORT||3000));}
 const authoritativeTimer=setInterval(()=>{try{for(const matchId of matches.expireProposals())realtime.broadcastMatch(matchId,'match.snapshot');for(const matchId of matches.expireTimers())realtime.broadcastMatch(matchId,'match.snapshot');}catch(error){console.error('Authoritative timer expiry pass failed',error);}},500);authoritativeTimer.unref();
 const presenceTimer=setInterval(()=>{for(const matchId of matches.expirePresence(Number(process.env.PRESENCE_EXPIRY_SECONDS||15)*1000))realtime.broadcastMatch(matchId,'judge.disconnected');},5000);presenceTimer.unref();
 const port=Number(process.env.PORT||3000);server.listen(port,'0.0.0.0',()=>{console.log(`\nTKD Scoring local server listening on 0.0.0.0:${port}`);console.log(`Mode: ${process.env.TKD_MODE||'LOCAL'} · SQLite persistence · WebSockets /ws`);for(const url of networkAddresses())console.log(`LAN: ${url}`);});
-let shuttingDown=false;function shutdown(){if(shuttingDown)return;shuttingDown=true;console.log('Shutting down TKD Scoring…');for(const id of matches.recoverTimers('Server stopped; operator confirmation required before resume.'))console.log(`[shutdown] Match ${id} paused and persisted.`);server.close(()=>{db.close();process.exit(0);});setTimeout(()=>process.exit(1),5000).unref();}process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);process.on('message',(message:unknown)=>{if(typeof message==='object'&&message!==null&&'type' in message&&(message as {type?:string}).type==='tkd-desktop-shutdown')shutdown();});
+let shuttingDown=false;function shutdown(){if(shuttingDown)return;shuttingDown=true;console.log('Shutting down TKD Scoring…');for(const id of matches.recoverTimers('Server stopped; operator confirmation required before resume.'))console.log(`[shutdown] Match ${id} paused and persisted.`);realtime.close();server.close(()=>{db.close();if(process.env.TKD_ANDROID_HOST==='true'){process.exitCode=0;return;}process.exit(0);});setTimeout(()=>process.exit(1),5000).unref();}process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);process.on('message',(message:unknown)=>{if(typeof message==='object'&&message!==null&&'type' in message&&(message as {type?:string}).type==='tkd-desktop-shutdown')shutdown();});

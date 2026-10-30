@@ -61,6 +61,8 @@ const installationSchema = z.object({
 }).strict();
 
 function detectMachineIdentity(): { id: string; binding: LicenseBinding } {
+  const configured = process.env.TKD_MACHINE_ID?.trim();
+  if (configured) return { id: configured, binding: 'MACHINE_AND_INSTALLATION' };
   if (process.platform === 'win32') {
     try {
       const output = execFileSync('reg', ['query', 'HKLM\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid'], {

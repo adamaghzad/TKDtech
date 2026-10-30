@@ -1,0 +1,9 @@
+.gradle/
+local.properties
+**/build/
+app/libnode/
+*.jks
+*.keystore
+
+# Native CMake/Gradle generated files
+.cxx/

@@ -7,6 +7,9 @@ coverage/
 .local/
 .npm/
 .arena/
+.gradle/
+.android/
+.emulator_console_auth_token
 *.tsbuildinfo
 
 # Keep all local environment files out of source control.

@@ -27,4 +27,5 @@ export class RealtimeGateway {
   broadcastMatch(matchId:string,type:EventEnvelope['type']='match.snapshot'){const snapshot=this.matches.snapshot(matchId);const event=this.envelope(snapshot,type);for(const client of this.wss.clients as Set<Client>){if(!client.matchIds?.has(matchId))continue;const previous=client.lastSequences?.get(matchId);if(previous!=null&&snapshot.sequence>previous+1){this.send(client,{type:'sequence.gap',matchId,expected:previous+1,received:snapshot.sequence});}this.send(client,event);client.lastSequences?.set(matchId,snapshot.sequence);}}
   broadcastTournament(tournamentId:string,type:EventEnvelope['type'],payload:unknown){for(const client of this.wss.clients as Set<Client>){if(client.tournamentIds?.has(tournamentId))this.send(client,{schemaVersion:1,eventId:crypto.randomUUID(),tournamentId,matchId:null,serverTimestamp:Date.now(),sequence:0,actorId:null,type,payload});}}
   get connectedDevices():number{let count=0;for(const client of this.wss.clients as Set<Client>)if(client.deviceToken&&client.readyState===WebSocket.OPEN)count++;return count;}
+  close(){for(const client of this.wss.clients as Set<Client>)client.terminate();}
 }
