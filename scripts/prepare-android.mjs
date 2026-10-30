@@ -178,7 +178,7 @@ async function stageNodeMobile() {
   const destination = path.join(androidDir, 'app', 'libnode');
   rmSync(destination, { recursive: true, force: true });
   copy(path.join(extracted, 'include'), path.join(destination, 'include'));
-  for (const abi of ['arm64-v8a', 'x86_64']) copy(path.join(extracted, 'bin', abi), path.join(destination, 'bin', abi));
+  for (const abi of ['arm64-v8a', 'armeabi-v7a', 'x86_64']) copy(path.join(extracted, 'bin', abi), path.join(destination, 'bin', abi));
   for (const filename of ['NODE-LICENSE.txt', 'NODEJS-MOBILE-LICENSE.txt']) {
     const url = filename === 'NODE-LICENSE.txt'
       ? 'https://raw.githubusercontent.com/nodejs/node/v24.20.0/LICENSE'

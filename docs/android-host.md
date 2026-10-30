@@ -20,7 +20,7 @@ These are not physical-device results. A debug-signed **validation prerelease** 
 - `scripts/prepare-android.mjs`: local-mode production build, production-only dependency staging, native-addon/secret audit, and a single ZIP runtime asset.
 - Tournament SQLite data and license files are under the app's private `files/data` and `files/license` directories, outside the versioned runtime extraction directory.
 
-The app is 64-bit only (`arm64-v8a` for phones and `x86_64` for emulator testing). It has no hardcoded venue IP address.
+The universal phone package includes both `arm64-v8a` and `armeabi-v7a` for 64-bit and 32-bit ARM devices running Android 7.0 (API 24) or newer. An optional `x86_64` build remains available for emulator testing. The app has no hardcoded venue IP address.
 
 ## Operator networking
 
@@ -68,7 +68,7 @@ export JAVA_HOME=/path/to/jdk-21
 ./gradlew assembleDebug -PabiFilters=x86_64 --max-workers=1 --no-daemon
 ```
 
-Use `-PabiFilters=arm64-v8a` for a phone package. Omit that property to build both supported ABIs when the build host has sufficient memory.
+Use `-PabiFilters=arm64-v8a` for a 64-bit-only phone package, or omit that property to build the universal ARM package (`arm64-v8a` and `armeabi-v7a`). Use `-PabiFilters=x86_64` only for emulator testing.
 
 ## Signing and publication
 
