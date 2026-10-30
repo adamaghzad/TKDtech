@@ -50,6 +50,8 @@ Android uninstall normally removes private app data. A license remains device/in
 
 The build uses Node 22 for `node:sqlite` tests, JDK 21, Android SDK 35, NDK 27.2.12479018, CMake 3.31.6, and Gradle 8.11.1. The pinned nodejs-mobile runtime is downloaded and SHA-256 checked by the prepare script. No production signing key is stored in the repository.
 
+The runtime ZIP must DEFLATE every entry. `yazl` streams with EXT data descriptors, and Android's `java.util.zip.ZipInputStream` rejects STORED entries with those descriptors. The prepare script checks the completed central directory for this incompatibility and verifies that the server, Next.js build ID, and required migrations are present. The release verification also extracts the APK's embedded runtime through Java's `ZipInputStream` before publication.
+
 From the repository root on the build host:
 
 ```bash

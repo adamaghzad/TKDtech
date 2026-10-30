@@ -9,12 +9,15 @@ import {
   createWriteStream,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
   readdirSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
+  closeSync,
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -32,6 +35,12 @@ const cacheDir = process.env.ANDROID_DOWNLOAD_CACHE || path.join(os.tmpdir(), 't
 const runtimeVersion = '24.20.0-0';
 const runtimeArchiveName = `nodejs-mobile-android-${runtimeVersion}.zip`;
 const runtimeArchiveSha256 = 'f5ffbaf4f2679fa9180b0758c637c2f8fc8828300f95129badf213a028fb37bb';
+const requiredRuntimeEntries = [
+  'server.mjs',
+  'apps/web/.next/BUILD_ID',
+  'migrations/001_initial.sql',
+  'migrations/002_license_deliveries.sql',
+];
 const nextVersion = JSON.parse(readFileSync(path.join(rootDir, 'node_modules', 'next', 'package.json'), 'utf8')).version;
 const skipAppBuild = process.argv.includes('--skip-app-build');
 
@@ -106,19 +115,65 @@ async function createRuntimeArchive(source, destination) {
   const sourceFinished = finished(archive.outputStream);
   const outputFinished = finished(output);
   archive.outputStream.pipe(output);
-  const alreadyCompressed = /\.(?:png|jpe?g|gif|webp|ico|woff2?|zip|gz)$/i;
   const files = walk(source).sort((left, right) => left.localeCompare(right));
   for (const filename of files) {
     const name = path.relative(source, filename).split(path.sep).join('/');
-    const compress = !alreadyCompressed.test(name);
+    // yazl streams entries with an EXT data descriptor. Android's
+    // java.util.zip.ZipInputStream rejects that descriptor on STORED entries
+    // ("only DEFLATED entries can have EXT descriptor"), so every entry —
+    // including images and fonts — must use DEFLATE for on-device extraction.
     archive.addFile(filename, name, {
       mtime: new Date('2026-01-01T00:00:00.000Z'),
-      compress,
-      ...(compress ? { compressionLevel: 6 } : {}),
+      compress: true,
+      compressionLevel: 6,
     });
   }
   archive.end();
   await Promise.all([sourceFinished, outputFinished]);
+}
+
+function assertAndroidArchiveCompatible(filename) {
+  // Read only the central directory. Checking the completed artifact catches
+  // STORED+EXT entries that Python/desktop ZIP readers accept but Android's
+  // streaming java.util.zip.ZipInputStream rejects.
+  const descriptor = openSync(filename, 'r');
+  try {
+    const size = statSync(filename).size;
+    const tailSize = Math.min(size, 65_557);
+    const tail = Buffer.alloc(tailSize);
+    readSync(descriptor, tail, 0, tailSize, size - tailSize);
+    const eocd = tail.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+    if (eocd < 0) throw new Error('Android runtime ZIP end record is missing.');
+    const entries = tail.readUInt16LE(eocd + 10);
+    const centralSize = tail.readUInt32LE(eocd + 12);
+    const centralOffset = tail.readUInt32LE(eocd + 16);
+    if (entries === 0xffff || centralSize === 0xffffffff || centralOffset === 0xffffffff) {
+      throw new Error('ZIP64 is not supported by the Android runtime compatibility check.');
+    }
+    const central = Buffer.alloc(centralSize);
+    readSync(descriptor, central, 0, centralSize, centralOffset);
+    const names = new Set();
+    let offset = 0;
+    for (let index = 0; index < entries; index += 1) {
+      if (central.readUInt32LE(offset) !== 0x02014b50) throw new Error(`Invalid runtime ZIP central entry ${index}.`);
+      const flags = central.readUInt16LE(offset + 8);
+      const method = central.readUInt16LE(offset + 10);
+      const nameLength = central.readUInt16LE(offset + 28);
+      const extraLength = central.readUInt16LE(offset + 30);
+      const commentLength = central.readUInt16LE(offset + 32);
+      const name = central.toString('utf8', offset + 46, offset + 46 + nameLength);
+      if ((flags & 0x0008) !== 0 && method !== 8) {
+        throw new Error(`Android-incompatible STORED+EXT runtime entry: ${name}`);
+      }
+      names.add(name);
+      offset += 46 + nameLength + extraLength + commentLength;
+    }
+    const missing = requiredRuntimeEntries.filter((name) => !names.has(name));
+    if (missing.length) throw new Error(`Android runtime is missing required entries:\n${missing.join('\n')}`);
+    console.log(`[archive] Android ZIP compatibility verified: ${entries} entries; required payload present.`);
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 async function stageApplication() {
@@ -226,7 +281,9 @@ const manifest = {
 const manifestJson = JSON.stringify(manifest, null, 2);
 writeFileSync(path.join(appRoot, 'android-runtime.json'), manifestJson);
 assertNoSecrets(appRoot);
-await createRuntimeArchive(appRoot, path.join(generatedAssets, 'app-runtime.zip'));
+const runtimeArchive = path.join(generatedAssets, 'app-runtime.zip');
+await createRuntimeArchive(appRoot, runtimeArchive);
+assertAndroidArchiveCompatible(runtimeArchive);
 writeFileSync(path.join(generatedAssets, 'runtime-manifest.json'), manifestJson);
 assertNoSecrets(generatedAssets);
 const bytes = walk(generatedAssets).reduce((total, filename) => total + statSync(filename).size, 0);

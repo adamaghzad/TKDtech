@@ -25,7 +25,8 @@ final class AssetRuntime {
         deleteRecursive(temporary);
         temporary.mkdirs();
         extractZip(context.getAssets().open("app-runtime.zip"), temporary);
-        if (!valid(temporary)) throw new IOException("The bundled Android runtime is incomplete.");
+        String missing = missingRequirement(temporary);
+        if (missing != null) throw new IOException("The bundled Android runtime is incomplete: missing " + missing);
         new FileOutputStream(new File(temporary, ".complete")).close();
         deleteRecursive(destination);
         if (!temporary.renameTo(destination)) throw new IOException("Could not finalize the Android runtime.");
@@ -39,10 +40,18 @@ final class AssetRuntime {
     }
 
     private static boolean valid(File directory) {
-        return new File(directory, "server.mjs").isFile()
-            && new File(directory, "apps/web/.next/BUILD_ID").isFile()
-            && new File(directory, "migrations/001_initial.sql").isFile()
-            && new File(directory, "migrations/002_license_deliveries.sql").isFile();
+        return missingRequirement(directory) == null;
+    }
+
+    private static String missingRequirement(File directory) {
+        String[] required = {
+            "server.mjs",
+            "apps/web/.next/BUILD_ID",
+            "migrations/001_initial.sql",
+            "migrations/002_license_deliveries.sql",
+        };
+        for (String path : required) if (!new File(directory, path).isFile()) return path;
+        return null;
     }
 
     private static void extractZip(InputStream source, File destination) throws IOException {
