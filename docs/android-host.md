@@ -10,7 +10,7 @@ The following checks have passed on the build host:
 - The exact staged Android server payload: **25/25 Chromium scenarios**.
 - Debug APK compilation with the embedded `libnode.so` and JNI bridge.
 
-These are not physical-device results. Android hotspot/router connectivity, battery/background policy, process restoration, backup/restore on a phone, and tournament-venue reliability must be validated before a signed APK is offered on the product website. Windows desktop releases remain independent and unchanged.
+These are not physical-device results. A debug-signed **validation prerelease** is available from the product website for on-device testing only. Android hotspot/router connectivity, battery/background policy, process restoration, backup/restore on a phone, and tournament-venue reliability must be validated before a production-signed APK replaces that validation download. Windows desktop releases remain independent and unchanged.
 
 ## Runtime layout
 
@@ -72,4 +72,4 @@ Use `-PabiFilters=arm64-v8a` for a phone package. Omit that property to build bo
 
 ## Signing and publication
 
-Only after the device validation checklist passes should a release build be signed with the protected production keystore. Verify the APK with `apksigner verify`, generate a SHA-256 checksum, and record the exact source revision and ABI set. Then add the APK, checksum, and these installation/backup notes beside the existing Windows package on the independent product website. Do not replace or remove the Windows download.
+Only after the device validation checklist passes should a release build be signed with the protected production keystore. Verify the APK with `apksigner verify`, generate a SHA-256 checksum, and record the exact source revision and ABI set. Then replace the validation download with the production APK, checksum, and these installation/backup notes beside the existing Windows package on the independent product website. Do not replace or remove the Windows download.
