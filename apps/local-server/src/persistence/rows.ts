@@ -37,6 +37,7 @@ export function snapshotFromRow(db: SqliteDatabase, row: MatchJoinedRow, now = D
   const scoringEvents = (db.prepare(`SELECT event_id,event_type,payload_json FROM match_events WHERE match_id=? AND event_type IN ('score.manual','score.accepted','score.correction') ORDER BY sequence`).all(row.id) as Array<{event_id:string;event_type:string;payload_json:string}>).map(event => ({ eventId: event.event_id, eventType: event.event_type, payload: JSON.parse(event.payload_json) as Record<string,unknown> })) satisfies ScoringEventRecord[];
   const judgeProposals = currentRound ? (db.prepare(`SELECT p.side,p.point_type,p.status,p.decision_id,p.submitted_at,j.role AS judge_role FROM scoring_proposals p JOIN judge_sessions j ON j.id=p.judge_session_id WHERE p.match_id=? AND p.round_id=? ORDER BY p.submitted_at`).all(row.id,currentRound.id) as Array<{side:Side;point_type:PointType;status:string;decision_id:string|null;submitted_at:number;judge_role:CornerJudgeRole}>).map(proposal => ({ side: proposal.side, pointType: proposal.point_type, status: proposal.status, decisionId: proposal.decision_id, submittedAt: proposal.submitted_at, judgeRole: proposal.judge_role })) satisfies JudgeProposalRecord[] : [];
   const scoringActivity = currentRound ? buildScoringActivity({ round: row.current_round, roundId: currentRound.id, events: scoringEvents, judgeProposals, now, consensusWindowMs: ruleset.consensusWindowMs, consensusThreshold: ruleset.consensusThreshold, points: ruleset.points }) : { round: row.current_round, blue: { headHits: 0, bodyHits: 0, hits: [], punches: [] }, red: { headHits: 0, bodyHits: 0, hits: [], punches: [] } };
+  const videoReview = row.review_json ? JSON.parse(row.review_json) as MatchSnapshot['videoReview'] : null;
   return {
     schemaVersion: 1, matchId: row.id, tournamentId: row.tournament_id, categoryId: row.category_id,
     matchNumber: row.match_number, matId: row.mat_id, matName: row.mat_name ?? 'Unassigned',
@@ -46,7 +47,7 @@ export function snapshotFromRow(db: SqliteDatabase, row: MatchJoinedRow, now = D
     redScore: row.red_score, blueGamJeom: row.blue_gam_jeom, redGamJeom: row.red_gam_jeom,
     rounds: roundSnapshots, timer: displayTimer, winner: row.winner_side, decisionMethod: row.decision_method,
     judges: presence.map(item => ({ role: item.role, status: item.status==='ONLINE'&&item.last_seen_at<=presenceCutoff?'OFFLINE':item.status, lastSeenAt: new Date(item.last_seen_at).toISOString() })),
-    scoringActivity,
+    scoringActivity, videoReview,
     updatedAt: row.updated_at, serverTime: now
   };
 }

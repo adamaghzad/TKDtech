@@ -47,10 +47,11 @@ export class MatchService {
     const match=getMatchRow(this.db,matchId);this.repository.authorizeTournament(actor,match.tournament_id);
     if(!['SUPER_ADMIN','TOURNAMENT_ADMIN','MAT_OPERATOR','REFEREE'].includes(actor.role))throw new HttpError(403,'PERMISSION_DENIED','Match control permission required.');
     if(actor.role==='REFEREE'&&!['START','PAUSE','RESUME','GAM_JEOM','MEDICAL_TIMEOUT','VIDEO_REVIEW','END_REVIEW','ROUND_SUPERIORITY','COMPLETE'].includes(command.type))throw new HttpError(403,'PERMISSION_DENIED','This referee action is not authorized.');
+    if(actor.role==='REFEREE'&&(command.outcome||command.reviewCorrection||command.reviewAction||command.reviewPoints))throw new HttpError(403,'PERMISSION_DENIED','Only an authorized review operator can decide a review or apply its correction.');
     if(command.expectedVersion!=null&&command.expectedVersion!==match.version)throw new HttpError(409,'VERSION_CONFLICT',`Match version changed. Expected ${command.expectedVersion}, current ${match.version}. Refresh before retrying.`);
     const ruleset=this.ruleset(match.tournament_id);let eventType='timer.updated';let payload:Record<string,unknown>={command:command.type};let skipPersistence=false;
     this.db.transaction(()=>{
-      const current=getMatchRow(this.db,matchId);const timer=JSON.parse(current.timer_json) as MatchSnapshot['timer'] & {returnTimer?:MatchSnapshot['timer']};const now=Date.now();let state=current.state;let nextTimer=MatchService.cleanTimer(timer);let round=current.current_round;let blueScore=current.blue_score;let redScore=current.red_score;let blueGam=current.blue_gam_jeom;let redGam=current.red_gam_jeom;let winner=current.winner_side;let decision=current.decision_method;let actualEnd=current.actual_end_at;
+      const current=getMatchRow(this.db,matchId);const timer=JSON.parse(current.timer_json) as MatchSnapshot['timer'] & {returnTimer?:MatchSnapshot['timer']};const now=Date.now();let state=current.state;let nextTimer=MatchService.cleanTimer(timer);let nextReview=current.review_json?JSON.parse(current.review_json) as MatchSnapshot['videoReview']:null;let round=current.current_round;let blueScore=current.blue_score;let redScore=current.red_score;let blueGam=current.blue_gam_jeom;let redGam=current.red_gam_jeom;let winner=current.winner_side;let decision=current.decision_method;let actualEnd=current.actual_end_at;
       const currentRound=this.db.prepare('SELECT * FROM match_rounds WHERE match_id=? AND number=?').get(matchId,round) as {id:string;number:number;blue_score:number;red_score:number;blue_penalties:number;red_penalties:number;winner_side:Side|null;decision_method:string|null;ended_at:string|null};
       const transition=(to:typeof state)=>{assertTransition(state,to);state=to;};
       const assertBreakSuperiorityResolved=()=>{
@@ -178,11 +179,47 @@ export class MatchService {
         }
         case 'VIDEO_REVIEW': {
           if(!['IN_PROGRESS','PAUSED','GOLDEN_POINT','ROUND_BREAK'].includes(state))throw new HttpError(409,'INVALID_STATE','Video review is unavailable in this state.');
-          transition('UNDER_REVIEW');nextTimer=pauseTimer(nextTimer,now);eventType='match.under_review';break;
+          transition('UNDER_REVIEW');nextTimer=pauseTimer(nextTimer,now);nextReview={status:'REQUESTED',requestedBy:command.side??null,requestedAt:now,decidedAt:null};eventType='match.under_review';payload={...payload,requestedBy:command.side??null,requestedAt:now};break;
         }
         case 'END_REVIEW': {
           if(state!=='UNDER_REVIEW')throw new HttpError(409,'INVALID_STATE','No active video review.');
-          transition('PAUSED');eventType='match.review_completed';payload={...payload,reason:command.reason||'Review closed by authorized operator'};break;
+          const review=nextReview??{status:'REQUESTED' as const,requestedBy:null,requestedAt:now,decidedAt:null};
+          const outcome=command.outcome;
+          let correction:Record<string,unknown>|null=null;
+          if(outcome==='ACCEPTED'&&command.reviewCorrection){
+            if(!command.side||!command.reviewAction)throw new HttpError(400,'VALIDATION_ERROR','Athlete and Add/Remove action are required for an accepted review correction.');
+            if(nextTimer.kind==='BREAK')throw new HttpError(409,'REVIEW_ROUND_AMBIGUOUS','A review correction cannot be applied during the round break. Use the authorized previous-round correction workflow.');
+            const side=command.side;const action=command.reviewAction;
+            if(command.reviewCorrection==='POINTS'){
+              const points=command.reviewPoints;if(!points)throw new HttpError(400,'VALIDATION_ERROR','Select 1, 2, 3 or 4 points for the review correction.');
+              const sideTotal=side==='BLUE'?blueScore:redScore;const sideRound=side==='BLUE'?currentRound.blue_score:currentRound.red_score;
+              if(action==='REMOVE'&&(sideTotal<points||sideRound<points))throw new HttpError(409,'CORRECTION_EXCEEDS_SCORE','The selected points cannot be removed below zero from this round.');
+              const delta=action==='ADD'?points:-points;if(side==='BLUE')blueScore+=delta;else redScore+=delta;
+              this.db.prepare(`UPDATE match_rounds SET ${side==='BLUE'?'blue_score':'red_score'}=${side==='BLUE'?'blue_score':'red_score'}+? WHERE id=?`).run(delta,currentRound.id);
+              correction={kind:'POINTS',side,action,points,roundId:currentRound.id,round};
+            }else{
+              const opponentPoints=ruleset.gamJeomOpponentPoints;
+              const updated={blueScore:currentRound.blue_score,redScore:currentRound.red_score,bluePenalties:currentRound.blue_penalties,redPenalties:currentRound.red_penalties};
+              if(action==='ADD'){
+                const applied=applyGamJeom({number:round,...updated},side,ruleset);updated.blueScore=applied.blueScore;updated.redScore=applied.redScore;updated.bluePenalties=applied.bluePenalties;updated.redPenalties=applied.redPenalties;
+                if(side==='BLUE'){blueGam+=1;redScore+=opponentPoints;}else{redGam+=1;blueScore+=opponentPoints;}
+              }else{
+                const penalties=side==='BLUE'?blueGam:redGam;const roundPenalties=side==='BLUE'?updated.bluePenalties:updated.redPenalties;const opponentTotal=side==='BLUE'?redScore:blueScore;const opponentRound=side==='BLUE'?updated.redScore:updated.blueScore;
+                if(penalties<1||roundPenalties<1)throw new HttpError(409,'CORRECTION_EXCEEDS_PENALTIES','The selected athlete has no Gam-Jeom to remove from this round.');
+                if(opponentTotal<opponentPoints||opponentRound<opponentPoints)throw new HttpError(409,'CORRECTION_EXCEEDS_SCORE','Removing this Gam-Jeom would reduce the opponent below zero.');
+                if(side==='BLUE'){blueGam-=1;redScore-=opponentPoints;updated.bluePenalties-=1;updated.redScore-=opponentPoints;}else{redGam-=1;blueScore-=opponentPoints;updated.redPenalties-=1;updated.blueScore-=opponentPoints;}
+              }
+              this.db.prepare('UPDATE match_rounds SET blue_score=?,red_score=?,blue_penalties=?,red_penalties=? WHERE id=?').run(updated.blueScore,updated.redScore,updated.bluePenalties,updated.redPenalties,currentRound.id);
+              correction={kind:'GAM_JEOM',side,action,opponentPoints,roundId:currentRound.id,round};
+              if(action==='ADD'){
+                const totalPenalties=side==='BLUE'?blueGam:redGam;
+                if(totalPenalties>=ruleset.disqualificationThreshold){winner=side==='BLUE'?'RED':'BLUE';decision='DISQUALIFICATION';nextTimer=pauseTimer(nextTimer,now);actualEnd=new Date(now).toISOString();payload={...payload,automaticDisqualification:true,winner,decisionMethod:decision,totalPenalties,disqualificationThreshold:ruleset.disqualificationThreshold};}
+              }
+            }
+          }
+          if(winner&&decision==='DISQUALIFICATION')transition('DISQUALIFIED');else transition('PAUSED');
+          nextReview=outcome?{...review,status:outcome,decidedAt:now}:null;
+          eventType='match.review_completed';payload={...payload,reason:command.reason||'Review closed by authorized operator',requestedBy:review.requestedBy,outcome:outcome??null,correction,decidedAt:outcome?now:null};break;
         }
         case 'TIMER_EXPIRED': {
           const timing=this.timing(current.category_id);const expiredRunning=timer.running&&remainingAt(timer,now)===0;
@@ -261,8 +298,9 @@ export class MatchService {
         }
       }
       if(skipPersistence)return;
+      if(!['VIDEO_REVIEW','END_REVIEW','EVALUATE_POINT_GAP','TIMER_EXPIRED'].includes(command.type))nextReview=null;
       const sequence=current.sequence+1;const updatedAt=isoNow();
-      const update=this.db.prepare(`UPDATE matches SET state=?,current_round=?,blue_score=?,red_score=?,blue_gam_jeom=?,red_gam_jeom=?,winner_side=?,decision_method=?,timer_json=?,sequence=?,version=version+1,actual_end_at=?,updated_at=? WHERE id=? AND version=?`).run(state,round,blueScore,redScore,blueGam,redGam,winner,decision,JSON.stringify(nextTimer),sequence,actualEnd,updatedAt,matchId,current.version);
+      const update=this.db.prepare(`UPDATE matches SET state=?,current_round=?,blue_score=?,red_score=?,blue_gam_jeom=?,red_gam_jeom=?,winner_side=?,decision_method=?,timer_json=?,review_json=?,sequence=?,version=version+1,actual_end_at=?,updated_at=? WHERE id=? AND version=?`).run(state,round,blueScore,redScore,blueGam,redGam,winner,decision,JSON.stringify(nextTimer),nextReview?JSON.stringify(nextReview):null,sequence,actualEnd,updatedAt,matchId,current.version);
       if(update.changes!==1)throw new HttpError(409,'VERSION_CONFLICT','Match changed concurrently. No command was applied.');
       appendMatchEvent(this.db,{tournamentId:current.tournament_id,matchId,sequence,type:eventType,actorId:actor.id,sessionId:actor.sessionId,payload,idempotencyKey});
       audit(this.db,{tournamentId:current.tournament_id,actorId:actor.id,action:`MATCH_${command.type}`,entityType:'match',entityId:matchId,before:{state:current.state,version:current.version,blueScore:current.blue_score,redScore:current.red_score},after:{state,version:current.version+1,blueScore,redScore},reason:command.reason});
@@ -273,7 +311,8 @@ export class MatchService {
       }
     })();
     const snapshot=this.snapshot(matchId);
-    if(!skipPersistence&&['SCORE','GAM_JEOM'].includes(command.type)&&['IN_PROGRESS','PAUSED'].includes(snapshot.state)){
+    const scoringChanged=['SCORE','GAM_JEOM'].includes(command.type)||(command.type==='END_REVIEW'&&command.outcome==='ACCEPTED'&&command.reviewAction==='ADD'&&Boolean(command.reviewCorrection));
+    if(!skipPersistence&&scoringChanged&&['IN_PROGRESS','PAUSED'].includes(snapshot.state)){
       return this.execute(actor,matchId,{type:'EVALUATE_POINT_GAP'},`point-gap:${idempotencyKey}`);
     }
     return snapshot;

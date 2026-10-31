@@ -17,7 +17,7 @@ describe('Android node:sqlite compatibility', () => {
       migrate(db as unknown as SqliteDatabase);
       const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>;
       expect(tables.map((row) => row.name)).toEqual(expect.arrayContaining(['matches', 'match_events', 'judge_sessions', 'schema_migrations']));
-      expect(db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toMatchObject({ version: 2 });
+      expect(db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()).toMatchObject({ version: 3 });
       expect(db.pragma('integrity_check', { simple: true })).toBe('ok');
       expect(db.pragma('foreign_key_check')).toEqual([]);
     } finally {

@@ -8,7 +8,7 @@
 | `TOURNAMENT_ADMIN` | Tournament/category/draw administration, match control, pairing, reports, sync requests |
 | `REGISTRATION_MANAGER` | Club/athlete registration and passing weigh-in records; cannot publish draws or control matches |
 | `MAT_OPERATOR` | Mat assignment, match/timer/scoring controls, device pairing; privileged previous-round correction remains administrator-only |
-| `REFEREE` | Restricted device commands: start/pause/resume, penalties, medical/video review, tied-round superiority recording, completion |
+| `REFEREE` | Restricted device commands: start/pause/resume, penalties, medical timeout, side-specific video-review request/close without outcome, tied-round superiority recording, completion |
 | `CORNER_JUDGE` | Signed assigned-session scoring proposals only |
 | `PUBLIC_VIEWER` | Read-only public tournament/display data |
 
@@ -32,6 +32,7 @@ Production must start with a fresh nonseeded database. `SEED_DEVELOPMENT=true` c
 - With two or more fresh online corner judges, two distinct authorized judge sessions are required for consensus. With exactly one online judge, that authorized session can score alone in the explicitly displayed one-judge mode. Duplicate deliveries never count twice.
 - Match events and published draw versions have database immutability triggers.
 - State/result/advancement commits complete before realtime broadcast.
+- IVR outcomes and corrections require an authorized operator/referee role boundary: referee devices can request or close a review, while only operator/admin roles can Accept/Reject or apply the explicitly selected correction. Reject cannot alter scoring; every accepted correction is persisted and audited before broadcast.
 - Public mutation attempts receive authorization errors even with valid match IDs.
 
 Generic undo is limited to reversible nonfinal scoring. Dedicated completed-result correction and downstream bracket reversal are not yet implemented; this must be completed before events requiring post-final result changes.

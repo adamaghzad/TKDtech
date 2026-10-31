@@ -13,7 +13,7 @@ export interface MatchRow {
   match_number: string; phase: string; mat_id: string | null; blue_athlete_id: string | null;
   red_athlete_id: string | null; state: MatchState; current_round: number;
   blue_score: number; red_score: number; blue_gam_jeom: number; red_gam_jeom: number;
-  winner_side: Side | null; decision_method: string | null; timer_json: string;
+  winner_side: Side | null; decision_method: string | null; timer_json: string; review_json: string | null;
   sequence: number; version: number; queue_position: number | null; scheduled_at: string | null;
   actual_start_at: string | null; actual_end_at: string | null; created_at: string; updated_at: string;
 }
@@ -27,4 +27,17 @@ export interface SessionContext { user: AuthUser; token?: string }
 export interface CommandContext { actor: Actor; expectedVersion?: number; reason?: string; idempotencyKey?: string }
 // TIMER_EXPIRED, HOLD_FOR_SUPERIORITY, and EVALUATE_POINT_GAP are internal; the public command schema does not accept them.
 export type TimerCommand = 'START'|'PAUSE'|'RESUME'|'RESET_TIMER'|'NEXT_ROUND'|'PREVIOUS_ROUND'|'SCORE'|'GAM_JEOM'|'MEDICAL_TIMEOUT'|'VIDEO_REVIEW'|'END_REVIEW'|'ROUND_SUPERIORITY'|'COMPLETE'|'WALKOVER'|'UNDO'|'TIMER_EXPIRED'|'HOLD_FOR_SUPERIORITY'|'EVALUATE_POINT_GAP';
-export interface MatchCommand { type: TimerCommand; side?: Side; pointType?: keyof Ruleset['points']; points?: number; expectedVersion?: number; reason?: string }
+export type ReviewOutcome = 'ACCEPTED' | 'REJECTED';
+export type ReviewCorrectionKind = 'GAM_JEOM' | 'POINTS';
+export interface MatchCommand {
+  type: TimerCommand;
+  side?: Side;
+  pointType?: keyof Ruleset['points'];
+  points?: number;
+  expectedVersion?: number;
+  reason?: string;
+  outcome?: ReviewOutcome;
+  reviewAction?: 'ADD' | 'REMOVE';
+  reviewCorrection?: ReviewCorrectionKind;
+  reviewPoints?: 1 | 2 | 3 | 4;
+}

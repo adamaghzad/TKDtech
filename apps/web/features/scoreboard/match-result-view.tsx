@@ -1,4 +1,4 @@
-import type{MatchSnapshot,Side}from'@tkd/contracts';import{BrandMark}from'@/components/brand';import{cn,flagEmoji}from'@/lib/utils';import{matchResultScores}from'@/lib/match-result';
+import type{MatchSnapshot,Side}from'@tkd/contracts';import{BrandMark}from'@/components/brand';import{CompetitionStatusOverlay}from'./competition-status-overlay';import{cn,flagEmoji}from'@/lib/utils';import{matchResultScores}from'@/lib/match-result';
 
 export function MatchResultView({snapshot,flipped=false,viewport=false}:{snapshot:MatchSnapshot;flipped?:boolean;viewport?:boolean}){
  const winner=snapshot.winner;
@@ -22,5 +22,6 @@ export function MatchResultView({snapshot,flipped=false,viewport=false}:{snapsho
    <p className="mt-2 text-center text-[clamp(.45rem,.62vw,.68rem)] font-bold uppercase tracking-[.14em] text-white/40 [@media(max-height:500px)]:mt-1">Total points · Blue {snapshot.blueScore} · Red {snapshot.redScore}</p>
   </section></main>
   <footer className="flex min-h-[34px] items-center justify-between border-t border-white/10 px-[3%] py-2 text-[clamp(.42rem,.58vw,.65rem)] [@media(max-height:500px)]:min-h-[26px] [@media(max-height:500px)]:py-1 font-semibold uppercase tracking-wider text-white/45"><span>Result recorded by the authoritative server</span><span>TKD Scoring by ADAM AGHZAF</span></footer>
+  <CompetitionStatusOverlay snapshot={snapshot} remainingMs={snapshot.timer.remainingMs}/>
  </div>;
 }

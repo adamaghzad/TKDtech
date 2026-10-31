@@ -119,6 +119,12 @@ Command types:
 - `COMPLETE`, `WALKOVER`;
 - `UNDO` with a reason for a reversible nonfinal scoring event.
 
+`VIDEO_REVIEW` accepts an optional requesting `side` (`BLUE`/Chung or `RED`/Hong), pauses the authoritative timer, enters `UNDER_REVIEW`, and persists `snapshot.videoReview` with the request corner and server timestamp. The operator's side-specific buttons always supply the corner; the nullable form preserves compatibility with an official generic review.
+
+`END_REVIEW` with `outcome: 'ACCEPTED' | 'REJECTED'` records the public IVR result and its server decision time. Reject never changes scores or penalties, even if correction fields are also sent. Accept applies only an explicitly supplied correction: `side`, `reviewAction: 'ADD' | 'REMOVE'`, and either `reviewCorrection: 'POINTS'` with `reviewPoints: 1 | 2 | 3 | 4`, or `reviewCorrection: 'GAM_JEOM'`. Gam-Jeom uses the configured opponent points and cumulative disqualification threshold. Removals that would make the current-round score/penalty negative are rejected transactionally. To avoid guessing a target round, score corrections are refused while the timer is in `BREAK`; an outcome without a correction remains allowed. A referee session may request or close a review without an outcome, but cannot decide the result or apply corrections.
+
+The public request remains while the match is under review. Accepted/Rejected O/X displays are derived from the persisted outcome for six seconds. An active `MEDICAL` timer displays the prominent Doctor Call emergency overlay until the medical timeout ends. These displays are read-only projections; they do not mutate the match.
+
 Every mutating operator command should include the latest `expectedVersion` and a unique `Idempotency-Key`. Reusing a key with the same command returns the stored outcome; stale versions and different reuse are rejected rather than overwriting current state.
 
 Point types are `BODY_PUNCH`, `BODY_KICK`, `HEAD_KICK`, `TURNING_BODY_KICK`, and `TURNING_HEAD_KICK`. Values come from the tournament's configured ruleset.

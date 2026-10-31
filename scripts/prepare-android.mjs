@@ -40,6 +40,7 @@ const requiredRuntimeEntries = [
   'apps/web/.next/BUILD_ID',
   'migrations/001_initial.sql',
   'migrations/002_license_deliveries.sql',
+  'migrations/003_video_review.sql',
 ];
 const nextVersion = JSON.parse(readFileSync(path.join(rootDir, 'node_modules', 'next', 'package.json'), 'utf8')).version;
 const skipAppBuild = process.argv.includes('--skip-app-build');

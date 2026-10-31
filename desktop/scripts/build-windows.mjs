@@ -204,6 +204,7 @@ async function validatePortableDirectory(directory) {
     path.join(resources, 'app-root', 'apps', 'web', '.next', 'BUILD_ID'),
     path.join(resources, 'app-root', 'apps', 'local-server', 'src', 'persistence', 'migrations', '001_initial.sql'),
     path.join(resources, 'app-root', 'apps', 'local-server', 'src', 'persistence', 'migrations', '002_license_deliveries.sql'),
+    path.join(resources, 'app-root', 'apps', 'local-server', 'src', 'persistence', 'migrations', '003_video_review.sql'),
     path.join(resources, 'app-root', 'apps', 'local-server', 'src', 'licensing', 'service.ts'),
     path.join(resources, 'app-root', 'apps', 'local-server', 'src', 'licensing', 'delivery.ts'),
     path.join(resources, 'app-root', 'packages', 'licensing', 'src', 'key.ts'),

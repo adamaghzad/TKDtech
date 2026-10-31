@@ -1,6 +1,6 @@
 # Verification record
 
-Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**, **React 19**, **Zod 4.6.7**, **Electron 45**, and Chromium via Playwright. The offline-LAN, Public TV and hosted-pairing updates were rechecked on **2026-10-29** with the same toolchain: the complete application check passed with **192/192 tests**, and all **25/25 Chromium tests** passed against a fresh database.
+Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**, **React 19**, **Zod 4.6.7**, **Electron 45**, and Chromium via Playwright. The responsive release was rechecked with **195/195 application tests** and **26/26 Chromium tests**. The side-specific IVR and Doctor Call update was verified on **2026-10-31** with Node.js 22.20.0: **201/201 application tests** and **27/27 Chromium tests** passed against a fresh database.
 
 ## Automated checks
 
@@ -8,12 +8,12 @@ Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **192/192 tests passed across 28 files** |
-| `npm run test:e2e` | **25/25 real Chromium tests passed** against the Next 16 production server |
+| `npm test` | **201/201 tests passed across 30 files** |
+| `npm run test:e2e` | **27/27 real Chromium tests passed** against the Next 16 production server |
 | `npm run desktop:build` | Passed strict Electron main/preload TypeScript compilation |
 | `npm run test:desktop:runtime` | Passed real signed-license issuance, unlicensed/invalid/wrong-device API rejection, valid activation, exports, optimized desktop-supervisor startup, internal identity boundary, authenticated tournament write, clean shutdown and restart license/data persistence |
 | `npm run test:license:delivery` | Passed real production-key signing, intended-device activation, wrong-device rejection and exact mock email attachment; no real email sent |
-| `npm run validate:migrations` | Passed: SQLite migration 2, 29 required entities, foreign keys enforced |
+| `npm run validate:migrations` | Passed: SQLite migration 3, 29 required entities, foreign keys enforced |
 | `npm run validate:supabase` | Passed on temporary PostgreSQL 17: 29 RLS tables, auth/storage definitions, immutable draws, idempotent/conflict-aware RPC |
 | `npm run build` | Passed: optimized Next 16.4.3 App Router production build with proxy convention |
 | `npm audit --omit=dev --audit-level=high` | **0 vulnerabilities** after dependency upgrades/removal of unused vulnerable packages |
@@ -35,6 +35,7 @@ Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 
 - Configurable point-gap policy verifies exact boundaries and timing: legacy omissions stay disabled; Red 14–0 continues under a 15-point round rule; exactly 15–0 persists the accepted score then a separate `POINT_GAP` round decision; a second such round win completes by `ROUND_WINS`; timer-expiry recovery honors an already-persisted gap. Cumulative 20-point match gap completes at the end of Round 2 or live in Round 3, takes priority over ordinary two-round-win finalization at round completion, and leaves a live unfinished Round 3 explicitly unended. Operator, judge-consensus, and configured Gam-Jeom points all trigger evaluation, while the configured cumulative disqualification threshold keeps `DISQUALIFICATION` priority. A custom +2 Gam-Jeom is verified both in a round-gap result and in automatic disqualification at a custom threshold of two penalties. Duplicate commands remain idempotent and below-threshold evaluation adds no no-op event/version.
 - Tournament-admin ruleset saves create audited `RULESET_UPDATED` revisions for point gap and Gam-Jeom opponent points/disqualification threshold, preserve unrelated scoring fields, reject stale versions and invalid round numbers, restrict registration managers, and lock whenever a tournament match is active. Latest-ruleset joins select one deterministic revision for snapshots and proposal expiry.
 - An ended tied round holds the full rest with `SUPERIORITY`, blocks every rest/next-round resume path, and survives reset/review/recovery checks until an authorized referee/operator records a reasoned decision. Legacy running unresolved breaks are paused by the scheduler. The decision releases the hold, starts rest automatically, preserves equal points, persists/audits the winner, rejects overwrites, and feeds match results.
+- Side-specific IVR requests persist the Chung/Blue or Hong/Red corner and pause the timer. Operator-only Accept applies only the selected 1–4 point or Gam-Jeom Add/Remove correction; Reject ignores all correction fields and leaves scores unchanged. Tests cover exact round/total updates, configured opponent points, impossible-removal rollback, audit payloads, restart recovery, referee denial, and the guard against applying a correction to an ambiguous next round during rest. Chromium verifies the request, management panel, non-destructive Close, Accepted O/Rejected X result, six-second dismissal, responsive portrait/landscape overlays, and the persistent Doctor Call emergency display.
 - Club/category/athlete CSV parsing supports UTF-8 BOM, CRLF, quoted fields, and independent row failures with a 500-row cap. Real browser uploads create 4 clubs and 4 categories, reject repeated duplicates, then create 12 athletes whose club/category names resolve to the correct registrations and passing weigh-ins.
 - Offline LAN address selection requires no gateway or Internet, filters public/loopback duplicates, and places link-local addresses last. New pairing links resolve current interfaces instead of retaining a stale startup IP, preserve a private address that actually served the operator, reject arbitrary public Host headers for local pairing, and retain configured-origin behavior outside local mode. Desktop LAN links refresh after adapter/IP changes. Hosted `LOCAL` SQLite pairing prefers an explicit public HTTPS origin over unreachable container addresses for both public and private proxy Host values.
 - Role/tournament permissions and public denial.
@@ -130,6 +131,11 @@ Reviewed screenshots:
 - `artifacts/dashboard-license-renewal.png`
 - `artifacts/license-email-delivery.png`
 - `artifacts/license-email-delivery-mobile.png`
+- `artifacts/ivr-request-display.png`
+- `artifacts/ivr-manager.png`
+- `artifacts/ivr-accepted-display.png`
+- `artifacts/ivr-rejected-display.png`
+- `artifacts/doctor-call-display.png`
 
 No browser page errors were observed in the dashboard/operator test.
 
@@ -149,7 +155,7 @@ No browser page errors were observed in the dashboard/operator test.
 - Actual process recovery restored the showcase at blue 12, red 8, round 3 in `PAUSED` state.
 - A subsequent graceful-stop drill logged the running match as paused/persisted before close; after restart the timer difference reflected only the stop-call interval (under three seconds), not server downtime.
 - `npm run backup -- /tmp/tkd-backup-test.db` completed using SQLite online backup and integrity verification.
-- `npm run check:database -- /tmp/tkd-backup-test.db` previously reported migration 1, integrity ok, and foreign keys ok; the separate migration validator now passes migration 2.
+- `npm run check:database -- /tmp/tkd-backup-test.db` previously reported migration 1, integrity ok, and foreign keys ok; the separate migration validator now passes migration 3.
 
 ## Not verified / not claimed
 - Real Gmail/SMTP delivery has not been attempted. Email tests use a mock sender; production app-password configuration, hosted secrets, Northflank deployment of this branch, inbox/spam placement and client receipt remain unverified. `SENT` means only that an SMTP service accepted a message.

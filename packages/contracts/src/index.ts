@@ -94,6 +94,13 @@ export interface MatchScoringActivity {
   red: SideScoringActivity;
 }
 
+export interface VideoReviewSnapshot {
+  status: 'REQUESTED' | 'ACCEPTED' | 'REJECTED';
+  requestedBy: Side | null;
+  requestedAt: number;
+  decidedAt: number | null;
+}
+
 export interface MatchSnapshot {
   schemaVersion: 1;
   matchId: string;
@@ -122,6 +129,7 @@ export interface MatchSnapshot {
   decisionMethod: string | null;
   judges: Array<{ role: 'J1'|'J2'|'J3'|'REFEREE'; status: 'ONLINE'|'RECONNECTING'|'OFFLINE'; lastSeenAt: string | null }>;
   scoringActivity: MatchScoringActivity;
+  videoReview: VideoReviewSnapshot | null;
   updatedAt: string;
   serverTime: number;
 }

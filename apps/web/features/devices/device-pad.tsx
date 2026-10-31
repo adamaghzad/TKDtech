@@ -689,6 +689,7 @@ function RefereePad({ session, token }: { session: Session; token: string }) {
           <Button
             size="lg"
             variant="secondary"
+            className="border-blue/40 bg-blue/10 text-[#8baeff]"
             disabled={
               pending ||
               ![
@@ -698,21 +699,42 @@ function RefereePad({ session, token }: { session: Session; token: string }) {
                 "ROUND_BREAK",
               ].includes(snapshot.state)
             }
-            onClick={() => void command("VIDEO_REVIEW")}
+            onClick={() => void command("VIDEO_REVIEW", "BLUE")}
           >
             <Video />
-            Video review
+            Blue IVR
           </Button>
           <Button
             size="lg"
             variant="secondary"
-            disabled={pending || snapshot.state !== "UNDER_REVIEW"}
+            className="border-red/40 bg-red/10 text-[#ff8b96]"
+            disabled={
+              pending ||
+              ![
+                "IN_PROGRESS",
+                "PAUSED",
+                "GOLDEN_POINT",
+                "ROUND_BREAK",
+              ].includes(snapshot.state)
+            }
+            onClick={() => void command("VIDEO_REVIEW", "RED")}
+          >
+            <Video />
+            Red IVR
+          </Button>
+        </div>
+        {snapshot.state === "UNDER_REVIEW" && (
+          <Button
+            size="lg"
+            variant="secondary"
+            className="w-full"
+            disabled={pending}
             onClick={() => void command("END_REVIEW")}
           >
             <CheckCircle2 />
-            End review
+            Close review without result
           </Button>
-        </div>
+        )}
         {superiorityRequired && (
           <div className="rounded-xl border border-timer/30 bg-timer/10 p-4 text-center">
             <p className="text-sm font-bold text-timer">
