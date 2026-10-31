@@ -22,7 +22,7 @@ export default function MatDisplay() {
 
   if (loading && !data && !error) return <Loading label="Finding active mat assignment…" />;
   if (error instanceof ApiRequestError && error.code === 'NO_ACTIVE_MATCH') {
-    return <WaitingView />;
+    return <div className="h-[100dvh]"><WaitingView /></div>;
   }
   if (error) return <div className="flex min-h-screen items-center justify-center bg-black"><ErrorState error={error} retry={refresh} /></div>;
   return data ? <PublicDisplay key={data.matchId} matchId={data.matchId} /> : null;

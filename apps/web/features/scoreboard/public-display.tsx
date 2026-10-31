@@ -88,9 +88,9 @@ export function PublicDisplay({ matchId }: { matchId: string }) {
     ref={container}
     data-testid="public-display"
     data-flipped={flipped ? 'true' : 'false'}
-    className="relative min-h-screen bg-black"
+    className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-black"
   >
-    {!fullscreen && <div data-testid="public-display-controls" className="absolute right-3 top-3 z-50 flex items-center gap-2 opacity-90 transition hover:opacity-100 focus-within:opacity-100">
+    {!fullscreen && <div data-testid="public-display-controls" className="relative z-50 flex shrink-0 items-center justify-end gap-1 border-b border-white/10 bg-[#070a10] px-2 sm:gap-2 sm:px-3">
       <Badge tone={connection === 'ONLINE' ? 'green' : 'yellow'}>{connection}</Badge>
       <Button
         size="sm"
@@ -102,25 +102,25 @@ export function PublicDisplay({ matchId }: { matchId: string }) {
         onClick={() => void audio.toggle()}
       >
         {audio.ready ? <Volume2 /> : <VolumeX />}
-        {audio.ready ? 'Sound on' : audio.enabled ? 'Enable sound' : 'Sound off'}
+        <span className="hidden sm:inline">{audio.ready ? 'Sound on' : audio.enabled ? 'Enable sound' : 'Sound off'}</span>
       </Button>
       <Button size="sm" variant="secondary" aria-keyshortcuts="f" title="Flip Blue and Red display sides (F)" onClick={flip}>
-        <ArrowLeftRight />Flip
+        <ArrowLeftRight /><span className="hidden sm:inline">Flip</span>
       </Button>
       <Button size="sm" variant="secondary" aria-keyshortcuts="F11" title="Toggle fullscreen (F11); exit with Escape" onClick={() => void toggleFullscreen()}>
-        {fullscreen ? <Shrink /> : <Expand />}{fullscreen ? 'Exit' : 'Fullscreen'}
+        {fullscreen ? <Shrink /> : <Expand />}<span className="hidden sm:inline">{fullscreen ? 'Exit' : 'Fullscreen'}</span>
       </Button>
     </div>}
 
     {snapshot ? (
       manualWaiting
-        ? <WaitingView reserveControls={!fullscreen} />
+        ? <WaitingView />
         : automaticWaiting
-          ? <WaitingView snapshot={snapshot} reserveControls={!fullscreen} />
-          : <ScoreboardView snapshot={snapshot} remainingMs={remainingMs} flipped={flipped} />
-    ) : error ? <div className="flex min-h-screen items-center justify-center">
+          ? <WaitingView snapshot={snapshot} />
+          : <ScoreboardView snapshot={snapshot} remainingMs={remainingMs} flipped={flipped} viewport />
+    ) : error ? <div className="flex min-h-0 flex-1 items-center justify-center">
       <ErrorState error={error} retry={refresh} />
-    </div> : <div className="flex min-h-screen items-center justify-center gap-3 text-sm text-white/60">
+    </div> : <div className="flex min-h-0 flex-1 items-center justify-center gap-3 text-sm text-white/60">
       <Loader2 className="size-6 animate-spin text-timer" />Connecting to authoritative match state…
     </div>}
   </div>;
