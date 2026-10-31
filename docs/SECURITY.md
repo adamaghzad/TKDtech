@@ -14,6 +14,8 @@
 
 Server checks include both role and tournament membership/assignment. Client navigation is not an authorization control. Test coverage includes allowed and denied role actions.
 
+Organization role management is restricted to `SUPER_ADMIN` on both the member-list and mutation endpoints, following the application's existing installation-wide Super Admin authorization model. A Super Admin cannot change their own role, the only Super Admin in an organization cannot be demoted, and role updates use an optimistic role check plus an `ORGANIZATION_MEMBER_ROLE_CHANGED` audit record. Existing sessions resolve the current membership role on each request; no password or token is returned by the role APIs. Desktop role mutations also require an active license assertion.
+
 ## Authentication and sessions
 
 - Local passwords use the repository's salted password hashing implementation; plaintext passwords are not stored.

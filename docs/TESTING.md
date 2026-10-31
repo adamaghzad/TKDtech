@@ -1,6 +1,6 @@
 # Verification record
 
-Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**, **React 19**, **Zod 4.6.7**, **Electron 45**, and Chromium via Playwright. The responsive release was rechecked with **195/195 application tests** and **26/26 Chromium tests**. The side-specific IVR and Doctor Call update was verified on **2026-10-31** with Node.js 22.20.0: **201/201 application tests** and **27/27 Chromium tests** passed against a fresh database.
+Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 16.4.3**, **React 19**, **Zod 4.6.7**, **Electron 45**, and Chromium via Playwright. The responsive release was rechecked with **195/195 application tests** and **26/26 Chromium tests**. The side-specific IVR and Doctor Call update was verified on **2026-10-31** with Node.js 22.20.0: **201/201 application tests** and **27/27 Chromium tests** passed against a fresh database. The organization role-management update was verified on **2026-10-31** with Node.js 22.20.0: **206/206 application tests** and **28/28 Chromium tests** passed against a fresh database.
 
 ## Automated checks
 
@@ -8,8 +8,8 @@ Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 
 |---|---|
 | `npm run typecheck` | Passed, strict TypeScript with unchecked-index and other strict options |
 | `npm run lint` | Passed with no errors or warnings using Next 16 native ESLint flat config |
-| `npm test` | **201/201 tests passed across 30 files** |
-| `npm run test:e2e` | **27/27 real Chromium tests passed** against the Next 16 production server |
+| `npm test` | **206/206 tests passed across 31 files** |
+| `npm run test:e2e` | **28/28 real Chromium tests passed** against the Next 16 production server |
 | `npm run desktop:build` | Passed strict Electron main/preload TypeScript compilation |
 | `npm run test:desktop:runtime` | Passed real signed-license issuance, unlicensed/invalid/wrong-device API rejection, valid activation, exports, optimized desktop-supervisor startup, internal identity boundary, authenticated tournament write, clean shutdown and restart license/data persistence |
 | `npm run test:license:delivery` | Passed real production-key signing, intended-device activation, wrong-device rejection and exact mock email attachment; no real email sent |
@@ -39,6 +39,7 @@ Baseline verified locally on **2026-10-27** with **Node.js 22.16.0**, **Next.js 
 - Club/category/athlete CSV parsing supports UTF-8 BOM, CRLF, quoted fields, and independent row failures with a 500-row cap. Real browser uploads create 4 clubs and 4 categories, reject repeated duplicates, then create 12 athletes whose club/category names resolve to the correct registrations and passing weigh-ins.
 - Offline LAN address selection requires no gateway or Internet, filters public/loopback duplicates, and places link-local addresses last. New pairing links resolve current interfaces instead of retaining a stale startup IP, preserve a private address that actually served the operator, reject arbitrary public Host headers for local pairing, and retain configured-origin behavior outside local mode. Desktop LAN links refresh after adapter/IP changes. Hosted `LOCAL` SQLite pairing prefers an explicit public HTTPS origin over unreachable container addresses for both public and private proxy Host values.
 - Role/tournament permissions and public denial.
+- Super Admin organization-member listing and role changes cover Tournament Admin promotion, immediate existing-session role resolution, audit before/after payloads, non-owner denial, self-change prevention, last-Super-Admin lockout prevention, and idempotent unchanged roles. Chromium promotes a Tournament Admin fixture by email, verifies the persisted role, and checks the Settings layout at 390 px.
 - Idempotent commands and optimistic version conflicts.
 - Pending-proposal diagnostics identify earlier matching proposals that expired before server arrival without changing the configured consensus policy. The 500 ms scheduler also persists pending-punch expiry and broadcasts its removal from the public display.
 - Current-round scoring activity derives separate headguard, hogu, and fist entries for head kicks, body kicks, and punches, including turning variants. Every judge-scored technique keeps its own J1–J3 pending/confirmed roles and recorded one-/two-judge threshold; operator-added kicks are labelled `OPERATOR` with no invented judge votes. Effective hit counts exclude pending input, corrections and expiry remove only their corresponding entries, successive punches/kicks retain prior confirmations, and snapshots expose no session credentials or PSS/sensor claims.
@@ -88,6 +89,7 @@ The Playwright suite verifies:
 23. A real empty mat first shows `WAITING FOR NEXT MATCH`, including a 390 px no-horizontal-overflow check. The real assignment API changes it to `WAITING FOR ROUND 1` with match/round numbers but no athlete names or score elements; the real `START` command then reveals the ordinary 0–0 scoreboard. The existing completed-match mat rollover also verifies its next READY match in waiting mode.
 24. The operator's Public TV button opens the mat display in a separate popup while the operator URL remains unchanged. Chromium enters fullscreen and verifies that the entire control overlay disappears, then exercises **F** flip, **M** sound, **Esc** exit and two complete **F11** enter/exit transitions. The clean flipped fullscreen screenshot is reviewed.
 25. On an independent completed result, **W** switches to `WAITING FOR NEXT MATCH` and back to the result. After **W** is selected again, an authoritative `IN_PROGRESS` snapshot automatically removes the override and restores both live score panels; the fixture is restored afterward.
+26. A Super Admin opens Settings, promotes an isolated Tournament Admin fixture to `SUPER_ADMIN` by email through the real API, verifies the new badge and persisted SQLite role, and checks the role manager at 390 px without horizontal overflow. The current account's role controls are visibly disabled to prevent self-change.
 
 Reviewed screenshots:
 
@@ -131,6 +133,8 @@ Reviewed screenshots:
 - `artifacts/dashboard-license-renewal.png`
 - `artifacts/license-email-delivery.png`
 - `artifacts/license-email-delivery-mobile.png`
+- `artifacts/organization-role-management.png`
+- `artifacts/organization-role-management-mobile.png`
 - `artifacts/ivr-request-display.png`
 - `artifacts/ivr-manager.png`
 - `artifacts/ivr-accepted-display.png`
@@ -158,7 +162,7 @@ No browser page errors were observed in the dashboard/operator test.
 - `npm run check:database -- /tmp/tkd-backup-test.db` previously reported migration 1, integrity ok, and foreign keys ok; the separate migration validator now passes migration 3.
 
 ## Not verified / not claimed
-- Real Gmail/SMTP delivery has not been attempted. Email tests use a mock sender; production app-password configuration, hosted secrets, Northflank deployment of this branch, inbox/spam placement and client receipt remain unverified. `SENT` means only that an SMTP service accepted a message.
+- Real Gmail/SMTP delivery has not been attempted. Email tests use a mock sender; production app-password configuration, hosted secrets, inbox/spam placement and client receipt remain unverified. `SENT` means only that an SMTP service accepted a message.
 
 - The Windows x64 artifact was cross-packaged and statically validated on Linux, but **not executed on a physical Windows 10/11 machine**. Windows Explorer extraction, SmartScreen, Firewall prompts, win32 process-tree termination, real Windows LAN pairing, Windows MachineGuid/registry fallback behavior, physical license activation/device transfer, and the complete no-Node-installed Windows workflow still require the checklist in `docs/DESKTOP.md`. Linux Electron execution is not represented as Windows verification.
 - No hosted Supabase project was available. Hosted Auth, Realtime, Storage, project default privileges, and production cloud deployment remain unverified. PostgreSQL validation used local Supabase-compatible `auth`/`storage` stubs, not the hosted service.

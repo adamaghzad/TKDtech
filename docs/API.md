@@ -30,6 +30,8 @@ curl -b cookies.txt http://127.0.0.1:3000/api/v1/bootstrap
 |---|---|
 | `GET /api/v1/health` | Process, mode, database, server time |
 | `GET /api/v1/bootstrap` | Authenticated dashboard metrics and selected records |
+| `GET /api/v1/admin/organization-members` | Super Admin-only organization/member role listing |
+| `POST /api/v1/admin/organization-members/role` | Super Admin-only audited role change with lockout protections |
 | `GET /api/v1/public/tournaments` | Published public tournament list |
 | `GET /api/v1/public/tournaments/:id` | Minimal public detail; draft/cancelled tournaments return 404 |
 | `GET /api/v1/public/tournaments/:id/live` | Public live-match IDs |
@@ -61,6 +63,8 @@ curl -b cookies.txt http://127.0.0.1:3000/api/v1/bootstrap
 | `GET /api/v1/reports/:type.pdf?...` | Authorized PDF report |
 | `GET /api/v1/network/status` | Authenticated LAN/cloud/sync status |
 | `POST /api/v1/sync/push` | Tournament-admin event-log delivery; see cloud limitations |
+
+`POST /api/v1/admin/organization-members/role` accepts `organizationId`, `profileId`, and one supported `role`. It returns `{ member, changed }`. As elsewhere in this application, `SUPER_ADMIN` is an installation-wide role, so its member listing covers all organizations. Unchanged roles are idempotent. Non-Super-Admin callers receive 403; changing the current Super Admin's own role returns `SELF_ROLE_CHANGE_FORBIDDEN`, and demoting the only Super Admin in an organization returns `LAST_SUPER_ADMIN`. A concurrent role update returns `ROLE_CHANGE_CONFLICT`; successful changes write `ORGANIZATION_MEMBER_ROLE_CHANGED` with before/after roles.
 
 ## Registration CSV imports
 

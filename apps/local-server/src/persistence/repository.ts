@@ -11,6 +11,7 @@ interface TournamentInput { name: string; description?: string; organizer?: stri
 interface AthleteInput { firstName: string; lastName: string; dateOfBirth: string; division: 'MEN'|'WOMEN'; nationality: string; countryCode: string; clubId?: string; externalNumber?: string; coach?: string; categoryId?: string; weightKg?: number; seed?: number }
 interface RulesetConfigurationInput { roundPointGapEnabled:boolean;roundPointGapThreshold:number;matchPointGapEnabled:boolean;matchPointGapThreshold:number;matchPointGapCompletionRound:number;matchPointGapLiveFromRound:number;gamJeomOpponentPoints:number;disqualificationThreshold:number;expectedVersion?:string }
 interface CategoryInput { name: string; division: 'MEN'|'WOMEN'; ageGroup: string; minWeightKg: number; maxWeightKg: number; format: 'SINGLE_ELIMINATION'|'REPECHAGE'; rounds?: number; roundDurationMs?: number; breakDurationMs?: number; goldenPointPolicy?: string; repechagePolicy?: string }
+export interface OrganizationMemberRecord { organizationId: string; profileId: string; organizationName: string; fullName: string; email: string; role: Role }
 
 export class TournamentRepository {
   constructor(readonly db: SqliteDatabase) {}
@@ -64,6 +65,40 @@ export class TournamentRepository {
   }
 
   actor(user: AuthUser): Actor { return { id: user.id, role: user.role, tournamentIds: user.tournamentIds }; }
+
+  private organizationMember(organizationId: string, profileId: string): OrganizationMemberRecord {
+    const member = this.db.prepare(`SELECT om.organization_id AS organizationId,om.profile_id AS profileId,om.role,p.full_name AS fullName,p.email,o.name AS organizationName FROM organization_members om JOIN profiles p ON p.id=om.profile_id JOIN organizations o ON o.id=om.organization_id WHERE om.organization_id=? AND om.profile_id=?`).get(organizationId, profileId) as OrganizationMemberRecord | undefined;
+    if (!member) throw new HttpError(404, 'ORGANIZATION_MEMBER_NOT_FOUND', 'Organization member not found.');
+    return member;
+  }
+
+  listOrganizationMembers(actor: Actor): OrganizationMemberRecord[] {
+    if (actor.role !== 'SUPER_ADMIN') throw new HttpError(403, 'SUPER_ADMIN_REQUIRED', 'Only a Super Admin can manage organization roles.');
+    return this.db.prepare(`SELECT om.organization_id AS organizationId,om.profile_id AS profileId,om.role,p.full_name AS fullName,p.email,o.name AS organizationName FROM organization_members om JOIN profiles p ON p.id=om.profile_id JOIN organizations o ON o.id=om.organization_id ORDER BY o.name,p.full_name,p.email`).all() as OrganizationMemberRecord[];
+  }
+
+  changeOrganizationMemberRole(actor: Actor, input: { organizationId: string; profileId: string; role: Role }): { member: OrganizationMemberRecord; changed: boolean } {
+    if (actor.role !== 'SUPER_ADMIN') throw new HttpError(403, 'SUPER_ADMIN_REQUIRED', 'Only a Super Admin can manage organization roles.');
+    if (actor.id === input.profileId) throw new HttpError(409, 'SELF_ROLE_CHANGE_FORBIDDEN', 'Your own role must be changed by another Super Admin.');
+    let member: OrganizationMemberRecord | undefined;
+    let changed = false;
+    this.db.transaction(() => {
+      const current = this.organizationMember(input.organizationId, input.profileId);
+      if (current.role === input.role) { member = current; return; }
+      if (current.role === 'SUPER_ADMIN' && input.role !== 'SUPER_ADMIN') {
+        const owners = this.db.prepare(`SELECT COUNT(*) AS count FROM organization_members WHERE organization_id=? AND role='SUPER_ADMIN'`).get(input.organizationId) as { count: number };
+        if (owners.count <= 1) throw new HttpError(409, 'LAST_SUPER_ADMIN', 'Promote another member before demoting the only Super Admin in this organization.');
+      }
+      const update = this.db.prepare('UPDATE organization_members SET role=? WHERE organization_id=? AND profile_id=? AND role=?').run(input.role, input.organizationId, input.profileId, current.role);
+      if (update.changes !== 1) throw new HttpError(409, 'ROLE_CHANGE_CONFLICT', 'The role changed in another session. Reload and try again.');
+      audit(this.db, { actorId: actor.id, action: 'ORGANIZATION_MEMBER_ROLE_CHANGED', entityType: 'organization_member', entityId: `${input.organizationId}:${input.profileId}`, before: { role: current.role }, after: { role: input.role } });
+      changed = true;
+      member = this.organizationMember(input.organizationId, input.profileId);
+    })();
+    if (!member) throw new HttpError(500, 'ROLE_CHANGE_FAILED', 'The role change could not be read after saving.');
+    return { member, changed };
+  }
+
   authorizeTournament(actor: Actor, tournamentId: string, write = false): void {
     if (!actor.tournamentIds.includes(tournamentId) && actor.role !== 'SUPER_ADMIN') throw new HttpError(403, 'TOURNAMENT_FORBIDDEN', 'You are not assigned to this tournament.');
     if (write && !['SUPER_ADMIN','TOURNAMENT_ADMIN','REGISTRATION_MANAGER'].includes(actor.role)) throw new HttpError(403, 'PERMISSION_DENIED', 'Your role cannot perform this action.');

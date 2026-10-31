@@ -9,7 +9,7 @@ import path from 'node:path';
 import {lanUrls as networkLanUrls, pairingOrigin} from './network';
 import {randomUUID,timingSafeEqual} from 'node:crypto';
 import {z} from 'zod';
-import {scoreProposalSchema} from '@tkd/contracts';
+import {ROLES,scoreProposalSchema} from '@tkd/contracts';
 import {InvalidTransitionError} from '@tkd/domain';
 import {openDatabase} from './persistence/database';
 import {seedDevelopment} from './persistence/seed';
@@ -67,6 +67,9 @@ app.post('/api/v1/auth/demo',authLimiter,asyncRoute((req,res)=>{if(process.env.A
 app.post('/api/v1/auth/logout',asyncRoute((req,res)=>{const token=getCookie(req);if(token)repository.revokeAuthToken(token);res.clearCookie('tkd_session',{path:'/'});ok(res,{signedOut:true});}));
 app.get('/api/v1/auth/me',requireAuth,asyncRoute((req,res)=>{const actor=actorOf(req);const user=repository.userForProfile(actor.id);ok(res,{user,mode:process.env.TKD_MODE||'LOCAL'});}));
 app.get('/api/v1/bootstrap',requireAuth,asyncRoute((req,res)=>ok(res,{...repository.dashboard(actorOf(req)),user:repository.userForProfile(actorOf(req).id),mode:process.env.TKD_MODE||'LOCAL',serverTime:Date.now()})));
+
+app.get('/api/v1/admin/organization-members',requireAuth,asyncRoute((req,res)=>ok(res,repository.listOrganizationMembers(actorOf(req)))));
+app.post('/api/v1/admin/organization-members/role',requireAuth,authLimiter,asyncRoute((req,res)=>{licensing.assertNewWork();const input=z.object({organizationId:z.string().uuid(),profileId:z.string().uuid(),role:z.enum(ROLES)}).parse(req.body);ok(res,repository.changeOrganizationMemberRole(actorOf(req),input));}));
 
 app.get('/api/v1/admin/license-deliveries',requireAuth,asyncRoute((req,res)=>ok(res,licenseDeliveries.getDashboard(actorOf(req)))));
 app.post('/api/v1/admin/license-deliveries',requireAuth,authLimiter,asyncRoute(async(req,res)=>{const result=await licenseDeliveries.issueAndSend(actorOf(req),req.body,String(req.headers['idempotency-key']||''));ok(res,result,result.duplicate?200:201);}));
