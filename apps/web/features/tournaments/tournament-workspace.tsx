@@ -6,6 +6,8 @@ import type { TournamentDetails } from '@/lib/types';
 import { Loading, ErrorState } from '@/components/ui/states';
 import { StatusBadge } from '@/components/ui/badge';
 import { formatDate, cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
 import { TournamentOverview } from './overview';
 import { AthleteManager } from './athlete-manager';
 import { ClubManager } from './club-manager';
