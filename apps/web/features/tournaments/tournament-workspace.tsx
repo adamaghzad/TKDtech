@@ -146,7 +146,7 @@ export function TournamentWorkspace({ tournamentId, section }: { tournamentId: s
               {label}
               {current === id && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-t bg-primary" />}
             </Link>
-          )})}
+          ))}
         </div>
       </div>
       {current === 'overview' && <TournamentOverview data={data} refresh={refresh} />}
