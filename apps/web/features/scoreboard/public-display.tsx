@@ -52,7 +52,7 @@ export function PublicDisplay({ matchId }: { matchId: string }) {
   }, [flipped, matchId]);
 
   const toggleWaiting = useCallback(() => {
-    if (resultKey) setWaitingOverride(current => current === resultKey ? null : resultKey);
+    if (resultKey) setWaitingOverride((current) => (current === resultKey ? null : resultKey));
   }, [resultKey]);
 
   useEffect(() => {
@@ -84,44 +84,56 @@ export function PublicDisplay({ matchId }: { matchId: string }) {
     return () => document.removeEventListener('keydown', keydown);
   }, [flip, result, toggleAudio, toggleFullscreen, toggleWaiting]);
 
-  return <div
-    ref={container}
-    data-testid="public-display"
-    data-flipped={flipped ? 'true' : 'false'}
-    className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-black"
-  >
-    {!fullscreen && <div data-testid="public-display-controls" className="relative z-50 flex shrink-0 items-center justify-end gap-1 border-b border-white/10 bg-[#070a10] px-2 sm:gap-2 sm:px-3">
-      <Badge tone={connection === 'ONLINE' ? 'green' : cloudConfigured ? 'yellow' : 'yellow'}>{connection}{cloudConfigured ? ' · Cloud' : ' · Local'}</Badge>
-      <Button
-        size="sm"
-        variant={audio.ready ? 'success' : 'yellow'}
-        aria-label={audio.ready ? 'Mute match sounds' : 'Enable match sounds'}
-        aria-keyshortcuts="m"
-        aria-pressed={audio.ready}
-        title="Score confirmation, final-five-second beeps, and round/rest end buzzer (M)"
-        onClick={() => void audio.toggle()}
-      >
-        {audio.ready ? <Volume2 /> : <VolumeX />}
-        <span className="hidden sm:inline">{audio.ready ? 'Sound on' : audio.enabled ? 'Enable sound' : 'Sound off'}</span>
-      </Button>
-      <Button size="sm" variant="secondary" aria-keyshortcuts="f" title="Flip Blue and Red display sides (F)" onClick={flip}>
-        <ArrowLeftRight /><span className="hidden sm:inline">Flip</span>
-      </Button>
-      <Button size="sm" variant="secondary" aria-keyshortcuts="F11" title="Toggle fullscreen (F11); exit with Escape" onClick={() => void toggleFullscreen()}>
-        {fullscreen ? <Shrink /> : <Expand />}<span className="hidden sm:inline">{fullscreen ? 'Exit' : 'Fullscreen'}</span>
-      </Button>
-    </div>}
+  return (
+    <div
+      ref={container}
+      data-testid="public-display"
+      data-flipped={flipped ? 'true' : 'false'}
+      className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-black"
+    >
+      {!fullscreen && (
+        <div data-testid="public-display-controls" className="relative z-50 flex shrink-0 items-center justify-end gap-1 border-b border-white/10 bg-[#070a10] px-2 sm:gap-2 sm:px-3">
+          <Badge tone={connection === 'ONLINE' ? 'green' : 'yellow'}>
+            {connection}{cloudConfigured ? ' · Cloud' : ' · Local'}
+          </Badge>
+          <Button
+            size="sm"
+            variant={audio.ready ? 'success' : 'yellow'}
+            aria-label={audio.ready ? 'Mute match sounds' : 'Enable match sounds'}
+            aria-keyshortcuts="m"
+            aria-pressed={audio.ready}
+            title="Score confirmation, final-five-second beeps, and round/rest end buzzer (M)"
+            onClick={() => void audio.toggle()}
+          >
+            {audio.ready ? <Volume2 /> : <VolumeX />}
+            <span className="hidden sm:inline">{audio.ready ? 'Sound on' : audio.enabled ? 'Enable sound' : 'Sound off'}</span>
+          </Button>
+          <Button size="sm" variant="secondary" aria-keyshortcuts="f" title="Flip Blue and Red display sides (F)" onClick={flip}>
+            <ArrowLeftRight /><span className="hidden sm:inline">Flip</span>
+          </Button>
+          <Button size="sm" variant="secondary" aria-keyshortcuts="F11" title="Toggle fullscreen (F11); exit with Escape" onClick={() => void toggleFullscreen()}>
+            {fullscreen ? <Shrink /> : <Expand />}<span className="hidden sm:inline">{fullscreen ? 'Exit' : 'Fullscreen'}</span>
+          </Button>
+        </div>
+      )}
 
-    {snapshot ? (
-      manualWaiting
-        ? <WaitingView />
-        : automaticWaiting
-          ? <WaitingView snapshot={snapshot} />
-          : <ScoreboardView snapshot={snapshot} remainingMs={remainingMs} flipped={flipped} viewport />
-    ) : error ? <div className="flex min-h-0 flex-1 items-center justify-center">
-      <ErrorState error={error} retry={refresh} />
-    </div> : <div className="flex min-h-0 flex-1 items-center justify-center gap-3 text-sm text-white/60">
-      <Loader2 className="size-6 animate-spin text-timer" />Connecting to authoritative match state…
-    </div>}
-  </div>;
+      {snapshot ? (
+        manualWaiting ? (
+          <WaitingView />
+        ) : automaticWaiting ? (
+          <WaitingView snapshot={snapshot} />
+        ) : (
+          <ScoreboardView snapshot={snapshot} remainingMs={remainingMs} flipped={flipped} viewport />
+        )
+      ) : error ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          <ErrorState error={error} retry={refresh} />
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 items-center justify-center gap-3 text-sm text-white/60">
+          <Loader2 className="size-6 animate-spin text-timer" /> Connecting to authoritative match state…
+        </div>
+      )}
+    </div>
+  );
 }
