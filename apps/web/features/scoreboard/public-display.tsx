@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeftRight, Expand, Loader2, Shrink, Volume2, VolumeX } from 'lucide-react';
-import { useMatch } from '@/lib/use-match';
+import { useMatchCloud } from '@/lib/use-match-cloud';
 import { useTimerAudio } from '@/lib/use-timer-audio';
 import { ScoreboardView } from './scoreboard-view';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import { WaitingView } from './waiting-view';
 const RESULT_STATES = new Set(['COMPLETED', 'DISQUALIFIED']);
 
 export function PublicDisplay({ matchId }: { matchId: string }) {
-  const { snapshot, remainingMs, connection, error, refresh } = useMatch(matchId);
+  const { snapshot, remainingMs, connection, error, refresh, cloudConfigured } = useMatchCloud(matchId);
   const audio = useTimerAudio(snapshot, remainingMs);
   const [flipped, setFlipped] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -91,7 +91,7 @@ export function PublicDisplay({ matchId }: { matchId: string }) {
     className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-black"
   >
     {!fullscreen && <div data-testid="public-display-controls" className="relative z-50 flex shrink-0 items-center justify-end gap-1 border-b border-white/10 bg-[#070a10] px-2 sm:gap-2 sm:px-3">
-      <Badge tone={connection === 'ONLINE' ? 'green' : 'yellow'}>{connection}</Badge>
+      <Badge tone={connection === 'ONLINE' ? 'green' : cloudConfigured ? 'yellow' : 'yellow'}>{connection}{cloudConfigured ? ' · Cloud' : ' · Local'}</Badge>
       <Button
         size="sm"
         variant={audio.ready ? 'success' : 'yellow'}

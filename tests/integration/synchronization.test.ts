@@ -4,8 +4,23 @@ import { openDatabase, type SqliteDatabase } from '../../apps/local-server/src/p
 import { seedDevelopment } from '../../apps/local-server/src/persistence/seed';
 import { SyncService } from '../../apps/local-server/src/sync/sync-service';
 
-const mocks = vi.hoisted(() => ({ rpc: vi.fn() }));
-vi.mock('@supabase/supabase-js', () => ({ createClient: () => ({ rpc: mocks.rpc }) }));
+const mocks = vi.hoisted(() => ({
+  rpc: vi.fn(),
+}));
+const mockOrder = vi.fn();
+
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: () => ({
+    rpc: mocks.rpc,
+    from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          order: mockOrder,
+        })),
+      })),
+    })),
+  }),
+}));
 
 describe('cloud synchronization boundary', () => {
   let db: SqliteDatabase;
@@ -57,5 +72,109 @@ describe('cloud synchronization boundary', () => {
     const job = db.prepare('SELECT status,conflict_json FROM synchronization_jobs WHERE id=?').get(result.jobId) as { status: string; conflict_json: string };
     expect(job.status).toBe('CONFLICT');
     expect(job.conflict_json).toContain('SEQUENCE_GAP');
+  });
+
+  it('pulls cloud events newer than local sequence', async () => {
+    const localMax = (db.prepare('SELECT COALESCE(MAX(sequence),0) AS value FROM match_events WHERE match_id=?').get(matchId) as { value: number }).value;
+    const cloudEventId = randomUUID();
+    const cloudSequence = localMax + 1;
+    mockOrder.mockImplementation(async () => ({
+      data: [{
+        event_id: cloudEventId,
+        tournament_id: tournamentId,
+        match_id: matchId,
+        sequence: cloudSequence,
+        event_type: 'test.event',
+        payload_json: '{}',
+        idempotency_key: `cloud-${randomUUID()}`,
+        server_timestamp: cloudSequence,
+        created_at: new Date().toISOString(),
+      }],
+      error: null,
+    }));
+
+    const result = await service.pull(tournamentId);
+    expect(result.status).toBe('COMPLETED');
+    expect(result.pulled).toBe(1);
+    expect(result.duplicate).toBe(0);
+
+    const inserted = db.prepare('SELECT * FROM match_events WHERE event_id=?').get(cloudEventId) as { sequence: number } | undefined;
+    expect(inserted).toBeDefined();
+    expect(inserted!.sequence).toBe(cloudSequence);
+  });
+
+  it('skips events already present locally (no re-pull)', async () => {
+    const localMax = (db.prepare('SELECT COALESCE(MAX(sequence),0) AS value FROM match_events WHERE match_id=?').get(matchId) as { value: number }).value;
+    const existingEvent = db.prepare('SELECT * FROM match_events WHERE match_id=? AND sequence=?').get(matchId, localMax) as { event_id: string; sequence: number };
+    mockOrder.mockImplementation(async () => ({
+      data: [{
+        event_id: existingEvent.event_id,
+        tournament_id: tournamentId,
+        match_id: matchId,
+        sequence: existingEvent.sequence,
+        event_type: 'test.event',
+        payload_json: '{}',
+        idempotency_key: existingEvent.event_id,
+        server_timestamp: existingEvent.sequence,
+        created_at: new Date().toISOString(),
+      }],
+      error: null,
+    }));
+
+    const result = await service.pull(tournamentId);
+    expect(result.status).toBe('COMPLETED');
+    expect(result.pulled).toBe(0);
+  });
+
+  it('rejects pull when cloud sequence has a gap', async () => {
+    const localMax = (db.prepare('SELECT COALESCE(MAX(sequence),0) AS value FROM match_events WHERE match_id=?').get(matchId) as { value: number }).value;
+    mockOrder.mockImplementation(async () => ({
+      data: [{
+        event_id: randomUUID(),
+        tournament_id: tournamentId,
+        match_id: matchId,
+        sequence: localMax + 5,
+        event_type: 'test.event',
+        payload_json: '{}',
+        idempotency_key: `gap-${randomUUID()}`,
+        server_timestamp: localMax + 5,
+        created_at: new Date().toISOString(),
+      }],
+      error: null,
+    }));
+
+    const result = await service.pull(tournamentId);
+    expect(result.status).toBe('CONFLICT');
+    expect(result.reason).toContain('SEQUENCE_GAP');
+  });
+
+  it('performs bidirectional sync push-then-pull', async () => {
+    const localMax = (db.prepare('SELECT COALESCE(MAX(sequence),0) AS value FROM match_events WHERE match_id=?').get(matchId) as { value: number }).value;
+    mocks.rpc.mockResolvedValue({ data: { status: 'ACCEPTED' }, error: null });
+    const cloudEventId = randomUUID();
+    const cloudSequence = localMax + 1;
+    mockOrder.mockImplementation(async () => ({
+      data: [{
+        event_id: cloudEventId,
+        tournament_id: tournamentId,
+        match_id: matchId,
+        sequence: cloudSequence,
+        event_type: 'test.event',
+        payload_json: '{}',
+        idempotency_key: `cloud-${randomUUID()}`,
+        server_timestamp: cloudSequence,
+        created_at: new Date().toISOString(),
+      }],
+      error: null,
+    }));
+
+    const result = await service.sync(tournamentId);
+    expect(result.status).toBe('COMPLETED');
+    expect(result.direction).toBe('SYNC');
+    expect(result.uploaded).toBe(eventCount);
+    expect(result.pulled).toBe(1);
+
+    const inserted = db.prepare('SELECT * FROM match_events WHERE event_id=?').get(cloudEventId);
+    expect(inserted).toBeDefined();
   });
 });
