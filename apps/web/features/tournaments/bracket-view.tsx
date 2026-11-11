@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { Trophy, Crown, Award } from 'lucide-react';
 import type { Bracket } from '@tkd/domain';
 import { Badge } from '@/components/ui/badge';
 import { cn, flagEmoji } from '@/lib/utils';
@@ -39,6 +40,10 @@ style.textContent = `
     from { opacity: 0; transform: translateY(10px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+  @keyframes crownPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.7; transform: scale(1.05); }
+  }
   .tkd-bracket-slot {
     animation: bracketSlideIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
@@ -57,18 +62,28 @@ style.textContent = `
   .tkd-round-reveal {
     animation: roundReveal 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
+  .tkd-crown-pulse {
+    animation: crownPulse 3s ease-in-out infinite;
+  }
 `;
 if (typeof document !== 'undefined') document.head.appendChild(style);
 
 /** Seed chip color by rank */
-function seedChipColor(seed: number | null | undefined): string {
-  if (!seed) return 'bg-gray-600 text-gray-300';
-  if (seed === 1) return 'bg-yellow-500/90 text-black';
-  if (seed === 2) return 'bg-yellow-400/90 text-black';
-  if (seed <= 4) return 'bg-orange-500/90 text-white';
-  if (seed <= 8) return 'bg-red-500/90 text-white';
-  return 'bg-blue-500/90 text-white';
+function seedChip(seed: number | null | undefined): string {
+  if (!seed) return 'bg-gray-700 text-gray-400';
+  if (seed === 1) return 'bg-red-600 text-white';
+  if (seed === 2) return 'bg-red-600 text-white';
+  if (seed <= 4) return 'bg-red-600 text-white';
+  if (seed <= 8) return 'bg-gray-700 text-gray-400';
+  return 'bg-gray-700 text-gray-400';
 }
+
+/** Round label config */
+const ROUND_CONFIG: Record<string, { label: string; icon?: React.ReactNode }> = {
+  'Quarter-finals': { label: 'Quarter Finals' },
+  'Semi-finals': { label: 'Semi Finals' },
+  Final: { label: 'Final', icon: <Trophy className="size-4 text-yellow-400" /> },
+};
 
 /** Single athlete slot inside a match */
 function AthleteSlot({
@@ -89,35 +104,38 @@ function AthleteSlot({
   const athlete = id ? entrants.get(id) : undefined;
   const isWinner = id && winner === id;
 
+  if (isBye || !id) {
+    return (
+      <div
+        className={cn(
+          'tkd-slot-pop flex min-h-[44px] items-center gap-3 px-3 py-2 text-sm border-line/30 opacity-50',
+        )}
+        style={{ animationDelay: `${delay ?? 0}s` }}
+      >
+        <span className="w-7 text-xs font-black text-gray-500">–</span>
+        <span className="text-gray-400 text-xs">—</span>
+        <span className="min-w-0 flex-1 truncate italic text-gray-500 text-xs">
+          Bye
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
-        'tkd-slot-pop flex min-h-[60px] items-center gap-3 px-3 py-2.5 text-sm transition-all duration-300',
+        'tkd-slot-pop flex min-h-[44px] items-center gap-3 px-3 py-2 text-sm transition-all duration-300',
         isWinner
           ? 'tkd-winner-glow bg-green-500/20 border border-green-500/60 text-green-400'
-          : id && !winner
-          ? 'bg-white/5 border border-transparent hover:border-red-500/60 hover:bg-white/10 cursor-pointer'
-          : !id && 'border-line/30',
-        isBye && 'opacity-40',
+          : 'bg-white/5 border border-transparent hover:border-red-500/60 hover:bg-white/10 cursor-pointer',
       )}
       style={{ animationDelay: `${delay ?? 0}s` }}
     >
-      {seed != null ? (
-        <span className={`w-7 text-[10px] font-black ${seedChipColor(seed)} rounded px-1 py-0.5`}>
-          #{seed}
-        </span>
-      ) : (
-        <span className="w-7 text-xs font-black text-gray-500">–</span>
-      )}
-      <span className="text-xs">{athlete ? flagEmoji(athlete.countryCode) : '·'}</span>
-      <span className={cn('min-w-0 flex-1 truncate', !id && 'italic text-gray-500')}>
-        {athlete?.name ?? (isBye ? 'Bye' : 'To be determined')}
+      <span className={`w-7 text-[10px] font-black ${seedChip(seed)} rounded px-1 py-0.5`}>
+        #{seed}
       </span>
-      {id && winner === id && (
-        <span className="text-[8px] font-black uppercase tracking-wider text-green-400 bg-green-500/20 px-1.5 py-0.5 rounded border border-green-500/40">
-          Advances
-        </span>
-      )}
+      <span className="text-xs">{athlete ? flagEmoji(athlete.countryCode) : '·'}</span>
+      <span className="min-w-0 flex-1 truncate">{athlete?.name}</span>
     </div>
   );
 }
@@ -158,12 +176,11 @@ function buildConnectorPaths({
         .sort((a, b) => a.position - b.position);
     if (!nextNodes || nodes.length === 0) return;
 
-    const currentRightX = roundX.get(round)! + cardWidth; // right edge of current card
-    const nextLeftX = roundX.get(rounds[roundIndex + 1] as number)!; // left edge of next card
-    const elbowX = currentRightX + 28; // horizontal offset before vertical drop
+    const currentRightX = roundX.get(round)! + cardWidth;
+    const nextLeftX = roundX.get(rounds[roundIndex + 1] as number)!;
+    const elbowX = currentRightX + 28;
 
-    nodes.forEach((node, nodeIndex) => {
-      // Structural pairing: position 0+1 → next position 0, position 2+3 → next position 1, etc.
+    nodes.forEach((node) => {
       const targetPosition = Math.floor(node.position / 2);
       const targetNode = nextNodes.find((n) => n.position === targetPosition);
       if (!targetNode) return;
@@ -193,24 +210,21 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
     (a, b) => a - b,
   );
 
-  const slotHeight = 72;
-  const gapBetweenRounds = 130;
-  const cardWidth = 280;
+  const slotHeight = 52;
+  const gapBetweenRounds = 150;
+  const cardWidth = 240;
   const cardLeftStart = 12;
 
-  // compute per-round match counts for vertical centering
   const matchCounts = rounds.map((r) =>
     bracket.nodes.filter((n) => n.round === r).length,
   );
   const maxMatches = Math.max(...matchCounts);
 
-  // compute X positions per round
   const roundX = new Map<number, number>();
   rounds.forEach((_, i) => {
     roundX.set(i, cardLeftStart + i * (cardWidth + gapBetweenRounds));
   });
 
-  // compute Y center for each match
   const matchCenters = new Map<string, { x: number; y: number }>();
   rounds.forEach((round, roundIndex) => {
     const nodes = bracket.nodes
@@ -220,7 +234,7 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
     const centerOffset = ((maxMatches - roundMatchCount) * slotHeight) / 2;
 
     nodes.forEach((node, nodeIndex) => {
-      const y = centerOffset + nodeIndex * slotHeight + slotHeight / 2 + 48; // +48 for header
+      const y = centerOffset + nodeIndex * slotHeight + slotHeight / 2 + 44;
       matchCenters.set(node.id, {
         x: roundX.get(round)! + cardWidth / 2,
         y,
@@ -228,7 +242,6 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
     });
   });
 
-  // build connector paths
   const connectorPaths = buildConnectorPaths({
     bracket,
     rounds,
@@ -238,9 +251,11 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
     cardWidth,
   });
 
+  const isFinal = rounds.length > 0;
+
   return (
-    <div className="relative overflow-x-auto overflow-y-auto min-h-[70vh] pb-10 bg-[#050505]/50 rounded-3xl border border-[#161616]/80 p-8 shadow-2xl">
-      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#0a0a0a]/90 to-transparent pointer-events-none" />
+    <div className="relative overflow-x-auto overflow-y-auto min-h-[70vh] pb-12 bg-[#0a0a0a]/40 rounded-3xl border border-[#1a1a1a]/80 p-8 shadow-2xl">
+      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#0f0f0f]/90 to-transparent pointer-events-none" />
 
       {/* ── SVG connector layer ─────────────────────────────────────── */}
       <svg className="absolute inset-0 z-0 pointer-events-none w-full h-full">
@@ -265,7 +280,7 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
       </svg>
 
       {/* ── rounds ──────────────────────────────────────────────────── */}
-      <div className="relative z-10 flex min-w-max p-2 gap-[calc(130px+1rem)]">
+      <div className="relative z-10 flex min-w-max p-2 gap-[calc(150px+1rem)]">
         {rounds.map((round, roundIndex) => {
           const nodes = bracket.nodes
             .filter((node) => node.round === round)
@@ -273,40 +288,43 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
           const centerOffset =
             ((maxMatches - nodes.length) * slotHeight) / 2;
 
-          const isFinal = roundIndex === rounds.length - 1;
+          const roundConfig = ROUND_CONFIG[nodes[0]?.roundName ?? 'Final'] ?? { label: 'Final' };
+          const isLastRound = roundIndex === rounds.length - 1;
 
           return (
             <section
               key={round}
-              className="relative w-[280px] flex flex-col tkd-round-reveal"
+              className="relative w-[240px] flex flex-col tkd-round-reveal"
               aria-label={nodes[0]?.roundName}
               style={{
                 zIndex: rounds.length - roundIndex,
                 animationDelay: `${roundIndex * 0.1}s`,
               }}
             >
-              <div className="mb-4 flex items-center justify-between px-1">
+              {/* Round header pill */}
+              <div className="mb-3 flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-[10px] font-black uppercase tracking-[.16em] text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.4)]">
-                    {nodes[0]?.roundName}
+                  <span className="w-2 h-2 rounded-full bg-purple-500" />
+                  <h3 className="text-xs font-black uppercase tracking-[.14em] text-purple-400">
+                    {roundConfig.label}
                   </h3>
-                  <span className="w-6 h-6 rounded-full bg-red-500/20 border border-red-500/50 flex items-center justify-center text-[9px] font-black text-red-400">
-                    {nodes.length}
+                  <span className="text-[10px] text-gray-500">
+                    {nodes.length} Athletes
                   </span>
                 </div>
-                <Badge
-                  tone={isFinal ? 'green' : 'neutral'}
-                  className="text-[9px] border-border/30"
-                >
-                  {isFinal ? 'FINAL' : nodes.length > 1 ? 'Semis' : 'Final'}
-                </Badge>
+                {isLastRound && roundConfig?.icon && (
+                  <span className="flex items-center gap-1">
+                    {roundConfig.icon}
+                    <span className="text-[10px] font-black text-yellow-400">FINAL</span>
+                  </span>
+                )}
               </div>
 
-              <div className="relative space-y-4">
+              <div className="relative space-y-3">
                 {/* round spine */}
                 {rounds.length > 1 && roundIndex < rounds.length - 1 && (
                   <div
-                    className="absolute left-[134px] top-[60px] bottom-[-24px] w-[1.5px] bg-gradient-to-b from-transparent via-red-500/40 to-transparent"
+                    className="absolute left-[114px] top-[52px] bottom-[-20px] w-[1px] bg-gradient-to-b from-transparent via-purple-500/30 to-transparent"
                   />
                 )}
 
@@ -315,7 +333,6 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
                   const winnerId = node.winnerEntrantId;
                   const isBye = node.isBye;
 
-                  // find next match this winner advances to
                   const nextRoundIndex = roundIndex + 1;
                   const nextRound = rounds[nextRoundIndex];
                   const nextNodes = nextRound
@@ -330,35 +347,42 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
                   );
 
                   const slotDelay = roundIndex * 0.12 + nodeIndex * 0.05;
+                  const showAdvancement = isLastRound ? false : Boolean(winnerId && advancesTo);
 
                   return (
                     <Link href={`/display/${node.id}`} key={node.id} passHref>
                       <article
                         className={cn(
-                          'relative z-10 overflow-hidden rounded-2xl border p-3 transition-all duration-300 tkd-bracket-slot',
-                          node.status === 'COMPLETED'
-                            ? isFinal
-                              ? 'tkd-winner-glow border-green-500 bg-green-500/15'
-                              : 'border-success/40 bg-success/10'
+                          'relative z-10 overflow-hidden rounded-xl border p-2.5 transition-all duration-300 tkd-bracket-slot',
+                          isLastRound
+                            ? node.status === 'COMPLETED'
+                              ? 'tkd-winner-glow border-yellow-500/70 bg-yellow-500/15'
+                              : 'border-yellow-500/50 bg-yellow-500/5 hover:border-yellow-500/70 hover:bg-yellow-500/10'
+                            : node.status === 'COMPLETED'
+                            ? 'border-success/40 bg-success/10'
                             : node.status === 'BYE'
                             ? 'border-line/40 opacity-50'
                             : 'border-border/50 bg-[#0a0a0a]/70 hover:border-red-500/60 hover:bg-[#111]/85',
                         )}
                         style={{ animationDelay: `${slotDelay}s` }}
                       >
-                        <div className="flex items-center justify-between border-b border-border/40 pb-1.5 mb-2">
-                          <span className="text-[9px] font-black uppercase tracking-wider text-red-500/80">
+                        <div className="flex items-center justify-between border-b border-border/40 pb-1 mb-2">
+                          <span className={`text-[9px] font-black uppercase tracking-wider ${isLastRound ? 'text-yellow-500/80' : 'text-red-500/80'}`}>
                             Match {node.matchNumber}
                           </span>
                           <Badge
                             tone={
                               node.status === 'COMPLETED'
-                                ? 'green'
+                                ? isLastRound
+                                  ? 'green'
+                                  : 'green'
                                 : node.status === 'BYE'
                                 ? 'neutral'
+                                : isLastRound
+                                ? 'blue'
                                 : 'blue'
                             }
-                            className="text-[9px] border-border/40"
+                            className={`text-[9px] border-${isLastRound ? 'yellow-500/40' : 'border-border/40'}`}
                           >
                             {node.status}
                           </Badge>
@@ -370,7 +394,11 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
                           winner={winnerId}
                           isBye={isBye}
                           delay={slotDelay}
-                          seed={node.blueEntrantId ? entrantMap.get(node.blueEntrantId)?.seed : null}
+                          seed={
+                            node.blueEntrantId
+                              ? entrantMap.get(node.blueEntrantId)?.seed
+                              : null
+                          }
                         />
 
                         <div className="h-[1px] bg-border/40 my-2" />
@@ -381,14 +409,36 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
                           winner={winnerId}
                           isBye={isBye}
                           delay={slotDelay}
-                          seed={node.redEntrantId ? entrantMap.get(node.redEntrantId)?.seed : null}
+                          seed={
+                            node.redEntrantId
+                              ? entrantMap.get(node.redEntrantId)?.seed
+                              : null
+                          }
                         />
 
-                        {winnerId && advancesTo && (
+                        {showAdvancement && (
                           <div
-                            className="absolute right-[-12px] top-[24px] w-2.5 h-2.5 rounded-full bg-green-500 tkd-winner-glow shadow-[0_0_12px_rgba(34,197,94,0.8)]"
+                            className="absolute right-[-10px] top-[22px] w-2 h-2 rounded-full bg-green-500 tkd-winner-glow shadow-[0_0_8px_rgba(34,197,94,0.8)]"
                             title="Advances to next round"
                           />
+                        )}
+
+                        {/* Final match crown + laurel decorations */}
+                        {isLastRound && (
+                          <>
+                            <div className="absolute -top-4 left-1/2 -translate-x-1/2 tkd-crown-pulse flex flex-col items-center">
+                              <Crown className="size-5 text-yellow-400 drop-shadow-[0_0_10px_rgba(234,179,8,0.9)]" />
+                              <span className="text-[10px] font-black text-yellow-400 mt-0.5">
+                                {node.status === 'COMPLETED' && winnerId ? 'Champion' : 'Final'}
+                              </span>
+                            </div>
+                            <div className="absolute -right-5 top-1/2 -translate-y-1/2">
+                              <div className="flex items-end gap-1">
+                                <Award className="size-6 text-yellow-400/70 drop-shadow-[0_0_8px_rgba(234,179,8,0.6)]" />
+                                <Award className="size-6 text-yellow-400/50 drop-shadow-[0_0_8px_rgba(234,179,8,0.4)]" />
+                              </div>
+                            </div>
+                          </>
                         )}
                       </article>
                     </Link>
@@ -398,6 +448,7 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
             </section>
           );
         })}
+
       </div>
     </div>
   );
