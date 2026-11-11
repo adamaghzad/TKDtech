@@ -7,6 +7,7 @@ interface Entrant {
   id: string;
   name: string;
   countryCode: string;
+  seed?: number | null;
 }
 
 /* ── animation keyframes ───────────────────────────────────────────── */
@@ -59,6 +60,16 @@ style.textContent = `
 `;
 if (typeof document !== 'undefined') document.head.appendChild(style);
 
+/** Seed chip color by rank */
+function seedChipColor(seed: number | null | undefined): string {
+  if (!seed) return 'bg-gray-600 text-gray-300';
+  if (seed === 1) return 'bg-yellow-500/90 text-black';
+  if (seed === 2) return 'bg-yellow-400/90 text-black';
+  if (seed <= 4) return 'bg-orange-500/90 text-white';
+  if (seed <= 8) return 'bg-red-500/90 text-white';
+  return 'bg-blue-500/90 text-white';
+}
+
 /** Single athlete slot inside a match */
 function AthleteSlot({
   id,
@@ -92,7 +103,7 @@ function AthleteSlot({
       style={{ animationDelay: `${delay ?? 0}s` }}
     >
       {seed != null ? (
-        <span className={`w-7 text-xs font-black ${isWinner ? 'text-green-400' : 'text-gray-500'}`}>
+        <span className={`w-7 text-[10px] font-black ${seedChipColor(seed)} rounded px-1 py-0.5`}>
           #{seed}
         </span>
       ) : (
@@ -359,6 +370,7 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
                           winner={winnerId}
                           isBye={isBye}
                           delay={slotDelay}
+                          seed={node.blueEntrantId ? entrantMap.get(node.blueEntrantId)?.seed : null}
                         />
 
                         <div className="h-[1px] bg-border/40 my-2" />
@@ -369,6 +381,7 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
                           winner={winnerId}
                           isBye={isBye}
                           delay={slotDelay}
+                          seed={node.redEntrantId ? entrantMap.get(node.redEntrantId)?.seed : null}
                         />
 
                         {winnerId && advancesTo && (
