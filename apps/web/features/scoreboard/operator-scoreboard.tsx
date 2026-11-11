@@ -218,7 +218,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                         <button
                           key="cancel"
                           disabled={pending || !scoringOpen}
-                          onClick={() => void execute('UNDO')}
+                          onClick={() => setConfirm('UNDO')}
                           className={`flex h-14 flex-col items-center justify-center rounded-lg border-2 text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'border-blue/50 hover:bg-blue/20' : 'border-red/50 hover:bg-red/20'}`}
                           title="Cancel last scoring event"
                         >
