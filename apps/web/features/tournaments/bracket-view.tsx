@@ -181,8 +181,9 @@ function buildConnectorPaths({
     const elbowX = currentRightX + 28;
 
     nodes.forEach((node) => {
-      const targetPosition = Math.floor(node.position / 2);
-      const targetNode = nextNodes.find((n) => n.position === targetPosition);
+      // Use destinationNodeId for proper structural connection
+      if (!node.destinationNodeId) return;
+      const targetNode = nextNodes.find((n) => n.id === node.destinationNodeId);
       if (!targetNode) return;
 
       const from = matchCenters.get(node.id);
@@ -206,8 +207,9 @@ function buildConnectorPaths({
 
 export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants: Entrant[] }) {
   const entrantMap = new Map(entrants.map((item) => [item.id, item]));
+  // Reverse rounds so earliest round (most matches) is leftmost, Final (1 match) is rightmost
   const rounds = Array.from(new Set(bracket.nodes.map((node) => node.round))).sort(
-    (a, b) => a - b,
+    (a, b) => b - a,
   );
 
   const slotHeight = 52;
