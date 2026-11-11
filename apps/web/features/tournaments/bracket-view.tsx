@@ -411,7 +411,14 @@ export function BracketView({
           className="pointer-events-none absolute left-0 top-0 z-0"
         >
           <defs>
-            <filter id="tkdLineGlow" x="-20%" y="-20%" width="140%" height="140%">
+            <filter
+              id="tkdLineGlow"
+              filterUnits="userSpaceOnUse"
+              x="0"
+              y="0"
+              width={canvasWidth}
+              height={bodyHeight}
+            >
               <feGaussianBlur stdDeviation="2.2" result="blur" />
               <feMerge>
                 <feMergeNode in="blur" />
