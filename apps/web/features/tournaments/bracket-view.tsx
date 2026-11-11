@@ -271,15 +271,23 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
             <stop offset="40%" stopColor="#3b82f6" />
             <stop offset="100%" stopColor="#22c55e" />
           </linearGradient>
+          <filter id="connGlow">
+            <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
         </defs>
         {connectorPaths.map((path, i) => (
           <path
             key={`conn-${i}`}
             d={path.d}
-            stroke={path.active ? 'url(#connGrad)' : '#1f1f1f'}
-            strokeWidth="3"
-            strokeDasharray={path.active ? '0' : '5 5'}
+            stroke={path.active ? 'url(#connGrad)' : '#333333'}
+            strokeWidth="2.5"
+            strokeDasharray={path.active ? '0' : '6 4'}
             fill="none"
+            filter={path.active ? 'url(#connGlow)' : 'none'}
             className={cn('tkd-bracket-connector', path.active && 'text-primary')}
           />
         ))}
