@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import type { Bracket } from '@tkd/domain';
 import { Badge } from '@/components/ui/badge';
 import { cn, flagEmoji } from '@/lib/utils';
@@ -297,20 +298,20 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
                   const slotDelay = roundIndex * 0.1 + nodeIndex * 0.04;
 
                   return (
-                    <article
-                      key={node.id}
-                      className={cn(
-                        'relative z-10 overflow-hidden rounded-xl border p-2.5 transition-all duration-300 tkd-bracket-slot',
-                        node.status === 'COMPLETED'
-                          ? isFinal
-                            ? 'tkd-winner-glow border-green-500 bg-green-500/10'
-                            : 'border-success/30 bg-success/5'
-                          : node.status === 'BYE'
-                          ? 'border-line/40 opacity-50'
-                          : 'border-border/40 bg-[#0a0a0a]/60 hover:border-red-500/50 hover:bg-[#111]/80',
-                      )}
-                      style={{ animationDelay: `${slotDelay}s` }}
-                    >
+                    <Link href={`/display/${node.id}`} key={node.id} passHref>
+                      <article
+                        className={cn(
+                          'relative z-10 overflow-hidden rounded-xl border p-2.5 transition-all duration-300 tkd-bracket-slot',
+                          node.status === 'COMPLETED'
+                            ? isFinal
+                              ? 'tkd-winner-glow border-green-500 bg-green-500/10'
+                              : 'border-success/30 bg-success/5'
+                            : node.status === 'BYE'
+                            ? 'border-line/40 opacity-50'
+                            : 'border-border/40 bg-[#0a0a0a]/60 hover:border-red-500/50 hover:bg-[#111]/80',
+                        )}
+                        style={{ animationDelay: `${slotDelay}s` }}
+                      >
                       <div className="flex items-center justify-between border-b border-border/30 pb-1 mb-1">
                         <span className="text-[9px] font-black uppercase tracking-wider text-red-500/70">
                           Match {node.matchNumber}
@@ -354,6 +355,7 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
                         />
                       )}
                     </article>
+                    </Link>
                   );
                 })}
               </div>
