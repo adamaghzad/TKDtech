@@ -78,12 +78,7 @@ function seedChip(seed: number | null | undefined): string {
   return 'bg-gray-700 text-gray-400';
 }
 
-/** Round label config */
-const ROUND_CONFIG: Record<string, { label: string; icon?: React.ReactNode }> = {
-  'Quarter-finals': { label: 'Quarter Finals' },
-  'Semi-finals': { label: 'Semi Finals' },
-  Final: { label: 'Final', icon: <Trophy className="size-4 text-yellow-400" /> },
-};
+
 
 /** Single athlete slot inside a match */
 function AthleteSlot({
@@ -207,10 +202,19 @@ function buildConnectorPaths({
 
 export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants: Entrant[] }) {
   const entrantMap = new Map(entrants.map((item) => [item.id, item]));
-  // Reverse rounds so earliest round (most matches) is leftmost, Final (1 match) is rightmost
+  // Sort rounds ascending: round 1 (most matches) leftmost, Final rightmost
   const rounds = Array.from(new Set(bracket.nodes.map((node) => node.round))).sort(
-    (a, b) => b - a,
+    (a, b) => a - b,
   );
+
+  // Generate proper round labels from match count
+  const roundLabel = (count: number): string => {
+    if (count === 1) return 'Final';
+    if (count === 2) return 'Semi Finals';
+    if (count === 4) return 'Quarter Finals';
+    if (count === 8) return 'Round of 16';
+    return `Round of ${count * 2}`;
+  };
 
   const slotHeight = 52;
   const gapBetweenRounds = 150;
@@ -290,14 +294,15 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
           const centerOffset =
             ((maxMatches - nodes.length) * slotHeight) / 2;
 
-          const roundConfig = ROUND_CONFIG[nodes[0]?.roundName ?? 'Final'] ?? { label: 'Final' };
+          const matchCount = nodes.length;
+          const label = roundLabel(matchCount);
           const isLastRound = roundIndex === rounds.length - 1;
 
           return (
             <section
               key={round}
               className="relative w-[240px] flex flex-col tkd-round-reveal"
-              aria-label={nodes[0]?.roundName}
+              aria-label={label}
               style={{
                 zIndex: rounds.length - roundIndex,
                 animationDelay: `${roundIndex * 0.1}s`,
@@ -308,15 +313,15 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-purple-500" />
                   <h3 className="text-xs font-black uppercase tracking-[.14em] text-purple-400">
-                    {roundConfig.label}
+                    {label}
                   </h3>
                   <span className="text-[10px] text-gray-500">
-                    {nodes.length} Athletes
+                    {matchCount * 2} Athletes
                   </span>
                 </div>
-                {isLastRound && roundConfig?.icon && (
+                {isLastRound && (
                   <span className="flex items-center gap-1">
-                    {roundConfig.icon}
+                    <Trophy className="size-4 text-yellow-400" />
                     <span className="text-[10px] font-black text-yellow-400">FINAL</span>
                   </span>
                 )}
