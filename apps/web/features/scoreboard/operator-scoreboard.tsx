@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ChevronLeft, CircleStop, Clock3, ExternalLink, History, Pause, Play, QrCode, RotateCcw, ShieldAlert, Stethoscope, Undo2, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, CircleStop, Clock3, ExternalLink, History, Minus, Pause, Play, Plus, QrCode, RotateCcw, ShieldAlert, Stethoscope, Undo2, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
 import type { MatchCommand } from '../../../local-server/src/types';
 import type { MatchSnapshot, PointType, Side } from '@tkd/contracts';
 import { useMatchCloud } from '@/lib/use-match-cloud';
@@ -35,6 +35,7 @@ const pointButtons: Array<{ label: string; type: PointType; description: string 
   { label: '+3', type: 'HEAD_KICK', description: 'Head kick' },
   { label: '+4', type: 'TURNING_BODY_KICK', description: 'Turning body' },
   { label: '+6', type: 'TURNING_HEAD_KICK', description: 'Turning head' },
+  { label: '+1', type: 'BODY_PUNCH', description: 'Technical point' },
 ];
 
 export function OperatorScoreboard({ matchId }: { matchId: string }) {
@@ -44,6 +45,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
   const [pending, setPending] = useState(false);
   const [pairing, setPairing] = useState(false);
   const [confirm, setConfirm] = useState<'RESET' | 'UNDO' | 'COMPLETE' | 'PREVIOUS' | 'SUPERIORITY_BLUE' | 'SUPERIORITY_RED' | null>(null);
+  const [pointMode, setPointMode] = useState<'ADD' | 'REMOVE'>('ADD');
   const { toast } = useToast();
 
   const execute = async (type: MatchCommand['type'], side?: Side, pointType?: PointType, reason?: string, details: Partial<MatchCommand> = {}) => {
@@ -164,23 +166,67 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                     <span className="numeric text-2xl font-black">{side === 'BLUE' ? snapshot.blueScore : snapshot.redScore}</span>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-5 gap-1.5">
-                      {pointButtons.map((point) => (
+                    <div className="space-y-2">
+                      {/* Row 1: point buttons + Gam-Jeom + +/- toggle */}
+                      <div className="grid grid-cols-6 gap-1.5">
+                        {pointButtons.slice(0, 4).map((point) => (
+                          <button
+                            key={point.type}
+                            disabled={pending || !scoringOpen}
+                            onClick={() => void (pointMode === 'ADD' ? execute('SCORE', side, point.type) : execute('UNDO'))}
+                            className={`flex h-14 flex-col items-center justify-center rounded-lg text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue hover:bg-[#155de9]' : 'bg-red hover:bg-[#dd2637]'}`}
+                            title={pointMode === 'ADD' ? point.description : 'Cancel last scoring event'}
+                          >
+                            <span className="numeric text-sm font-black">{point.label}</span>
+                            <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-75">{pointMode === 'ADD' ? point.description : 'Cancel'}</span>
+                          </button>
+                        ))}
                         <button
-                          key={point.type}
+                          key="gam-jeom"
                           disabled={pending || !scoringOpen}
-                          onClick={() => void execute('SCORE', side, point.type)}
-                          className={`flex h-16 flex-col items-center justify-center rounded-lg text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue hover:bg-[#155de9]' : 'bg-red hover:bg-[#dd2637]'}`}
-                          title={point.description}
+                          onClick={() => void (pointMode === 'ADD' ? execute('GAM_JEOM', side) : execute('UNDO'))}
+                          className={`flex h-14 flex-col items-center justify-center rounded-lg text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue/80 hover:bg-blue' : 'bg-red/80 hover:bg-red'}`}
+                          title={pointMode === 'ADD' ? 'Gam-Jeom' : 'Cancel last scoring event'}
                         >
-                          <span className="numeric text-xl font-black">{point.label}</span>
-                          <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-75">{point.description}</span>
+                          <ShieldAlert className="size-5" />
+                          <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-75">{pointMode === 'ADD' ? 'Gam-Jeom' : 'Cancel'}</span>
                         </button>
-                      ))}
+                        <button
+                          key="toggle"
+                          disabled={pending}
+                          onClick={() => setPointMode(pointMode === 'ADD' ? 'REMOVE' : 'ADD')}
+                          className={`flex h-14 items-center justify-center rounded-lg border-2 transition disabled:cursor-not-allowed disabled:opacity-30 ${pointMode === 'ADD' ? 'bg-white/[.1] border-primary/50 text-primary hover:bg-white/[.2]' : 'bg-white/[.1] border-red/50 text-red hover:bg-red/10'}`}
+                          title={pointMode === 'ADD' ? 'Switch to remove points' : 'Switch to add points'}
+                        >
+                          {pointMode === 'ADD' ? <Minus className="size-4" /> : <Plus className="size-4" />}
+                          <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-75">{pointMode === 'ADD' ? '+' : '-'}</span>
+                        </button>
+                      </div>
+
+                      {/* Row 2: Technical point + Cancel point */}
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          key="technical"
+                          disabled={pending || !scoringOpen}
+                          onClick={() => void (pointMode === 'ADD' ? execute('SCORE', side, 'BODY_PUNCH') : execute('UNDO'))}
+                          className={`flex h-14 flex-col items-center justify-center rounded-lg text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue hover:bg-[#155de9]' : 'bg-red hover:bg-[#dd2637]'}`}
+                          title={pointMode === 'ADD' ? 'Technical point' : 'Cancel last scoring event'}
+                        >
+                          <span className="numeric text-sm font-black">+1</span>
+                          <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-75">{pointMode === 'ADD' ? 'Technical' : 'Cancel'}</span>
+                        </button>
+                        <button
+                          key="cancel"
+                          disabled={pending || !scoringOpen}
+                          onClick={() => void execute('UNDO')}
+                          className={`flex h-14 flex-col items-center justify-center rounded-lg border-2 text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'border-blue/50 hover:bg-blue/20' : 'border-red/50 hover:bg-red/20'}`}
+                          title="Cancel last scoring event"
+                        >
+                          <Undo2 className="size-4" />
+                          <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-75">Cancel</span>
+                        </button>
+                      </div>
                     </div>
-                    <Button variant="secondary" className="mt-3 w-full" disabled={pending || !scoringOpen} onClick={() => void execute('GAM_JEOM', side)}>
-                      <ShieldAlert /> Gam-Jeom to {side} <span className="text-muted">(+1 opponent)</span>
-                    </Button>
                   </CardContent>
                 </Card>
               );
