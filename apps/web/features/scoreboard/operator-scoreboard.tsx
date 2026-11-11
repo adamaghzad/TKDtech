@@ -173,7 +173,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                           <button
                             key={point.type}
                             disabled={pending || !scoringOpen}
-                            onClick={() => void (pointMode === 'ADD' ? execute('SCORE', side, point.type) : execute('UNDO'))}
+                            onClick={() => void (pointMode === 'ADD' ? execute('SCORE', side, point.type) : setConfirm('UNDO'))}
                             className={`flex h-14 flex-col items-center justify-center rounded-lg text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue hover:bg-[#155de9]' : 'bg-red hover:bg-[#dd2637]'}`}
                             title={pointMode === 'ADD' ? point.description : 'Cancel last scoring event'}
                           >
@@ -184,7 +184,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                         <button
                           key="gam-jeom"
                           disabled={pending || !scoringOpen}
-                          onClick={() => void (pointMode === 'ADD' ? execute('GAM_JEOM', side) : execute('UNDO'))}
+                          onClick={() => void (pointMode === 'ADD' ? execute('GAM_JEOM', side) : setConfirm('UNDO'))}
                           className={`flex h-14 flex-col items-center justify-center rounded-lg text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue/80 hover:bg-blue' : 'bg-red/80 hover:bg-red'}`}
                           title={pointMode === 'ADD' ? 'Gam-Jeom' : 'Cancel last scoring event'}
                         >
@@ -208,7 +208,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                         <button
                           key="technical"
                           disabled={pending || !scoringOpen}
-                          onClick={() => void (pointMode === 'ADD' ? execute('SCORE', side, 'BODY_PUNCH') : execute('UNDO'))}
+                          onClick={() => void (pointMode === 'ADD' ? execute('SCORE', side, 'BODY_PUNCH') : setConfirm('UNDO'))}
                           className={`flex h-14 flex-col items-center justify-center rounded-lg text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue hover:bg-[#155de9]' : 'bg-red hover:bg-[#dd2637]'}`}
                           title={pointMode === 'ADD' ? 'Technical point' : 'Cancel last scoring event'}
                         >
