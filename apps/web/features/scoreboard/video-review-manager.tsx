@@ -43,21 +43,25 @@ function PointTypeButton({ type, label, description, selected, onClick }: {
   onClick: () => void;
 }) {
   const colors: Record<PointType, string> = {
-    BODY_PUNCH: 'bg-blue hover:bg-[#155de9]',
-    BODY_KICK: 'bg-blue hover:bg-[#155de9]',
-    HEAD_KICK: 'bg-blue hover:bg-[#155de9]',
-    TURNING_BODY_KICK: 'bg-blue hover:bg-[#155de9]',
-    TURNING_HEAD_KICK: 'bg-purple hover:bg-[#7e22ce]',
+    BODY_PUNCH: '#2563eb',
+    BODY_KICK: '#2563eb',
+    HEAD_KICK: '#2563eb',
+    TURNING_BODY_KICK: '#2563eb',
+    TURNING_HEAD_KICK: '#7e22ce',
   };
+  const color = colors[type];
   return <button
     type="button"
     disabled={false}
     onClick={onClick}
     className={cn(
-      'flex h-12 flex-col items-center justify-center rounded-lg text-white text-xs transition',
-      selected ? 'shadow-sm' : '',
-      colors[type],
+      'flex h-12 flex-col items-center justify-center rounded-lg text-white text-xs transition-all duration-200 border border-transparent',
+      selected ? 'shadow-sm' : 'bg-[#1e293b]/60 border-[#334155]/50 hover:bg-[#1e293b]/80',
     )}
+    style={{
+      backgroundColor: selected ? color : undefined,
+      borderColor: selected ? color : undefined,
+    }}
     title={description}
   >
     <span className="numeric text-sm font-black">{label}</span>
