@@ -12,26 +12,41 @@ interface Entrant {
 const style = document.createElement('style');
 style.textContent = `
   @keyframes bracketSlideIn {
-    from { opacity: 0; transform: translateY(14px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translateX(-12px); }
+    to   { opacity: 1; transform: translateX(0); }
   }
   @keyframes bracketAdvance {
-    0%   { background: rgba(34, 197, 94, 0.12); transform: scale(1); }
-    50%  { background: rgba(34, 197, 94, 0.28); transform: scale(1.03); }
-    100% { background: rgba(34, 197, 94, 0.12); transform: scale(1); }
+    0%   { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); border-color: rgba(34, 197, 94, 0.4); }
+    50%  { box-shadow: 0 0 20px 8px rgba(34, 197, 94, 0.35); border-color: rgba(34, 197, 94, 0.9); }
+    100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); border-color: rgba(34, 197, 94, 0.4); }
   }
   @keyframes bracketPulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
-    50%      { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+    0%, 100% { opacity: 0.6; stroke-dashoffset: 0; }
+    50%      { opacity: 1; stroke-dashoffset: -10; }
+    100%     { opacity: 0.6; stroke-dashoffset: -20; }
+  }
+  @keyframes winnerGlow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+    50%      { box-shadow: 0 0 24px 12px rgba(34, 197, 94, 0.55); }
+  }
+  @keyframes slotPop {
+    0% { opacity: 0; transform: scale(0.9) translateY(6px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
   }
   .tkd-bracket-slot {
-    animation: bracketSlideIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: bracketSlideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   .tkd-bracket-advanced {
-    animation: bracketAdvance 1.4s ease-out both;
+    animation: bracketAdvance 2s ease-in-out infinite;
   }
   .tkd-bracket-connector {
-    animation: bracketPulse 3s ease-in-out infinite;
+    animation: bracketPulse 2.5s ease-in-out infinite;
+  }
+  .tkd-winner-glow {
+    animation: winnerGlow 2s ease-in-out infinite;
+  }
+  .tkd-slot-pop {
+    animation: slotPop 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 `;
 if (typeof document !== 'undefined') document.head.appendChild(style);
@@ -56,22 +71,25 @@ function AthleteSlot({
   return (
     <div
       className={cn(
-        'tkd-bracket-slot flex min-h-[42px] items-center gap-2 px-3 py-2 text-sm transition-all duration-300',
+        'tkd-slot-pop flex min-h-[56px] items-center gap-3 px-3 py-2.5 text-sm transition-all duration-300',
         isWinner
-          ? 'tkd-bracket-advanced bg-success/20 border border-success/40 text-success'
+          ? 'tkd-winner-glow bg-success/15 border border-success/50 text-success'
           : id && !winner
-          ? 'bg-white/[.02] border border-transparent hover:border-primary/50 hover:bg-white/[.04] cursor-pointer'
-          : !id && 'border-line/50',
-        isBye && 'opacity-50',
+          ? 'bg-white/[.03] border border-transparent hover:border-red/50 hover:bg-white/[.05] cursor-pointer'
+          : !id && 'border-line/40',
+        isBye && 'opacity-40',
       )}
       style={{ animationDelay: `${delay ?? 0}s` }}
     >
+      <span className={`w-6 text-xs font-black ${isWinner ? 'text-success' : 'text-muted'}`}>
+        {isWinner ? '1' : '–'}
+      </span>
       <span className="text-xs">{athlete ? flagEmoji(athlete.countryCode) : '·'}</span>
       <span className={cn('min-w-0 flex-1 truncate', !id && 'italic text-muted')}>
         {athlete?.name ?? (isBye ? 'Bye' : 'To be determined')}
       </span>
       {id && winner === id && (
-        <span className="text-[8px] font-bold uppercase tracking-wider text-success">
+        <span className="text-[8px] font-black uppercase tracking-wider text-success bg-success/20 px-1.5 py-0.5 rounded">
           Advances
         </span>
       )}
@@ -132,7 +150,7 @@ function buildConnectorPaths({
       const midY = (from.y + to.y) / 2;
 
       paths.push({
-        d: `M ${currentX} ${from.y} L ${currentX + 24} ${from.y} L ${currentX + 24} ${midY} L ${nextRoundX - 24} ${midY} L ${nextRoundX - 24} ${to.y} L ${nextRoundX} ${to.y}`,
+        d: `M ${currentX} ${from.y} L ${currentX + 26} ${from.y} L ${currentX + 26} ${midY} L ${nextRoundX - 26} ${midY} L ${nextRoundX - 26} ${to.y} L ${nextRoundX} ${to.y}`,
         active: true,
         fromMatchId: node.id,
         toMatchId: targetNode.id,
@@ -149,10 +167,10 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
     (a, b) => a - b,
   );
 
-  const slotHeight = 76;
-  const gapBetweenRounds = 110;
-  const cardWidth = 280;
-  const cardLeftStart = 20;
+  const slotHeight = 68;
+  const gapBetweenRounds = 120;
+  const cardWidth = 260;
+  const cardLeftStart = 16;
 
   // compute per-round match counts for vertical centering
   const matchCounts = rounds.map((r) =>
@@ -176,7 +194,7 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
     const centerOffset = ((maxMatches - roundMatchCount) * slotHeight) / 2;
 
     nodes.forEach((node, nodeIndex) => {
-      const y = centerOffset + nodeIndex * slotHeight + slotHeight / 2 + 40; // +40 for header
+      const y = centerOffset + nodeIndex * slotHeight + slotHeight / 2 + 44; // +44 for header
       matchCenters.set(node.id, {
         x: roundX.get(round)! + cardWidth / 2,
         y,
@@ -194,30 +212,33 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
   });
 
   return (
-    <div className="relative overflow-x-auto overflow-y-auto min-h-[64vh] pb-8">
+    <div className="relative overflow-x-auto overflow-y-auto min-h-[64vh] pb-8 bg-[#0a0a0a]/40 rounded-2xl border border-[#1a1a1a]/60 p-6">
+      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#0f0f0f]/80 to-transparent pointer-events-none" />
+
       {/* ── SVG connector layer ─────────────────────────────────────── */}
-      <svg
-        className="absolute inset-0 z-0 pointer-events-none w-full h-full"
-        style={{ width: '100%', height: '100%' }}
-      >
+      <svg className="absolute inset-0 z-0 pointer-events-none w-full h-full">
+        <defs>
+          <linearGradient id="connGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#ef4444" />
+            <stop offset="50%" stopColor="#3b82f6" />
+            <stop offset="100%" stopColor="#22c55e" />
+          </linearGradient>
+        </defs>
         {connectorPaths.map((path, i) => (
           <path
             key={`conn-${i}`}
             d={path.d}
-            stroke={path.active ? '#3b82f6' : '#475569'}
-            strokeWidth="1.5"
-            strokeDasharray={path.active ? '5 5' : '3 3'}
+            stroke={path.active ? 'url(#connGrad)' : '#2a2a2a'}
+            strokeWidth="2"
+            strokeDasharray={path.active ? '6 4' : '4 4'}
             fill="none"
-            className={cn(
-              'tkd-bracket-connector',
-              path.active && 'text-primary',
-            )}
+            className={cn('tkd-bracket-connector', path.active && 'text-primary')}
           />
         ))}
       </svg>
 
       {/* ── rounds ──────────────────────────────────────────────────── */}
-      <div className="relative z-10 flex min-w-max p-5 gap-[calc(110px+2rem)]">
+      <div className="relative z-10 flex min-w-max p-4 gap-[calc(120px+1.5rem)]">
         {rounds.map((round, roundIndex) => {
           const nodes = bracket.nodes
             .filter((node) => node.round === round)
@@ -225,30 +246,32 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
           const centerOffset =
             ((maxMatches - nodes.length) * slotHeight) / 2;
 
+          const isFinal = roundIndex === rounds.length - 1;
+
           return (
             <section
               key={round}
-              className="relative w-[280px] flex flex-col"
+              className="relative w-[260px] flex flex-col"
               aria-label={nodes[0]?.roundName}
               style={{
                 zIndex: rounds.length - roundIndex,
-                animationDelay: `${roundIndex * 0.1}s`,
+                animationDelay: `${roundIndex * 0.08}s`,
               }}
             >
-              <div className="mb-4 flex items-center justify-between px-2">
-                <h3 className="text-xs font-bold uppercase tracking-[.12em] text-primary/90">
+              <div className="mb-3 flex items-center justify-between px-1">
+                <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-red-500/90 drop-shadow-[0_0_8px_rgba(239,68,68,0.3)]">
                   {nodes[0]?.roundName}
                 </h3>
-                <Badge tone="neutral" className="text-[9px]">
-                  {nodes.length} match{nodes.length > 1 ? 'es' : ''}
+                <Badge tone="neutral" className="text-[8px] border-border/30">
+                  {nodes.length}
                 </Badge>
               </div>
 
-              <div className="relative space-y-4">
+              <div className="relative space-y-3">
                 {/* round spine */}
                 {rounds.length > 1 && roundIndex < rounds.length - 1 && (
                   <div
-                    className="absolute left-[139px] top-[52px] bottom-[-24px] w-[2px] bg-gradient-to-b from-transparent via-primary/40 to-transparent"
+                    className="absolute left-[124px] top-[56px] bottom-[-20px] w-[1px] bg-gradient-to-b from-transparent via-red-500/30 to-transparent"
                   />
                 )}
 
@@ -270,25 +293,26 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
                       n.blueEntrantId === winnerId ||
                       n.redEntrantId === winnerId,
                   );
-                  const isActive = Boolean(winnerId && advancesTo);
 
-                  const slotDelay = (roundIndex * 0.12 + nodeIndex * 0.06);
+                  const slotDelay = roundIndex * 0.1 + nodeIndex * 0.04;
 
                   return (
                     <article
                       key={node.id}
                       className={cn(
-                        'relative z-10 overflow-hidden rounded-xl border p-3 transition-all duration-300 tkd-bracket-slot',
+                        'relative z-10 overflow-hidden rounded-xl border p-2.5 transition-all duration-300 tkd-bracket-slot',
                         node.status === 'COMPLETED'
-                          ? 'border-success/30 bg-success/5'
+                          ? isFinal
+                            ? 'tkd-winner-glow border-green-500 bg-green-500/10'
+                            : 'border-success/30 bg-success/5'
                           : node.status === 'BYE'
-                          ? 'border-line/50 opacity-60'
-                          : 'border-border/50 bg-[#0c1320]/60 hover:border-primary/60 hover:bg-[#101a2b]/80',
+                          ? 'border-line/40 opacity-50'
+                          : 'border-border/40 bg-[#0a0a0a]/60 hover:border-red-500/50 hover:bg-[#111]/80',
                       )}
                       style={{ animationDelay: `${slotDelay}s` }}
                     >
-                      <div className="flex items-center justify-between border-b border-border/40 pb-1.5">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-muted">
+                      <div className="flex items-center justify-between border-b border-border/30 pb-1 mb-1">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-red-500/70">
                           Match {node.matchNumber}
                         </span>
                         <Badge
@@ -299,7 +323,7 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
                               ? 'neutral'
                               : 'blue'
                           }
-                          className="text-[9px]"
+                          className="text-[8px] border-border/30"
                         >
                           {node.status}
                         </Badge>
@@ -313,7 +337,7 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
                         delay={slotDelay}
                       />
 
-                      <div className="h-[1px] bg-border/40 my-1" />
+                      <div className="h-[1px] bg-border/30 my-1" />
 
                       <AthleteSlot
                         id={node.redEntrantId}
@@ -325,7 +349,7 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
 
                       {winnerId && advancesTo && (
                         <div
-                          className="absolute right-[-10px] top-[20px] w-2 h-2 rounded-full bg-success animate-pulse"
+                          className="absolute right-[-10px] top-[22px] w-2 h-2 rounded-full bg-green-500 tkd-winner-glow"
                           title="Advances to next round"
                         />
                       )}
