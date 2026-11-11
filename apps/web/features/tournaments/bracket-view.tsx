@@ -105,12 +105,14 @@ function buildConnectorPaths({
   roundX,
   slotHeight,
   matchCenters,
+  cardWidth,
 }: {
   bracket: Bracket;
   rounds: number[];
   roundX: Map<number, number>;
   slotHeight: number;
   matchCenters: Map<string, { x: number; y: number }>;
+  cardWidth: number;
 }) {
   const paths: Array<{
     d: string;
@@ -132,16 +134,15 @@ function buildConnectorPaths({
         .sort((a, b) => a.position - b.position);
     if (!nextNodes) return;
 
-    const currentX = roundX.get(round)! + 280;
-    const nextRoundX = roundX.get(rounds[roundIndex + 1] as number)! + 140;
+    const currentRightX = roundX.get(round)! + cardWidth; // right edge of current card
+    const nextLeftX = roundX.get(rounds[roundIndex + 1] as number)!; // left edge of next card
+    const elbowX = currentRightX + 30; // horizontal offset before vertical drop
 
     nodes.forEach((node) => {
-      const winnerId = node.winnerEntrantId;
-      if (!winnerId) return;
+      // Draw structural connection to destination match (like football bracket)
+      if (!node.destinationNodeId) return;
 
-      const targetNode = nextNodes.find(
-        (n) => n.blueEntrantId === winnerId || n.redEntrantId === winnerId,
-      );
+      const targetNode = nextNodes.find((n) => n.id === node.destinationNodeId);
       if (!targetNode) return;
 
       const from = matchCenters.get(node.id);
@@ -149,10 +150,11 @@ function buildConnectorPaths({
       if (!from || !to) return;
 
       const midY = (from.y + to.y) / 2;
+      const hasWinner = Boolean(node.winnerEntrantId);
 
       paths.push({
-        d: `M ${currentX} ${from.y} L ${currentX + 26} ${from.y} L ${currentX + 26} ${midY} L ${nextRoundX - 26} ${midY} L ${nextRoundX - 26} ${to.y} L ${nextRoundX} ${to.y}`,
-        active: true,
+        d: `M ${currentRightX} ${from.y} L ${elbowX} ${from.y} L ${elbowX} ${midY} L ${nextLeftX - 30} ${midY} L ${nextLeftX - 30} ${to.y} L ${nextLeftX} ${to.y}`,
+        active: hasWinner,
         fromMatchId: node.id,
         toMatchId: targetNode.id,
       });
@@ -210,6 +212,7 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
     roundX,
     slotHeight,
     matchCenters,
+    cardWidth,
   });
 
   return (
@@ -229,9 +232,9 @@ export function BracketView({ bracket, entrants }: { bracket: Bracket; entrants:
           <path
             key={`conn-${i}`}
             d={path.d}
-            stroke={path.active ? 'url(#connGrad)' : '#2a2a2a'}
-            strokeWidth="2"
-            strokeDasharray={path.active ? '6 4' : '4 4'}
+            stroke={path.active ? 'url(#connGrad)' : '#333333'}
+            strokeWidth="2.5"
+            strokeDasharray={path.active ? '0' : '4 4'}
             fill="none"
             className={cn('tkd-bracket-connector', path.active && 'text-primary')}
           />
