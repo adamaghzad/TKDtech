@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Check, Video, X } from 'lucide-react';
-import type { MatchSnapshot, Side } from '@tkd/contracts';
+import type { MatchSnapshot, PointType, Side } from '@tkd/contracts';
 import type { MatchCommand, ReviewCorrectionKind, ReviewOutcome } from '../../../local-server/src/types';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -35,11 +35,41 @@ function ChoiceButton({ selected, children, onClick, disabled, className, label 
   >{children}</button>;
 }
 
+function PointTypeButton({ type, label, description, selected, onClick }: {
+  type: PointType;
+  label: string;
+  description: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const colors: Record<PointType, string> = {
+    BODY_PUNCH: 'bg-blue hover:bg-[#155de9]',
+    BODY_KICK: 'bg-blue hover:bg-[#155de9]',
+    HEAD_KICK: 'bg-blue hover:bg-[#155de9]',
+    TURNING_BODY_KICK: 'bg-blue hover:bg-[#155de9]',
+    TURNING_HEAD_KICK: 'bg-purple hover:bg-[#7e22ce]',
+  };
+  return <button
+    type="button"
+    disabled={false}
+    onClick={onClick}
+    className={cn(
+      'flex h-12 flex-col items-center justify-center rounded-lg text-white text-xs transition',
+      selected ? 'shadow-sm' : '',
+      colors[type],
+    )}
+    title={description}
+  >
+    <span className="numeric text-sm font-black">{label}</span>
+    <span className="mt-0.5 text-[6px] uppercase leading-3 opacity-80">{description}</span>
+  </button>;
+}
+
 function ReviewResultForm({ snapshot, pending, onCommand, onClose }: VideoReviewManagerProps & { onClose: () => void }) {
   const review = snapshot.videoReview;
   const [athlete, setAthlete] = useState<Side>(review?.requestedBy ?? 'BLUE');
   const [correction, setCorrection] = useState<ReviewCorrectionKind>('GAM_JEOM');
-  const [points, setPoints] = useState<1 | 2 | 3 | 4>(1);
+  const [points, setPoints] = useState<1 | 2 | 3 | 4 | 6>(1);
   const [action, setAction] = useState<'ADD' | 'REMOVE'>('ADD');
   const [outcome, setOutcome] = useState<ReviewOutcome>('ACCEPTED');
   const accepted = outcome === 'ACCEPTED';
@@ -83,9 +113,43 @@ function ReviewResultForm({ snapshot, pending, onCommand, onClose }: VideoReview
       <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
         <div>
           <p className="mb-2 text-[10px] font-black uppercase tracking-[.14em] text-muted">Points</p>
-          <div className="grid grid-cols-5 gap-1.5">
+          <div className="grid grid-cols-5 gap-1">
             <ChoiceButton selected={correction === 'GAM_JEOM'} onClick={() => setCorrection('GAM_JEOM')} label="Gam-Jeom">Gam-<br />Jeom</ChoiceButton>
-            {([1, 2, 3, 4] as const).map(value => <ChoiceButton key={value} selected={correction === 'POINTS' && points === value} onClick={() => { setCorrection('POINTS'); setPoints(value); }}>{value}</ChoiceButton>)}
+            <PointTypeButton
+              type="BODY_PUNCH"
+              label="+1"
+              description="Punch"
+              selected={correction === 'POINTS' && points === 1}
+              onClick={() => { setCorrection('POINTS'); setPoints(1); }}
+            />
+            <PointTypeButton
+              type="BODY_KICK"
+              label="+2"
+              description="Body kick"
+              selected={correction === 'POINTS' && points === 2}
+              onClick={() => { setCorrection('POINTS'); setPoints(2); }}
+            />
+            <PointTypeButton
+              type="HEAD_KICK"
+              label="+3"
+              description="Head kick"
+              selected={correction === 'POINTS' && points === 3}
+              onClick={() => { setCorrection('POINTS'); setPoints(3); }}
+            />
+            <PointTypeButton
+              type="TURNING_BODY_KICK"
+              label="+4"
+              description="Turning body"
+              selected={correction === 'POINTS' && points === 4}
+              onClick={() => { setCorrection('POINTS'); setPoints(4); }}
+            />
+            <PointTypeButton
+              type="TURNING_HEAD_KICK"
+              label="+6"
+              description="Turning head"
+              selected={correction === 'POINTS' && points === 6}
+              onClick={() => { setCorrection('POINTS'); setPoints(6); }}
+            />
           </div>
         </div>
         <div>

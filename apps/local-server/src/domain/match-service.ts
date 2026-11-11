@@ -191,7 +191,7 @@ export class MatchService {
             if(nextTimer.kind==='BREAK')throw new HttpError(409,'REVIEW_ROUND_AMBIGUOUS','A review correction cannot be applied during the round break. Use the authorized previous-round correction workflow.');
             const side=command.side;const action=command.reviewAction;
             if(command.reviewCorrection==='POINTS'){
-              const points=command.reviewPoints;if(!points)throw new HttpError(400,'VALIDATION_ERROR','Select 1, 2, 3 or 4 points for the review correction.');
+              const points=command.reviewPoints;if(!points)throw new HttpError(400,'VALIDATION_ERROR','Select 1, 2, 3, 4 or 6 points for the review correction.');
               const sideTotal=side==='BLUE'?blueScore:redScore;const sideRound=side==='BLUE'?currentRound.blue_score:currentRound.red_score;
               if(action==='REMOVE'&&(sideTotal<points||sideRound<points))throw new HttpError(409,'CORRECTION_EXCEEDS_SCORE','The selected points cannot be removed below zero from this round.');
               const delta=action==='ADD'?points:-points;if(side==='BLUE')blueScore+=delta;else redScore+=delta;

@@ -39,5 +39,5 @@ export interface MatchCommand {
   outcome?: ReviewOutcome;
   reviewAction?: 'ADD' | 'REMOVE';
   reviewCorrection?: ReviewCorrectionKind;
-  reviewPoints?: 1 | 2 | 3 | 4;
+  reviewPoints?: 1 | 2 | 3 | 4 | 6;
 }

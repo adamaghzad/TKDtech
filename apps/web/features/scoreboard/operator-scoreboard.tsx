@@ -169,7 +169,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                     <div className="space-y-2">
                       {/* Row 1: point buttons + Gam-Jeom + +/- toggle */}
                       <div className="grid grid-cols-6 gap-1.5">
-                        {pointButtons.slice(0, 4).map((point) => (
+                        {pointButtons.slice(0, 5).map((point) => (
                           <button
                             key={point.type}
                             disabled={pending || !scoringOpen}
