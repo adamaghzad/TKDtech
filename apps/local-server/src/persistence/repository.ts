@@ -265,10 +265,22 @@ export class TournamentRepository {
   }
 
   getBracket(categoryId: string): Record<string,unknown> {
-    const row=this.db.prepare(`SELECT d.id AS draw_id,d.method,d.seed,d.status,d.published_version,d.created_at,b.graph_json,c.name AS category_name,c.tournament_id FROM draws d JOIN brackets b ON b.draw_id=d.id JOIN categories c ON c.id=d.category_id WHERE d.category_id=? ORDER BY d.created_at DESC LIMIT 1`).get(categoryId) as {draw_id:string;method:string;seed:string;status:string;published_version:number|null;created_at:string;graph_json:string;category_name:string;tournament_id:string}|undefined;
+    const row=this.db.prepare(`SELECT d.id AS draw_id,d.method,d.seed,d.status,d.published_version,d.created_at,b.graph_json,c.id AS category_id,c.name AS category_name,c.division,c.age_group,c.tournament_id,t.name AS tournament_name,t.venue AS tournament_venue FROM draws d JOIN brackets b ON b.draw_id=d.id JOIN categories c ON c.id=d.category_id JOIN tournaments t ON t.id=c.tournament_id WHERE d.category_id=? ORDER BY d.created_at DESC LIMIT 1`).get(categoryId) as {draw_id:string;method:string;seed:string;status:string;published_version:number|null;created_at:string;graph_json:string;category_id:string;category_name:string;division:string;age_group:string;tournament_id:string;tournament_name:string;tournament_venue:string}|undefined;
     if(!row)throw new HttpError(404,'DRAW_NOT_FOUND','No draw has been generated for this category.');
-    const athletes=this.db.prepare('SELECT id,first_name,last_name,country_code FROM athletes WHERE tournament_id=?').all(row.tournament_id) as Array<{id:string;first_name:string;last_name:string;country_code:string}>;
-    return{draw:{id:row.draw_id,method:row.method,seed:row.seed,status:row.status,publishedVersion:row.published_version,createdAt:row.created_at},categoryName:row.category_name,tournamentId:row.tournament_id,bracket:JSON.parse(row.graph_json) as Bracket,athletes:athletes.map(a=>({id:a.id,name:`${a.first_name} ${a.last_name}`,countryCode:a.country_code}))};
+    const athletes=this.db.prepare(`SELECT a.id,a.first_name,a.last_name,a.country_code,cl.name AS club_name,s.seed_position AS seed FROM athletes a LEFT JOIN clubs cl ON cl.id=a.club_id LEFT JOIN tournament_seeds s ON s.category_id=? AND s.athlete_id=a.id WHERE a.tournament_id=?`).all(categoryId,row.tournament_id) as Array<{id:string;first_name:string;last_name:string;country_code:string;club_name:string|null;seed:number|null}>;
+    const matchRows=this.db.prepare(`SELECT m.id,m.bracket_node_id,m.match_number,m.state,m.current_round,m.blue_score,m.red_score,m.winner_athlete_id,mat.name AS mat_name FROM matches m LEFT JOIN mats mat ON mat.id=m.mat_id WHERE m.category_id=? AND m.bracket_node_id IS NOT NULL`).all(categoryId) as Array<{id:string;bracket_node_id:string;match_number:string;state:string;current_round:number;blue_score:number;red_score:number;winner_athlete_id:string|null;mat_name:string|null}>;
+    const nodeMatches:Record<string,{matchId:string;matchNumber:string;state:string;currentRound:number;blueScore:number;redScore:number;winnerId:string|null;matName:string|null}>={};
+    for(const m of matchRows){nodeMatches[m.bracket_node_id]={matchId:m.id,matchNumber:m.match_number,state:m.state,currentRound:m.current_round,blueScore:m.blue_score,redScore:m.red_score,winnerId:m.winner_athlete_id,matName:m.mat_name};}
+    return{draw:{id:row.draw_id,method:row.method,seed:row.seed,status:row.status,publishedVersion:row.published_version,createdAt:row.created_at},categoryId:row.category_id,categoryName:row.category_name,division:row.division,ageGroup:row.age_group,tournamentId:row.tournament_id,tournamentName:row.tournament_name,tournamentVenue:row.tournament_venue,bracket:JSON.parse(row.graph_json) as Bracket,athletes:athletes.map(a=>({id:a.id,name:`${a.first_name} ${a.last_name}`,countryCode:a.country_code,clubName:a.club_name,seed:a.seed})),nodeMatches};
+  }
+
+  getPublicTournamentBrackets(tournamentId: string): Record<string, unknown> {
+    const tournament=this.db.prepare('SELECT id,name,venue,country,start_date,end_date,status FROM tournaments WHERE id=?').get(tournamentId) as {id:string;name:string;venue:string;country:string;start_date:string;end_date:string;status:string}|undefined;
+    if(!tournament)throw new HttpError(404,'NOT_FOUND','Tournament not found.');
+    if(tournament.status==='CANCELLED')throw new HttpError(404,'NOT_FOUND','Tournament has been cancelled.');
+    const categoryRows=this.db.prepare(`SELECT DISTINCT c.id,c.name FROM categories c JOIN draws d ON d.category_id=c.id JOIN brackets b ON b.draw_id=d.id WHERE c.tournament_id=? ORDER BY c.name`).all(tournamentId) as Array<{id:string;name:string}>;
+    const brackets=categoryRows.map(cat=>this.getBracket(cat.id));
+    return{tournament:{id:tournament.id,name:tournament.name,venue:tournament.venue,country:tournament.country,startDate:tournament.start_date,endDate:tournament.end_date,status:tournament.status},brackets};
   }
 
   assignMatch(actor: Actor, matchId: string, matId: string): void {
