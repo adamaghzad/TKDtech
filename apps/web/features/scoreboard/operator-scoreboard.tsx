@@ -1,7 +1,7 @@
 'use client';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ChevronLeft, CircleStop, Clock3, ExternalLink, History, Minus, Pause, Play, Plus, QrCode, RotateCcw, ShieldAlert, Stethoscope, Undo2, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, CircleStop, Clock3, ExternalLink, History, Keyboard, Minus, Pause, Play, Plus, QrCode, RotateCcw, ShieldAlert, Stethoscope, Undo2, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
 import type { MatchCommand } from '../../../local-server/src/types';
 import type { MatchSnapshot, PointType, Side } from '@tkd/contracts';
 import { useMatchCloud } from '@/lib/use-match-cloud';
@@ -13,6 +13,17 @@ import { formatTime, titleCase } from '@/lib/utils';
 import { ScoreboardView } from './scoreboard-view';
 import { VideoReviewManager } from './video-review-manager';
 import { PairingManager } from './pairing-manager';
+import { KeybindSettingsDialog, Keycap } from './keybind-settings-dialog';
+import {
+  defaultKeybindMap,
+  isEditableTarget,
+  loadKeybindPreferences,
+  normalizeKeyboardToken,
+  resolveOperatorAction,
+  saveKeybindPreferences,
+  type OperatorActionId,
+  type OperatorKeybindPreferences,
+} from './operator-keybinds';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge, StatusBadge } from '@/components/ui/badge';
@@ -29,13 +40,18 @@ interface EventRow {
   actor_id: string | null;
 }
 
-const pointButtons: Array<{ label: string; type: PointType; description: string }> = [
-  { label: '+1', type: 'BODY_PUNCH', description: 'Punch' },
-  { label: '+2', type: 'BODY_KICK', description: 'Body kick' },
-  { label: '+3', type: 'HEAD_KICK', description: 'Head kick' },
-  { label: '+4', type: 'TURNING_BODY_KICK', description: 'Turning body' },
-  { label: '+6', type: 'TURNING_HEAD_KICK', description: 'Turning head' },
-  { label: '+1', type: 'BODY_PUNCH', description: 'Technical point' },
+const pointButtons: Array<{
+  label: string;
+  type: PointType;
+  description: string;
+  blueAction: OperatorActionId;
+  redAction: OperatorActionId;
+}> = [
+  { label: '+1', type: 'BODY_PUNCH', description: 'Punch', blueAction: 'BLUE_PUNCH', redAction: 'RED_PUNCH' },
+  { label: '+2', type: 'BODY_KICK', description: 'Body kick', blueAction: 'BLUE_BODY_KICK', redAction: 'RED_BODY_KICK' },
+  { label: '+3', type: 'HEAD_KICK', description: 'Head kick', blueAction: 'BLUE_HEAD_KICK', redAction: 'RED_HEAD_KICK' },
+  { label: '+4', type: 'TURNING_BODY_KICK', description: 'Turning body', blueAction: 'BLUE_TURNING_BODY', redAction: 'RED_TURNING_BODY' },
+  { label: '+6', type: 'TURNING_HEAD_KICK', description: 'Turning head', blueAction: 'BLUE_TURNING_HEAD', redAction: 'RED_TURNING_HEAD' },
 ];
 
 export function OperatorScoreboard({ matchId }: { matchId: string }) {
@@ -44,11 +60,28 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
   const events = useApi<EventRow[]>(`/api/v1/matches/${matchId}/events`);
   const [pending, setPending] = useState(false);
   const [pairing, setPairing] = useState(false);
+  const [keybindDialogOpen, setKeybindDialogOpen] = useState(false);
+  const [keybindPrefs, setKeybindPrefs] = useState<OperatorKeybindPreferences>(() => ({
+    enabled: true,
+    bindings: defaultKeybindMap(),
+  }));
   const [confirm, setConfirm] = useState<'RESET' | 'UNDO' | 'COMPLETE' | 'PREVIOUS' | 'SUPERIORITY_BLUE' | 'SUPERIORITY_RED' | null>(null);
   const [pointMode, setPointMode] = useState<'ADD' | 'REMOVE'>('ADD');
   const { toast } = useToast();
 
-  const execute = async (type: MatchCommand['type'], side?: Side, pointType?: PointType, reason?: string, details: Partial<MatchCommand> = {}) => {
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => {
+      setKeybindPrefs(loadKeybindPreferences());
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, []);
+
+  const updateKeybindPrefs = useCallback((next: OperatorKeybindPreferences) => {
+    setKeybindPrefs(next);
+    saveKeybindPreferences(next);
+  }, []);
+
+  const execute = useCallback(async (type: MatchCommand['type'], side?: Side, pointType?: PointType, reason?: string, details: Partial<MatchCommand> = {}) => {
     if (!snapshot) return;
     setPending(true);
     try {
@@ -61,20 +94,188 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
     } finally {
       setPending(false);
     }
-  };
+  }, [events, matchId, refresh, snapshot, toast]);
+
+  const scoringOpen = snapshot ? ['IN_PROGRESS', 'PAUSED', 'GOLDEN_POINT'].includes(snapshot.state) : false;
+  const canStart = snapshot ? ['READY', 'CALLED'].includes(snapshot.state) : false;
+  const currentRound = snapshot?.rounds.find(round => round.number === snapshot.currentRound);
+  const endedRound = snapshot?.timer.kind === 'BREAK' ? snapshot.rounds.find(round => round.number === snapshot.currentRound - 1 && round.endedAt !== null) : undefined;
+  const displayRound = endedRound ?? currentRound;
+  const superiorityRequired = Boolean(snapshot && displayRound?.endedAt && displayRound.blueScore === displayRound.redScore && !displayRound.winner && (snapshot.state === 'ROUND_BREAK' || snapshot.timer.kind === 'BREAK' || (snapshot.state === 'PAUSED' && snapshot.timer.kind === 'ROUND' && remainingMs <= 0)));
+  const canResume = Boolean(snapshot && ['PAUSED', 'ROUND_BREAK'].includes(snapshot.state) && !superiorityRequired);
+  const breakPaused = Boolean(snapshot && snapshot.state === 'ROUND_BREAK' && !snapshot.timer.running && remainingMs > 0);
+  const canNextRound = Boolean(snapshot && !superiorityRequired && (snapshot.state === 'ROUND_BREAK' ? breakPaused : snapshot.state === 'PAUSED' && snapshot.timer.kind !== 'BREAK' && snapshot.currentRound < snapshot.totalRounds));
+  const canMedical = Boolean(snapshot && (['IN_PROGRESS', 'PAUSED'].includes(snapshot.state) || snapshot.timer.kind === 'MEDICAL'));
+  const canRequestReview = Boolean(snapshot && ['IN_PROGRESS', 'PAUSED', 'GOLDEN_POINT', 'ROUND_BREAK'].includes(snapshot.state));
+  const canUndo = Boolean(snapshot && !['COMPLETED', 'WALKOVER', 'DISQUALIFIED', 'WITHDRAWN'].includes(snapshot.state));
+  const canComplete = Boolean(snapshot && ['IN_PROGRESS', 'PAUSED', 'ROUND_BREAK', 'GOLDEN_POINT', 'UNDER_REVIEW'].includes(snapshot.state));
+
+  useEffect(() => {
+    if (!snapshot) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (isEditableTarget(event.target)) return;
+      if (confirm !== null || pairing || keybindDialogOpen) return;
+      if (typeof document !== 'undefined' && document.querySelector('[role="dialog"]')) return;
+
+      const token = normalizeKeyboardToken(event);
+      if (token === 'Help:?') {
+        event.preventDefault();
+        setKeybindDialogOpen(true);
+        return;
+      }
+      if (!keybindPrefs.enabled || !token) return;
+
+      const action = resolveOperatorAction(token, keybindPrefs.bindings);
+      if (!action) return;
+
+      // While the active Instant Video Replay form is open, let it own point/Gam-Jeom/X selection keys
+      if (
+        snapshot.state === 'UNDER_REVIEW' &&
+        typeof document !== 'undefined' &&
+        document.querySelector('[data-testid="video-review-manager"]') &&
+        ['BLUE_PUNCH', 'BLUE_BODY_KICK', 'BLUE_HEAD_KICK', 'BLUE_TURNING_BODY', 'BLUE_TURNING_HEAD', 'BLUE_GAM_JEOM', 'RED_PUNCH', 'RED_BODY_KICK', 'RED_HEAD_KICK', 'RED_TURNING_BODY', 'RED_TURNING_HEAD', 'RED_GAM_JEOM', 'TOGGLE_POINT_MODE'].includes(action)
+      ) {
+        return;
+      }
+
+      // Always prevent default on matched shortcut keys (critical for Space so focused buttons never double-click or scroll)
+      event.preventDefault();
+
+      if (action === 'TOGGLE_SOUND') {
+        void audio.toggle();
+        return;
+      }
+      if (action === 'OPEN_PAIRING') {
+        setPairing(true);
+        return;
+      }
+      if (pending) return;
+
+      const scoreOrUndo = (side: Side, pt: PointType) => {
+        if (!scoringOpen) return;
+        if (pointMode === 'ADD') void execute('SCORE', side, pt);
+        else setConfirm('UNDO');
+      };
+      const gamJeomOrUndo = (side: Side) => {
+        if (!scoringOpen) return;
+        if (pointMode === 'ADD') void execute('GAM_JEOM', side);
+        else setConfirm('UNDO');
+      };
+
+      switch (action) {
+        case 'TOGGLE_CLOCK':
+          if (canStart) void execute('START');
+          else if (snapshot.state === 'IN_PROGRESS') void execute('PAUSE');
+          else if (canResume) void execute('RESUME');
+          break;
+        case 'NEXT_ROUND':
+          if (canNextRound) void execute('NEXT_ROUND');
+          break;
+        case 'MEDICAL_TIMEOUT':
+          if (canMedical) void execute('MEDICAL_TIMEOUT');
+          break;
+        case 'RESET_TIMER':
+          if (snapshot.state !== 'IN_PROGRESS') setConfirm('RESET');
+          break;
+        case 'PREVIOUS_ROUND':
+          if (snapshot.currentRound > 1 && snapshot.state !== 'IN_PROGRESS') setConfirm('PREVIOUS');
+          break;
+        case 'BLUE_PUNCH':
+          scoreOrUndo('BLUE', 'BODY_PUNCH');
+          break;
+        case 'BLUE_BODY_KICK':
+          scoreOrUndo('BLUE', 'BODY_KICK');
+          break;
+        case 'BLUE_HEAD_KICK':
+          scoreOrUndo('BLUE', 'HEAD_KICK');
+          break;
+        case 'BLUE_TURNING_BODY':
+          scoreOrUndo('BLUE', 'TURNING_BODY_KICK');
+          break;
+        case 'BLUE_TURNING_HEAD':
+          scoreOrUndo('BLUE', 'TURNING_HEAD_KICK');
+          break;
+        case 'BLUE_TECHNICAL':
+          scoreOrUndo('BLUE', 'BODY_PUNCH');
+          break;
+        case 'BLUE_GAM_JEOM':
+          gamJeomOrUndo('BLUE');
+          break;
+        case 'RED_PUNCH':
+          scoreOrUndo('RED', 'BODY_PUNCH');
+          break;
+        case 'RED_BODY_KICK':
+          scoreOrUndo('RED', 'BODY_KICK');
+          break;
+        case 'RED_HEAD_KICK':
+          scoreOrUndo('RED', 'HEAD_KICK');
+          break;
+        case 'RED_TURNING_BODY':
+          scoreOrUndo('RED', 'TURNING_BODY_KICK');
+          break;
+        case 'RED_TURNING_HEAD':
+          scoreOrUndo('RED', 'TURNING_HEAD_KICK');
+          break;
+        case 'RED_TECHNICAL':
+          scoreOrUndo('RED', 'BODY_PUNCH');
+          break;
+        case 'RED_GAM_JEOM':
+          gamJeomOrUndo('RED');
+          break;
+        case 'VIDEO_REVIEW_BLUE':
+          if (canRequestReview) void execute('VIDEO_REVIEW', 'BLUE');
+          break;
+        case 'VIDEO_REVIEW_RED':
+          if (canRequestReview) void execute('VIDEO_REVIEW', 'RED');
+          break;
+        case 'TOGGLE_POINT_MODE':
+          setPointMode(prev => (prev === 'ADD' ? 'REMOVE' : 'ADD'));
+          break;
+        case 'UNDO':
+          if (canUndo) setConfirm('UNDO');
+          break;
+        case 'COMPLETE_MATCH':
+          if (canComplete) setConfirm('COMPLETE');
+          break;
+        case 'SUPERIORITY_BLUE':
+          if (superiorityRequired) setConfirm('SUPERIORITY_BLUE');
+          break;
+        case 'SUPERIORITY_RED':
+          if (superiorityRequired) setConfirm('SUPERIORITY_RED');
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    audio,
+    canComplete,
+    canMedical,
+    canNextRound,
+    canRequestReview,
+    canResume,
+    canStart,
+    canUndo,
+    confirm,
+    execute,
+    keybindDialogOpen,
+    keybindPrefs,
+    pairing,
+    pending,
+    pointMode,
+    scoringOpen,
+    snapshot,
+    superiorityRequired,
+  ]);
 
   if (!snapshot) return error ? <ErrorState error={error} retry={refresh} /> : <Loading label="Loading operator scoreboard…" />;
-  const scoringOpen = ['IN_PROGRESS', 'PAUSED', 'GOLDEN_POINT'].includes(snapshot.state);
-  const canStart = ['READY', 'CALLED'].includes(snapshot.state);
-  const currentRound = snapshot.rounds.find(round => round.number === snapshot.currentRound);
-  const endedRound = snapshot.timer.kind === 'BREAK' ? snapshot.rounds.find(round => round.number === snapshot.currentRound - 1 && round.endedAt !== null) : undefined;
-  const displayRound = endedRound ?? currentRound;
-  const superiorityRequired = Boolean(displayRound?.endedAt && displayRound.blueScore === displayRound.redScore && !displayRound.winner && (snapshot.state === 'ROUND_BREAK' || snapshot.timer.kind === 'BREAK' || (snapshot.state === 'PAUSED' && snapshot.timer.kind === 'ROUND' && remainingMs <= 0)));
-  const canResume = ['PAUSED', 'ROUND_BREAK'].includes(snapshot.state) && !superiorityRequired;
-  const breakPaused = snapshot.state === 'ROUND_BREAK' && !snapshot.timer.running && remainingMs > 0;
   const onlineJudges = snapshot.judges.filter(judge => judge.role !== 'REFEREE' && judge.status === 'ONLINE').length;
   const oneJudgeMode = onlineJudges === 1;
   const tvPath = snapshot.matId ? `/display/mat/${snapshot.matId}` : `/display/${matchId}`;
+  const kb = keybindPrefs.bindings;
+  const kbOn = keybindPrefs.enabled;
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-5 animate-enter">
@@ -95,11 +296,19 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
           <Badge tone={connection === 'ONLINE' ? 'green' : cloudConfigured ? 'yellow' : 'yellow'}>
             {connection === 'ONLINE' ? <Wifi /> : <WifiOff />}{connection}{cloudConfigured ? ' · Cloud' : ' · Local'}
           </Badge>
+          <Button
+            variant={kbOn ? 'secondary' : 'ghost'}
+            onClick={() => setKeybindDialogOpen(true)}
+            data-testid="open-keybinds-button"
+            className={kbOn ? 'border-primary/40 text-white' : 'text-muted'}
+          >
+            <Keyboard /> {kbOn ? 'Keybinds ON' : 'Keybinds OFF'} <Keycap token="?" enabled />
+          </Button>
           <Button variant={audio.ready ? 'success' : 'secondary'} aria-label={audio.ready ? 'Mute match sounds' : 'Enable match sounds'} aria-pressed={audio.ready} onClick={() => void audio.toggle()}>
-            {audio.ready ? <Volume2 /> : <VolumeX />}{audio.ready ? 'Sound on' : audio.enabled ? 'Enable sound' : 'Sound off'}
+            {audio.ready ? <Volume2 /> : <VolumeX />}{audio.ready ? 'Sound on' : audio.enabled ? 'Enable sound' : 'Sound off'} <Keycap token={kb.TOGGLE_SOUND} enabled={kbOn} />
           </Button>
           <Button variant="secondary" onClick={() => setPairing(true)}>
-            <QrCode /> Pair devices
+            <QrCode /> Pair devices <Keycap token={kb.OPEN_PAIRING} enabled={kbOn} />
           </Button>
           <Button asChild variant="secondary">
             <Link href={tvPath} target="_blank" rel="noopener noreferrer" onClick={event => { if (openPublicTv(tvPath)) event.preventDefault(); }}>
@@ -124,28 +333,28 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                 {canStart ? (
                   <Button variant="success" disabled={pending} onClick={() => void execute('START')}>
-                    <Play /> Start
+                    <Play /> Start <Keycap token={kb.TOGGLE_CLOCK} enabled={kbOn} />
                   </Button>
                 ) : snapshot.state === 'IN_PROGRESS' ? (
                   <Button variant="yellow" disabled={pending} onClick={() => void execute('PAUSE')}>
-                    <Pause /> Pause
+                    <Pause /> Pause <Keycap token={kb.TOGGLE_CLOCK} enabled={kbOn} />
                   </Button>
                 ) : (
                   <Button variant="success" disabled={pending || !canResume} onClick={() => void execute('RESUME')}>
-                    <Play /> {snapshot.state === 'ROUND_BREAK' ? (breakPaused ? 'Resume rest' : 'Start next round') : 'Resume'}
+                    <Play /> {snapshot.state === 'ROUND_BREAK' ? (breakPaused ? 'Resume rest' : 'Start next round') : 'Resume'} <Keycap token={kb.TOGGLE_CLOCK} enabled={kbOn} />
                   </Button>
                 )}
-                <Button variant="secondary" disabled={pending || superiorityRequired || (snapshot.state === 'ROUND_BREAK' ? !breakPaused : snapshot.state !== 'PAUSED' || snapshot.timer.kind === 'BREAK' || snapshot.currentRound >= snapshot.totalRounds)} onClick={() => void execute('NEXT_ROUND')}>
-                  {snapshot.state === 'ROUND_BREAK' ? 'Start next round' : 'End round & rest'}
+                <Button variant="secondary" disabled={pending || !canNextRound} onClick={() => void execute('NEXT_ROUND')}>
+                  {snapshot.state === 'ROUND_BREAK' ? 'Start next round' : 'End round & rest'} <Keycap token={kb.NEXT_ROUND} enabled={kbOn} />
                 </Button>
                 <Button variant="secondary" disabled={pending || snapshot.state === 'IN_PROGRESS'} onClick={() => setConfirm('RESET')}>
-                  <RotateCcw /> Reset timer
+                  <RotateCcw /> Reset timer <Keycap token={kb.RESET_TIMER} enabled={kbOn} />
                 </Button>
                 <Button variant="secondary" disabled={pending || snapshot.currentRound <= 1 || snapshot.state === 'IN_PROGRESS'} onClick={() => setConfirm('PREVIOUS')}>
-                  <ChevronLeft /> Previous
+                  <ChevronLeft /> Previous <Keycap token={kb.PREVIOUS_ROUND} enabled={kbOn} />
                 </Button>
-                <Button variant="secondary" disabled={pending || !['IN_PROGRESS', 'PAUSED'].includes(snapshot.state) && snapshot.timer.kind !== 'MEDICAL'} onClick={() => void execute('MEDICAL_TIMEOUT')}>
-                  <Stethoscope /> {snapshot.timer.kind === 'MEDICAL' ? 'End medical' : 'Medical'}
+                <Button variant="secondary" disabled={pending || !canMedical} onClick={() => void execute('MEDICAL_TIMEOUT')}>
+                  <Stethoscope /> {snapshot.timer.kind === 'MEDICAL' ? 'End medical' : 'Medical'} <Keycap token={kb.MEDICAL_TIMEOUT} enabled={kbOn} />
                 </Button>
               </div>
               <p className="mt-3 text-[10px] leading-5 text-muted">
@@ -157,6 +366,8 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
           <div className="grid gap-4 lg:grid-cols-2">
             {(['BLUE', 'RED'] as const).map((side) => {
               const athlete = side === 'BLUE' ? snapshot.blue : snapshot.red;
+              const gamJeomKey = side === 'BLUE' ? kb.BLUE_GAM_JEOM : kb.RED_GAM_JEOM;
+              const techKey = side === 'BLUE' ? kb.BLUE_TECHNICAL : kb.RED_TECHNICAL;
               return (
                 <Card key={side} className={side === 'BLUE' ? 'border-blue/40' : 'border-red/40'}>
                   <CardHeader className={side === 'BLUE' ? 'bg-blue/10' : 'bg-red/10'}>
@@ -167,39 +378,45 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {/* Row 1: point buttons + Gam-Jeom + +/- toggle */}
-                      <div className="grid grid-cols-6 gap-1.5">
-                        {pointButtons.slice(0, 5).map((point) => (
-                          <button
-                            key={point.type}
-                            disabled={pending || !scoringOpen}
-                            onClick={() => void (pointMode === 'ADD' ? execute('SCORE', side, point.type) : setConfirm('UNDO'))}
-                            className={`flex h-14 flex-col items-center justify-center rounded-lg text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue hover:bg-[#155de9]' : 'bg-red hover:bg-[#dd2637]'}`}
-                            title={pointMode === 'ADD' ? point.description : 'Cancel last scoring event'}
-                          >
-                            <span className="numeric text-sm font-black">{point.label}</span>
-                            <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-75">{pointMode === 'ADD' ? point.description : 'Cancel'}</span>
-                          </button>
-                        ))}
+                      {/* Row 1: 5 point buttons + Gam-Jeom + +/- toggle */}
+                      <div className="grid grid-cols-7 gap-1.5">
+                        {pointButtons.map((point) => {
+                          const actionKey = side === 'BLUE' ? kb[point.blueAction] : kb[point.redAction];
+                          return (
+                            <button
+                              key={point.type}
+                              disabled={pending || !scoringOpen}
+                              onClick={() => void (pointMode === 'ADD' ? execute('SCORE', side, point.type) : setConfirm('UNDO'))}
+                              className={`relative flex h-16 flex-col items-center justify-center rounded-lg px-1 text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue hover:bg-[#155de9]' : 'bg-red hover:bg-[#dd2637]'}`}
+                              title={pointMode === 'ADD' ? point.description : 'Cancel last scoring event'}
+                            >
+                              <span className="numeric text-sm font-black">{point.label}</span>
+                              <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-80">{pointMode === 'ADD' ? point.description : 'Cancel'}</span>
+                              <Keycap token={actionKey} enabled={kbOn} className="mt-1 px-1 py-0 text-[9px]" />
+                            </button>
+                          );
+                        })}
                         <button
                           key="gam-jeom"
                           disabled={pending || !scoringOpen}
                           onClick={() => void (pointMode === 'ADD' ? execute('GAM_JEOM', side) : setConfirm('UNDO'))}
-                          className={`flex h-14 flex-col items-center justify-center rounded-lg text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue/80 hover:bg-blue' : 'bg-red/80 hover:bg-red'}`}
+                          className={`relative flex h-16 flex-col items-center justify-center rounded-lg px-1 text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue/80 hover:bg-blue' : 'bg-red/80 hover:bg-red'}`}
                           title={pointMode === 'ADD' ? 'Gam-Jeom' : 'Cancel last scoring event'}
                         >
-                          <ShieldAlert className="size-5" />
-                          <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-75">{pointMode === 'ADD' ? 'Gam-Jeom' : 'Cancel'}</span>
+                          <ShieldAlert className="size-4" />
+                          <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-80">{pointMode === 'ADD' ? 'Gam-Jeom' : 'Cancel'}</span>
+                          <Keycap token={gamJeomKey} enabled={kbOn} className="mt-1 px-1 py-0 text-[9px]" />
                         </button>
                         <button
                           key="toggle"
                           disabled={pending}
                           onClick={() => setPointMode(pointMode === 'ADD' ? 'REMOVE' : 'ADD')}
-                          className={`flex h-14 items-center justify-center rounded-lg border-2 transition disabled:cursor-not-allowed disabled:opacity-30 ${pointMode === 'ADD' ? 'bg-white/[.1] border-primary/50 text-primary hover:bg-white/[.2]' : 'bg-white/[.1] border-red/50 text-red hover:bg-red/10'}`}
+                          className={`relative flex h-16 flex-col items-center justify-center rounded-lg border-2 px-1 transition disabled:cursor-not-allowed disabled:opacity-30 ${pointMode === 'ADD' ? 'bg-white/[.1] border-primary/50 text-primary hover:bg-white/[.2]' : 'bg-white/[.1] border-red/50 text-red hover:bg-red/10'}`}
                           title={pointMode === 'ADD' ? 'Switch to remove points' : 'Switch to add points'}
                         >
                           {pointMode === 'ADD' ? <Minus className="size-4" /> : <Plus className="size-4" />}
-                          <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-75">{pointMode === 'ADD' ? '+' : '-'}</span>
+                          <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-80">{pointMode === 'ADD' ? 'Mode +' : 'Mode -'}</span>
+                          <Keycap token={kb.TOGGLE_POINT_MODE} enabled={kbOn} className="mt-1 px-1 py-0 text-[9px]" />
                         </button>
                       </div>
 
@@ -209,21 +426,27 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                           key="technical"
                           disabled={pending || !scoringOpen}
                           onClick={() => void (pointMode === 'ADD' ? execute('SCORE', side, 'BODY_PUNCH') : setConfirm('UNDO'))}
-                          className={`flex h-14 flex-col items-center justify-center rounded-lg text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue hover:bg-[#155de9]' : 'bg-red hover:bg-[#dd2637]'}`}
+                          className={`flex h-14 items-center justify-center gap-2 rounded-lg px-2 text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue hover:bg-[#155de9]' : 'bg-red hover:bg-[#dd2637]'}`}
                           title={pointMode === 'ADD' ? 'Technical point' : 'Cancel last scoring event'}
                         >
-                          <span className="numeric text-sm font-black">+1</span>
-                          <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-75">{pointMode === 'ADD' ? 'Technical' : 'Cancel'}</span>
+                          <div className="flex flex-col items-center">
+                            <span className="numeric text-sm font-black">+1</span>
+                            <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-80">{pointMode === 'ADD' ? 'Technical' : 'Cancel'}</span>
+                          </div>
+                          <Keycap token={techKey} enabled={kbOn} />
                         </button>
                         <button
                           key="cancel"
                           disabled={pending || !scoringOpen}
                           onClick={() => setConfirm('UNDO')}
-                          className={`flex h-14 flex-col items-center justify-center rounded-lg border-2 text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'border-blue/50 hover:bg-blue/20' : 'border-red/50 hover:bg-red/20'}`}
+                          className={`flex h-14 items-center justify-center gap-2 rounded-lg border-2 px-2 text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'border-blue/50 hover:bg-blue/20' : 'border-red/50 hover:bg-red/20'}`}
                           title="Cancel last scoring event"
                         >
-                          <Undo2 className="size-4" />
-                          <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-75">Cancel</span>
+                          <div className="flex flex-col items-center">
+                            <Undo2 className="size-4" />
+                            <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-80">Cancel</span>
+                          </div>
+                          <Keycap token={kb.UNDO} enabled={kbOn} />
                         </button>
                       </div>
                     </div>
@@ -238,13 +461,20 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
               <CardTitle>Review, correction & completion</CardTitle>
             </CardHeader>
             <CardContent>
-              <VideoReviewManager snapshot={snapshot} pending={pending} onCommand={(command) => execute(command.type, command.side, undefined, command.reason, command)} />
+              <VideoReviewManager
+                snapshot={snapshot}
+                pending={pending}
+                onCommand={(command) => execute(command.type, command.side, undefined, command.reason, command)}
+                keybindsEnabled={kbOn}
+                blueReviewKey={kb.VIDEO_REVIEW_BLUE}
+                redReviewKey={kb.VIDEO_REVIEW_RED}
+              />
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <Button variant="secondary" disabled={pending || ['COMPLETED', 'WALKOVER', 'DISQUALIFIED', 'WITHDRAWN'].includes(snapshot.state)} onClick={() => setConfirm('UNDO')}>
-                  <Undo2 /> Undo / correct
+                <Button variant="secondary" disabled={pending || !canUndo} onClick={() => setConfirm('UNDO')}>
+                  <Undo2 /> Undo / correct <Keycap token={kb.UNDO} enabled={kbOn} />
                 </Button>
-                <Button variant="danger" disabled={pending || !['IN_PROGRESS', 'PAUSED', 'ROUND_BREAK', 'GOLDEN_POINT', 'UNDER_REVIEW'].includes(snapshot.state)} onClick={() => setConfirm('COMPLETE')}>
-                  <CircleStop /> Complete match
+                <Button variant="danger" disabled={pending || !canComplete} onClick={() => setConfirm('COMPLETE')}>
+                  <CircleStop /> Complete match <Keycap token={kb.COMPLETE_MATCH} enabled={kbOn} />
                 </Button>
               </div>
               <p className="mt-3 text-[10px] leading-5 text-muted">
@@ -311,10 +541,10 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                   </p>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <Button variant="secondary" disabled={pending} onClick={() => setConfirm('SUPERIORITY_BLUE')}>
-                      Blue wins by superiority
+                      Blue wins by superiority <Keycap token={kb.SUPERIORITY_BLUE} enabled={kbOn} />
                     </Button>
                     <Button variant="secondary" disabled={pending} onClick={() => setConfirm('SUPERIORITY_RED')}>
-                      Red wins by superiority
+                      Red wins by superiority <Keycap token={kb.SUPERIORITY_RED} enabled={kbOn} />
                     </Button>
                   </div>
                 </div>
@@ -352,6 +582,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
       </div>
 
       <PairingManager matchId={matchId} open={pairing} onOpenChange={setPairing} />
+      <KeybindSettingsDialog open={keybindDialogOpen} onOpenChange={setKeybindDialogOpen} preferences={keybindPrefs} onChange={updateKeybindPrefs} />
       <ConfirmDialog open={confirm === 'RESET'} onOpenChange={() => setConfirm(null)} title="Reset the authoritative timer?" description="Pause is required. This correction is written to the audit log with your reason." confirmLabel="Reset timer" requireReason onConfirm={(reason) => execute('RESET_TIMER', undefined, undefined, reason)} />
       <ConfirmDialog open={confirm === 'UNDO'} onOpenChange={() => setConfirm(null)} title="Correct the latest scoring event?" description="The original event remains immutable. A compensating correction will be appended." confirmLabel="Append correction" requireReason danger onConfirm={(reason) => execute('UNDO', undefined, undefined, reason)} />
       <ConfirmDialog open={confirm === 'PREVIOUS'} onOpenChange={() => setConfirm(null)} title="Return to the previous round?" description="Administrator correction only. Provide a reason for the permanent audit trail." confirmLabel="Correct round" requireReason onConfirm={(reason) => execute('PREVIOUS_ROUND', undefined, undefined, reason)} />

@@ -1,16 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Check, Video, X } from 'lucide-react';
 import type { MatchSnapshot, PointType, Side } from '@tkd/contracts';
 import type { MatchCommand, ReviewCorrectionKind, ReviewOutcome } from '../../../local-server/src/types';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { Keycap } from './keybind-settings-dialog';
+import { isEditableTarget } from './operator-keybinds';
 
 interface VideoReviewManagerProps {
   snapshot: MatchSnapshot;
   pending: boolean;
   onCommand: (command: MatchCommand) => Promise<void>;
+  keybindsEnabled?: boolean;
+  blueReviewKey?: string;
+  redReviewKey?: string;
 }
 
 function ChoiceButton({ selected, children, onClick, disabled, className, label }: {
@@ -69,7 +74,7 @@ function PointTypeButton({ type, label, description, selected, onClick }: {
   </button>;
 }
 
-function ReviewResultForm({ snapshot, pending, onCommand, onClose }: VideoReviewManagerProps & { onClose: () => void }) {
+function ReviewResultForm({ snapshot, pending, onCommand, onClose, keybindsEnabled = false }: VideoReviewManagerProps & { onClose: () => void }) {
   const review = snapshot.videoReview;
   const [athlete, setAthlete] = useState<Side>(review?.requestedBy ?? 'BLUE');
   const [correction, setCorrection] = useState<ReviewCorrectionKind>('GAM_JEOM');
@@ -78,7 +83,7 @@ function ReviewResultForm({ snapshot, pending, onCommand, onClose }: VideoReview
   const [outcome, setOutcome] = useState<ReviewOutcome>('ACCEPTED');
   const accepted = outcome === 'ACCEPTED';
 
-  const apply = async () => {
+  const apply = useCallback(async () => {
     await onCommand({
       type: 'END_REVIEW',
       side: athlete,
@@ -90,7 +95,75 @@ function ReviewResultForm({ snapshot, pending, onCommand, onClose }: VideoReview
         ? `IVR accepted; ${action.toLowerCase()} ${correction === 'GAM_JEOM' ? 'Gam-Jeom' : `${points} point${points === 1 ? '' : 's'}`} for ${athlete}`
         : `IVR rejected; no score correction for ${review?.requestedBy ?? 'the requesting corner'}`,
     });
-  };
+  }, [accepted, action, athlete, correction, onCommand, outcome, points, review?.requestedBy]);
+
+  useEffect(() => {
+    if (!keybindsEnabled) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (isEditableTarget(event.target)) return;
+      if (typeof document !== 'undefined' && document.querySelector('[role="dialog"]')) return;
+      if (pending) return;
+
+      const upper = event.key.length === 1 ? event.key.toUpperCase() : '';
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (upper === 'A') {
+        event.preventDefault();
+        setOutcome('ACCEPTED');
+        return;
+      }
+      if (upper === 'J') {
+        event.preventDefault();
+        setOutcome('REJECTED');
+        return;
+      }
+      if (event.key === 'Enter' && (event.target === document.body || (event.target as HTMLElement | null)?.tagName !== 'BUTTON')) {
+        event.preventDefault();
+        void apply();
+        return;
+      }
+      if (!accepted) return;
+      if (event.code === 'ArrowLeft') {
+        event.preventDefault();
+        setAthlete('BLUE');
+      } else if (event.code === 'ArrowRight') {
+        event.preventDefault();
+        setAthlete('RED');
+      } else if (upper === 'G') {
+        event.preventDefault();
+        setCorrection('GAM_JEOM');
+      } else if (event.code === 'Digit1' || event.code === 'Numpad1') {
+        event.preventDefault();
+        setCorrection('POINTS');
+        setPoints(1);
+      } else if (event.code === 'Digit2' || event.code === 'Numpad2') {
+        event.preventDefault();
+        setCorrection('POINTS');
+        setPoints(2);
+      } else if (event.code === 'Digit3' || event.code === 'Numpad3') {
+        event.preventDefault();
+        setCorrection('POINTS');
+        setPoints(3);
+      } else if (event.code === 'Digit4' || event.code === 'Numpad4') {
+        event.preventDefault();
+        setCorrection('POINTS');
+        setPoints(4);
+      } else if (event.code === 'Digit6' || event.code === 'Numpad6') {
+        event.preventDefault();
+        setCorrection('POINTS');
+        setPoints(6);
+      } else if (upper === 'X') {
+        event.preventDefault();
+        setAction(prev => (prev === 'ADD' ? 'REMOVE' : 'ADD'));
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [accepted, apply, keybindsEnabled, onClose, pending]);
 
   return <div className="rounded-xl border border-line/70 bg-background/60 p-3 sm:p-4" data-testid="video-review-manager">
     <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
@@ -109,15 +182,15 @@ function ReviewResultForm({ snapshot, pending, onCommand, onClose }: VideoReview
       <div>
         <p className="mb-2 text-[10px] font-black uppercase tracking-[.14em] text-muted">Player · correction recipient</p>
         <div className="grid grid-cols-2 gap-2">
-          <ChoiceButton selected={athlete === 'BLUE'} onClick={() => setAthlete('BLUE')} className={athlete === 'BLUE' ? 'border-blue bg-blue' : ''}>Blue · {snapshot.blue.name}</ChoiceButton>
-          <ChoiceButton selected={athlete === 'RED'} onClick={() => setAthlete('RED')} className={athlete === 'RED' ? 'border-red bg-red' : ''}>Red · {snapshot.red.name}</ChoiceButton>
+          <ChoiceButton selected={athlete === 'BLUE'} onClick={() => setAthlete('BLUE')} className={athlete === 'BLUE' ? 'border-blue bg-blue' : ''}>Blue · {snapshot.blue.name} <Keycap token="ArrowLeft" enabled={keybindsEnabled} className="ml-1" /></ChoiceButton>
+          <ChoiceButton selected={athlete === 'RED'} onClick={() => setAthlete('RED')} className={athlete === 'RED' ? 'border-red bg-red' : ''}>Red · {snapshot.red.name} <Keycap token="ArrowRight" enabled={keybindsEnabled} className="ml-1" /></ChoiceButton>
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
         <div>
           <p className="mb-2 text-[10px] font-black uppercase tracking-[.14em] text-muted">Points</p>
-          <div className="grid grid-cols-5 gap-1">
+          <div className="grid grid-cols-6 gap-1">
             <ChoiceButton selected={correction === 'GAM_JEOM'} onClick={() => setCorrection('GAM_JEOM')} label="Gam-Jeom">Gam-<br />Jeom</ChoiceButton>
             <PointTypeButton
               type="BODY_PUNCH"
@@ -170,13 +243,13 @@ function ReviewResultForm({ snapshot, pending, onCommand, onClose }: VideoReview
       <div>
         <p className="mb-2 text-[10px] font-black uppercase tracking-[.14em] text-muted">Result</p>
         <div className="grid grid-cols-2 gap-2">
-          <ChoiceButton selected={accepted} disabled={pending} onClick={() => setOutcome('ACCEPTED')} className={accepted ? 'border-success bg-success text-black' : ''}><Check className="mr-1 inline size-4" />Accept</ChoiceButton>
-          <ChoiceButton selected={!accepted} disabled={pending} onClick={() => setOutcome('REJECTED')} className={!accepted ? 'border-red bg-red' : ''}><X className="mr-1 inline size-4" />Reject</ChoiceButton>
+          <ChoiceButton selected={accepted} disabled={pending} onClick={() => setOutcome('ACCEPTED')} className={accepted ? 'border-success bg-success text-black' : ''}><Check className="mr-1 inline size-4" />Accept <Keycap token="Key:A" enabled={keybindsEnabled} className="ml-1 bg-black/50 text-white" /></ChoiceButton>
+          <ChoiceButton selected={!accepted} disabled={pending} onClick={() => setOutcome('REJECTED')} className={!accepted ? 'border-red bg-red' : ''}><X className="mr-1 inline size-4" />Reject <Keycap token="Key:J" enabled={keybindsEnabled} className="ml-1" /></ChoiceButton>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:min-w-44">
-        <Button variant="secondary" disabled={pending} onClick={onClose}>Close</Button>
-        <Button variant={accepted ? 'success' : 'danger'} disabled={pending} onClick={() => void apply()}>Apply</Button>
+        <Button variant="secondary" disabled={pending} onClick={onClose}>Close <Keycap token="Esc" enabled={keybindsEnabled} /></Button>
+        <Button variant={accepted ? 'success' : 'danger'} disabled={pending} onClick={() => void apply()}>Apply <Keycap token="Enter" enabled={keybindsEnabled} /></Button>
       </div>
     </div>
     <p className="mt-3 text-[10px] leading-5 text-muted">
@@ -191,7 +264,7 @@ function ReviewResultForm({ snapshot, pending, onCommand, onClose }: VideoReview
 }
 
 export function VideoReviewManager(props: VideoReviewManagerProps) {
-  const { snapshot, pending, onCommand } = props;
+  const { snapshot, pending, onCommand, keybindsEnabled = false, blueReviewKey, redReviewKey } = props;
   const reviewKey = snapshot.videoReview ? `${snapshot.videoReview.requestedAt}:${snapshot.videoReview.requestedBy}` : null;
   const [closedKey, setClosedKey] = useState<string | null>(null);
   const available = ['IN_PROGRESS', 'PAUSED', 'GOLDEN_POINT', 'ROUND_BREAK'].includes(snapshot.state);
@@ -216,8 +289,8 @@ export function VideoReviewManager(props: VideoReviewManagerProps) {
       </div>
     </div>
     <div className="mt-3 grid grid-cols-2 gap-2">
-      <Button variant="secondary" className="border-blue/40 bg-blue/10 text-[#8baeff] hover:bg-blue/20" disabled={pending || !available} onClick={() => void onCommand({ type: 'VIDEO_REVIEW', side: 'BLUE' })}><Video />Chung · Blue</Button>
-      <Button variant="secondary" className="border-red/40 bg-red/10 text-[#ff8b96] hover:bg-red/20" disabled={pending || !available} onClick={() => void onCommand({ type: 'VIDEO_REVIEW', side: 'RED' })}><Video />Hong · Red</Button>
+      <Button variant="secondary" className="border-blue/40 bg-blue/10 text-[#8baeff] hover:bg-blue/20" disabled={pending || !available} onClick={() => void onCommand({ type: 'VIDEO_REVIEW', side: 'BLUE' })}><Video />Chung · Blue <Keycap token={blueReviewKey} enabled={keybindsEnabled} /></Button>
+      <Button variant="secondary" className="border-red/40 bg-red/10 text-[#ff8b96] hover:bg-red/20" disabled={pending || !available} onClick={() => void onCommand({ type: 'VIDEO_REVIEW', side: 'RED' })}><Video />Hong · Red <Keycap token={redReviewKey} enabled={keybindsEnabled} /></Button>
     </div>
   </div>;
 }
