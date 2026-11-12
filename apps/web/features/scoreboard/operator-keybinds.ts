@@ -25,6 +25,7 @@ export type OperatorActionId =
   | 'COMPLETE_MATCH'
   | 'SUPERIORITY_BLUE'
   | 'SUPERIORITY_RED'
+  | 'MANUAL_HORN'
   | 'TOGGLE_SOUND'
   | 'OPEN_PAIRING';
 
@@ -73,6 +74,7 @@ export const OPERATOR_ACTIONS: readonly OperatorActionMeta[] = [
   { id: 'COMPLETE_MATCH', group: 'CONTROL', label: 'Complete Match', description: 'Opens winner validation & match completion dialog', defaultKey: 'Key:C' },
   { id: 'SUPERIORITY_BLUE', group: 'CONTROL', label: 'Blue Superiority Win', description: 'Records Blue superiority win when a round ends tied', defaultKey: 'F1' },
   { id: 'SUPERIORITY_RED', group: 'CONTROL', label: 'Red Superiority Win', description: 'Records Red superiority win when a round ends tied', defaultKey: 'F2' },
+  { id: 'MANUAL_HORN', group: 'CONTROL', label: 'Manual Arena Horn', description: 'Blasts the stadium air-horn on demand', defaultKey: 'F8' },
   { id: 'TOGGLE_SOUND', group: 'CONTROL', label: 'Toggle Match Sound', description: 'Mutes or enables scoreboard horn & countdown audio', defaultKey: 'Key:S' },
   { id: 'OPEN_PAIRING', group: 'CONTROL', label: 'Pair Devices (QR)', description: 'Opens judge & referee QR pairing modal', defaultKey: 'Key:D' },
 ] as const;

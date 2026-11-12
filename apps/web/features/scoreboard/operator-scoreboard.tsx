@@ -1,11 +1,12 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ChevronLeft, CircleStop, Clock3, ExternalLink, History, Keyboard, Minus, Pause, Play, Plus, QrCode, RotateCcw, ShieldAlert, Stethoscope, Undo2, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, CircleStop, Clock3, ExternalLink, History, Keyboard, Minus, Pause, Play, Plus, QrCode, Radio, RotateCcw, ShieldAlert, Stethoscope, Undo2, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
 import type { MatchCommand } from '../../../local-server/src/types';
 import type { MatchSnapshot, PointType, Side } from '@tkd/contracts';
 import { useMatchCloud } from '@/lib/use-match-cloud';
 import { useTimerAudio } from '@/lib/use-timer-audio';
+import type { PreviewableProSound } from '@/lib/pro-arena-synth';
 import { openPublicTv } from '@/lib/public-tv';
 import { useApi } from '@/lib/use-api';
 import { post } from '@/lib/api';
@@ -54,12 +55,28 @@ const pointButtons: Array<{
   { label: '+6', type: 'TURNING_HEAD_KICK', description: 'Turning head', blueAction: 'BLUE_TURNING_HEAD', redAction: 'RED_TURNING_HEAD' },
 ];
 
+const proSoundButtons: ReadonlyArray<{ id: PreviewableProSound; label: string; sub: string; accent?: string }> = [
+  { id: 'ROUND_HORN', label: 'Arena Horn', sub: 'Round end', accent: 'border-red/50 bg-red/15 text-[#ff9aa3] hover:bg-red/25' },
+  { id: 'REST_HORN', label: 'Rest Horn', sub: '2-pulse break', accent: 'border-timer/50 bg-timer/15 text-timer hover:bg-timer/25' },
+  { id: 'ROUND_START', label: 'Fight Bell', sub: 'Shi-jak start', accent: 'border-success/40 bg-success/15 text-success hover:bg-success/25' },
+  { id: 'PAUSE_WHISTLE', label: 'Kal-yeo', sub: 'Pause chirp' },
+  { id: 'BODY_HIT', label: 'Body +1/+2', sub: 'PSS hogu hit' },
+  { id: 'HEAD_KICK', label: 'Head +3', sub: 'Rising PSS' },
+  { id: 'TURNING_KICK', label: 'Spin +4/+6', sub: 'Power sting', accent: 'border-primary/50 bg-primary/15 text-[#9bc0ff] hover:bg-primary/25' },
+  { id: 'GAM_JEOM', label: 'Gam-Jeom', sub: 'Penalty buzz' },
+  { id: 'COUNTDOWN', label: 'Final Pip', sub: '5s countdown' },
+  { id: 'VIDEO_REPLAY', label: 'IVR Sting', sub: 'Video replay' },
+  { id: 'MEDICAL', label: 'Doctor Call', sub: 'Medical chime' },
+  { id: 'VICTORY', label: 'Victory', sub: 'Winner fanfare', accent: 'border-timer/50 bg-timer/15 text-timer hover:bg-timer/25' },
+];
+
 export function OperatorScoreboard({ matchId }: { matchId: string }) {
   const { snapshot, remainingMs, connection, error, refresh, cloudConfigured } = useMatchCloud(matchId);
   const audio = useTimerAudio(snapshot, remainingMs);
   const events = useApi<EventRow[]>(`/api/v1/matches/${matchId}/events`);
   const [pending, setPending] = useState(false);
   const [pairing, setPairing] = useState(false);
+  const [soundDeckOpen, setSoundDeckOpen] = useState(false);
   const [keybindDialogOpen, setKeybindDialogOpen] = useState(false);
   const [keybindPrefs, setKeybindPrefs] = useState<OperatorKeybindPreferences>(() => ({
     enabled: true,
@@ -144,6 +161,10 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
 
       if (action === 'TOGGLE_SOUND') {
         void audio.toggle();
+        return;
+      }
+      if (action === 'MANUAL_HORN') {
+        void audio.preview('ROUND_HORN');
         return;
       }
       if (action === 'OPEN_PAIRING') {
@@ -305,7 +326,10 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
             <Keyboard /> {kbOn ? 'Keybinds ON' : 'Keybinds OFF'} <Keycap token="?" enabled />
           </Button>
           <Button variant={audio.ready ? 'success' : 'secondary'} aria-label={audio.ready ? 'Mute match sounds' : 'Enable match sounds'} aria-pressed={audio.ready} onClick={() => void audio.toggle()}>
-            {audio.ready ? <Volume2 /> : <VolumeX />}{audio.ready ? 'Sound on' : audio.enabled ? 'Enable sound' : 'Sound off'} <Keycap token={kb.TOGGLE_SOUND} enabled={kbOn} />
+            {audio.ready ? <Volume2 /> : <VolumeX />}{audio.ready ? 'Pro sound on' : audio.enabled ? 'Enable pro sound' : 'Sound off'} <Keycap token={kb.TOGGLE_SOUND} enabled={kbOn} />
+          </Button>
+          <Button variant={soundDeckOpen ? 'default' : 'secondary'} data-testid="toggle-sound-deck" onClick={() => setSoundDeckOpen(open => !open)}>
+            <Radio /> Pro FX
           </Button>
           <Button variant="secondary" onClick={() => setPairing(true)}>
             <QrCode /> Pair devices <Keycap token={kb.OPEN_PAIRING} enabled={kbOn} />
@@ -317,6 +341,30 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
           </Button>
         </div>
       </div>
+      {soundDeckOpen && (
+        <div className="rounded-2xl border border-primary/35 bg-sidebar/90 p-3.5 shadow-lg animate-enter" data-testid="pro-sound-deck">
+          <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-black uppercase tracking-wider text-white">Competitive Pro Arena Soundboard &amp; Speaker Test</p>
+              <p className="text-[10px] text-muted">Mastered KPNP / WT broadcast synthesis (compressor + stadium hall ambience). All cues also trigger automatically during live matches on Operator &amp; Public TV.</p>
+            </div>
+            <Badge tone={audio.ready ? 'green' : 'yellow'}>{audio.ready ? 'ARENA AUDIO LIVE' : 'CLICK ANY PAD TO ARM'}</Badge>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6 lg:grid-cols-12">
+            {proSoundButtons.map((pad) => (
+              <button
+                key={pad.id}
+                type="button"
+                onClick={() => void audio.preview(pad.id)}
+                className={`flex flex-col items-center justify-center rounded-lg border px-2 py-2 text-center transition ${pad.accent ?? 'border-line bg-background/75 text-white hover:border-primary/50 hover:bg-primary/10'}`}
+              >
+                <span className="text-[11px] font-extrabold leading-tight">{pad.label}</span>
+                <span className="mt-0.5 text-[9px] opacity-75">{pad.sub}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="overflow-hidden rounded-2xl border border-line/60">
         <ScoreboardView snapshot={snapshot} remainingMs={remainingMs} />
       </div>
