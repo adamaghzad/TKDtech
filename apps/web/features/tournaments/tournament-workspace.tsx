@@ -62,8 +62,8 @@ export function TournamentWorkspace({ tournamentId, section }: { tournamentId: s
       const result = await post<SyncResult>(`/api/v1/sync/push`, { tournamentId });
       toast(`Push to cloud: ${result.uploaded} uploaded, ${result.duplicate} duplicates`);
       void refresh();
-    } catch (error: any) {
-      toast(`Push failed: ${error.message}`, 'error');
+    } catch (err: unknown) {
+      toast(`Push failed: ${(err as Error).message}`, 'error');
     } finally {
       setPushing(false);
     }
@@ -75,8 +75,8 @@ export function TournamentWorkspace({ tournamentId, section }: { tournamentId: s
       const result = await post<SyncResult>(`/api/v1/sync/pull`, { tournamentId });
       toast(`Pull from cloud: ${result.pulled} pulled, ${result.duplicate} duplicates`);
       void refresh();
-    } catch (error: any) {
-      toast(`Pull failed: ${error.message}`, 'error');
+    } catch (err: unknown) {
+      toast(`Pull failed: ${(err as Error).message}`, 'error');
     } finally {
       setPulling(false);
     }
@@ -88,8 +88,8 @@ export function TournamentWorkspace({ tournamentId, section }: { tournamentId: s
       const result = await post<SyncResult>(`/api/v1/sync/sync`, { tournamentId });
       toast(`Bidirectional sync: ${result.uploaded} uploaded, ${result.pulled} pulled`);
       void refresh();
-    } catch (error: any) {
-      toast(`Sync failed: ${error.message}`, 'error');
+    } catch (err: unknown) {
+      toast(`Sync failed: ${(err as Error).message}`, 'error');
     } finally {
       setSyncing(false);
     }

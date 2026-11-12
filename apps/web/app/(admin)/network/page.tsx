@@ -98,7 +98,7 @@ export default function NetworkPage() {
             <div className="mt-3 rounded-lg border border-amber/20 bg-amber/[.04] p-3 text-xs leading-5 text-amber-300">
               <p className="font-semibold">Configure Supabase</p>
               <p className="mt-1">
-                Set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY in Northflank environment variables, then redeploy.
+                Set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and the server-side Supabase service-role key in Northflank environment variables, then redeploy.
               </p>
             </div>
           )}

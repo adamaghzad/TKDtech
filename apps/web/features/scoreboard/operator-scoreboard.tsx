@@ -55,7 +55,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
       await post<MatchSnapshot>(`/api/v1/matches/${matchId}/commands`, { ...details, type, side, pointType, reason, expectedVersion: snapshot.version });
       await Promise.all([refresh(), events.refresh()]);
       toast(`${titleCase(type)} accepted`, 'Persisted before broadcast.');
-    } catch (reason: any) {
+    } catch (reason: unknown) {
       toast('Command rejected', (reason as Error).message, 'error');
       await refresh();
     } finally {

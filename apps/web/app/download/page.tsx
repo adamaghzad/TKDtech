@@ -14,10 +14,11 @@ import {
   Server,
   ShieldAlert,
   ShieldCheck,
+  Smartphone,
   Wifi,
 } from 'lucide-react';
 import { Brand } from '@/components/brand';
-import { desktopRelease } from '@/lib/desktop-release';
+import { androidRelease, desktopRelease } from '@/lib/desktop-release';
 
 export const metadata: Metadata = {
   title: 'Download Desktop',
@@ -127,6 +128,35 @@ export default function DownloadDesktop() {
           <li className="flex gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-success"/>Closing the launcher supervises shutdown and preserves the database for the next run.</li>
         </ul>
       </article>
+    </section>
+
+    <section className="relative mx-auto max-w-7xl px-5 pb-14 sm:px-8 lg:px-10">
+      <div className="panel relative overflow-hidden p-6 sm:p-8">
+        <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
+          <div className="max-w-2xl">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-success/30 bg-success/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[.14em] text-success">
+              <Smartphone className="size-3.5"/> Android Mobile Host · Validation Prerelease
+            </div>
+            <h2 className="text-2xl font-black tracking-tight sm:text-3xl">
+              Run the full local host on Android ({androidRelease.version})
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-muted">
+              Includes the updated championship bracket, full-screen Public TV Bracket Display (Arena Split &amp; Carousel), bidirectional cloud sync, point control audit dialogs, and Instant Video Replay inside one universal ARM64/ARM32 Android 7.0+ APK.
+            </p>
+            <p className="mt-2 text-xs leading-5 text-muted">
+              Package: <code className="break-all text-white">{androidRelease.fileName}</code> · <a data-testid="android-checksum-link" href={androidRelease.checksumUrl} className="font-semibold text-primary hover:underline">SHA-256 checksum</a>
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row lg:shrink-0">
+            <a href={androidRelease.downloadUrl} className="inline-flex min-h-12 items-center justify-center gap-2.5 rounded-xl bg-success/90 px-5 py-3 text-sm font-extrabold text-black transition hover:bg-success">
+              <Download className="size-4"/> Download Android APK
+            </a>
+            <a href={androidRelease.releaseUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-line bg-panel/80 px-4 py-3 text-sm font-semibold text-muted transition hover:border-primary/40 hover:text-white">
+              Android notes <ExternalLink className="size-4"/>
+            </a>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section className="relative mx-auto max-w-7xl px-5 pb-16 sm:px-8 lg:px-10 lg:pb-24">
