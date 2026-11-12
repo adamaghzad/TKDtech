@@ -51,7 +51,7 @@ export class MatchService {
     if(command.expectedVersion!=null&&command.expectedVersion!==match.version)throw new HttpError(409,'VERSION_CONFLICT',`Match version changed. Expected ${command.expectedVersion}, current ${match.version}. Refresh before retrying.`);
     const ruleset=this.ruleset(match.tournament_id);let eventType='timer.updated';let payload:Record<string,unknown>={command:command.type};let skipPersistence=false;
     this.db.transaction(()=>{
-      const current=getMatchRow(this.db,matchId);const timer=JSON.parse(current.timer_json) as MatchSnapshot['timer'] & {returnTimer?:MatchSnapshot['timer']};const now=Date.now();let state=current.state;let nextTimer=MatchService.cleanTimer(timer);let nextReview=current.review_json?JSON.parse(current.review_json) as MatchSnapshot['videoReview']:null;let round=current.current_round;let blueScore=current.blue_score;let redScore=current.red_score;let blueGam=current.blue_gam_jeom;let redGam=current.red_gam_jeom;let winner=current.winner_side;let decision=current.decision_method;let actualEnd=current.actual_end_at;
+      const current=getMatchRow(this.db,matchId);const timer=JSON.parse(current.timer_json) as MatchSnapshot['timer'] & {returnTimer?:MatchSnapshot['timer']};const now=Date.now();let state=current.state;let nextTimer=MatchService.cleanTimer(timer,now);let nextReview=current.review_json?JSON.parse(current.review_json) as MatchSnapshot['videoReview']:null;let round=current.current_round;let blueScore=current.blue_score;let redScore=current.red_score;let blueGam=current.blue_gam_jeom;let redGam=current.red_gam_jeom;let winner=current.winner_side;let decision=current.decision_method;let actualEnd=current.actual_end_at;
       const currentRound=this.db.prepare('SELECT * FROM match_rounds WHERE match_id=? AND number=?').get(matchId,round) as {id:string;number:number;blue_score:number;red_score:number;blue_penalties:number;red_penalties:number;winner_side:Side|null;decision_method:string|null;ended_at:string|null};
       const transition=(to:typeof state)=>{assertTransition(state,to);state=to;};
       const assertBreakSuperiorityResolved=()=>{
@@ -86,7 +86,15 @@ export class MatchService {
         }
         case 'PAUSE': {
           if(!['IN_PROGRESS','GOLDEN_POINT'].includes(state))throw new HttpError(409,'INVALID_STATE','Pause requires a running round.');
-          transition('PAUSED');nextTimer=pauseTimer(nextTimer,now);eventType='match.paused';break;
+          transition('PAUSED');
+          const paused=pauseTimer(nextTimer,now);
+          if(command.clientRemainingMs!=null&&timer.running){
+            const rawClientMs=Math.round(command.clientRemainingMs);
+            nextTimer=rawClientMs>0&&Math.abs(rawClientMs-paused.remainingMs)<=2500?{...paused,remainingMs:Math.min(timer.remainingMs,rawClientMs)}:paused;
+          }else{
+            nextTimer=paused;
+          }
+          eventType='match.paused';break;
         }
         case 'RESUME': {
           if(state==='ROUND_BREAK'){
@@ -318,7 +326,13 @@ export class MatchService {
     return snapshot;
   }
 
-  private static cleanTimer(timer: MatchSnapshot['timer'] & {returnTimer?:MatchSnapshot['timer']}): MatchSnapshot['timer'] & {returnTimer?:MatchSnapshot['timer']} { return {...timer,remainingMs:remainingAt(timer,Date.now())}; }
+  private static cleanTimer(timer: MatchSnapshot['timer'] & {returnTimer?:MatchSnapshot['timer']}, now = Date.now()): MatchSnapshot['timer'] & {returnTimer?:MatchSnapshot['timer']} {
+    return {
+      ...timer,
+      remainingMs: remainingAt(timer, now),
+      authoritativeAt: timer.running ? now : timer.authoritativeAt,
+    };
+  }
 
   createPairing(actor: Actor, input: {matchId:string;role:'J1'|'J2'|'J3'|'REFEREE';expiresInSeconds?:number;replace?:boolean;deviceName?:string}): {token:string;expiresAt:number;matchId:string;role:string} {
     const match=getMatchRow(this.db,input.matchId);this.repository.authorizeTournament(actor,match.tournament_id);if(!['SUPER_ADMIN','TOURNAMENT_ADMIN','MAT_OPERATOR'].includes(actor.role))throw new HttpError(403,'PERMISSION_DENIED','Pairing permission required.');

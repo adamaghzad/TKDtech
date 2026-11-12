@@ -73,7 +73,17 @@ const proSoundButtons: ReadonlyArray<{ id: PreviewableProSound; label: string; s
 
 export function OperatorScoreboard({ matchId }: { matchId: string }) {
   const router = useRouter();
-  const { snapshot, remainingMs, connection, error, refresh, cloudConfigured } = useMatchCloud(matchId);
+  const {
+    snapshot,
+    remainingMs,
+    connection,
+    error,
+    refresh,
+    applySnapshot,
+    optimisticPause,
+    optimisticStartOrResume,
+    cloudConfigured,
+  } = useMatchCloud(matchId);
   const audio = useTimerAudio(snapshot, remainingMs);
   const events = useApi<EventRow[]>(`/api/v1/matches/${matchId}/events`);
   const [pending, setPending] = useState(false);
@@ -103,9 +113,31 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
   const execute = useCallback(async (type: MatchCommand['type'], side?: Side, pointType?: PointType, reason?: string, details: Partial<MatchCommand> = {}) => {
     if (!snapshot) return;
     setPending(true);
+    let clientRemainingMs: number | undefined;
+    if (type === 'PAUSE' && snapshot.timer.running) {
+      clientRemainingMs = optimisticPause();
+    } else if (
+      (type === 'START' && ['READY', 'CALLED'].includes(snapshot.state) && snapshot.matId) ||
+      (type === 'RESUME' &&
+        ((snapshot.state === 'PAUSED' && remainingMs > 0) ||
+          (snapshot.state === 'ROUND_BREAK' && !snapshot.timer.running && remainingMs > 0)))
+    ) {
+      optimisticStartOrResume();
+    }
+    const reqStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
     try {
-      await post<MatchSnapshot>(`/api/v1/matches/${matchId}/commands`, { ...details, type, side, pointType, reason, expectedVersion: snapshot.version });
-      await Promise.all([refresh(), events.refresh()]);
+      const updated = await post<MatchSnapshot>(`/api/v1/matches/${matchId}/commands`, {
+        ...details,
+        type,
+        side,
+        pointType,
+        reason,
+        ...(clientRemainingMs !== undefined ? { clientRemainingMs } : {}),
+        expectedVersion: snapshot.version,
+      });
+      const nowT = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      applySnapshot(updated, Math.min(500, Math.max(0, (nowT - reqStart) / 2)));
+      void events.refresh();
       toast(`${titleCase(type)} accepted`, 'Persisted before broadcast.');
     } catch (reason: unknown) {
       toast('Command rejected', (reason as Error).message, 'error');
@@ -113,7 +145,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
     } finally {
       setPending(false);
     }
-  }, [events, matchId, refresh, snapshot, toast]);
+  }, [applySnapshot, events, matchId, optimisticPause, optimisticStartOrResume, refresh, remainingMs, snapshot, toast]);
 
   const startNextGeneralBout = useCallback(async () => {
     if (!snapshot) return;

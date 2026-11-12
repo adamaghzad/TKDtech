@@ -531,7 +531,7 @@ function JudgePad({ session, token, onMatchChange }: { session: Session; token: 
   );
 }
 function RefereePad({ session, token, onMatchChange }: { session: Session; token: string; onMatchChange: (nextMatchId: string) => void }) {
-  const { snapshot, remainingMs, connection, refresh } = useMatch(
+  const { snapshot, remainingMs, connection, refresh, applySnapshot, optimisticPause, optimisticStartOrResume } = useMatch(
     session.matchId,
     token,
     onMatchChange,
@@ -544,8 +544,20 @@ function RefereePad({ session, token, onMatchChange }: { session: Session; token
     async (type: string, side?: Side, reason?: string) => {
       if (!snapshot) return;
       setPending(true);
+      let clientRemainingMs: number | undefined;
+      if (type === "PAUSE" && snapshot.timer.running) {
+        clientRemainingMs = optimisticPause();
+      } else if (
+        (type === "START" && ["READY", "CALLED"].includes(snapshot.state) && snapshot.matId) ||
+        (type === "RESUME" &&
+          ((snapshot.state === "PAUSED" && remainingMs > 0) ||
+            (snapshot.state === "ROUND_BREAK" && !snapshot.timer.running && remainingMs > 0)))
+      ) {
+        optimisticStartOrResume();
+      }
+      const reqStart = typeof performance !== "undefined" ? performance.now() : Date.now();
       try {
-        await api("/api/v1/referee/commands", {
+        const updated = await api<MatchSnapshot>("/api/v1/referee/commands", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -555,18 +567,21 @@ function RefereePad({ session, token, onMatchChange }: { session: Session; token
             type,
             side,
             reason,
+            ...(clientRemainingMs !== undefined ? { clientRemainingMs } : {}),
             expectedVersion: snapshot.version,
           }),
         });
-        await refresh();
+        const nowT = typeof performance !== "undefined" ? performance.now() : Date.now();
+        applySnapshot(updated, Math.min(500, Math.max(0, (nowT - reqStart) / 2)));
         toast("Referee command accepted");
       } catch (error) {
         toast("Command rejected", (error as Error).message, "error");
+        await refresh();
       } finally {
         setPending(false);
       }
     },
-    [snapshot, token, refresh, toast],
+    [snapshot, token, refresh, applySnapshot, optimisticPause, optimisticStartOrResume, remainingMs, toast],
   );
   if (!snapshot) return <Loading />;
   const currentRound = snapshot.rounds.find(

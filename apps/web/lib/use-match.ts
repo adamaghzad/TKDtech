@@ -1,9 +1,20 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { EventEnvelope, MatchSnapshot } from '@tkd/contracts';
+import type { EventEnvelope, MatchSnapshot, TimerState } from '@tkd/contracts';
 import { api } from './api';
 
 export type ConnectionState = 'CONNECTING' | 'ONLINE' | 'RECONNECTING' | 'OFFLINE';
+
+interface LocalStopwatch {
+  running: boolean;
+  kind: TimerState['kind'];
+  baseRemainingMs: number;
+  basePerfMs: number;
+}
+
+function nowPerf(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
 
 export function useMatch(matchId?: string, deviceToken?: string, onSessionMatchChange?: (nextMatchId: string) => void) {
   const [snapshot, setSnapshot] = useState<MatchSnapshot | null>(null);
@@ -12,28 +23,128 @@ export function useMatch(matchId?: string, deviceToken?: string, onSessionMatchC
   const [remainingMs, setRemainingMs] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
   const sequenceRef = useRef(-1);
-  const receivedAtRef = useRef(0);
   const mountedRef = useRef(true);
+  const stopwatchRef = useRef<LocalStopwatch>({
+    running: false,
+    kind: 'ROUND',
+    baseRemainingMs: 0,
+    basePerfMs: 0,
+  });
 
-  const apply = useCallback((next: MatchSnapshot) => {
+  const getExactRemainingMs = useCallback((): number => {
+    const sw = stopwatchRef.current;
+    if (!sw.running) return Math.max(0, Math.round(sw.baseRemainingMs));
+    return Math.max(0, Math.round(sw.baseRemainingMs - Math.max(0, nowPerf() - sw.basePerfMs)));
+  }, []);
+
+  const apply = useCallback((next: MatchSnapshot, transitMs = 0) => {
     if (next.matchId !== matchId || next.sequence < sequenceRef.current) return;
     sequenceRef.current = next.sequence;
-    receivedAtRef.current = Date.now();
+    const perf = nowPerf();
+    const prevSw = stopwatchRef.current;
+
+    if (next.timer.running) {
+      const incomingRemaining = Math.max(0, next.timer.remainingMs - Math.max(0, transitMs));
+      const localNow = prevSw.running
+        ? Math.max(0, prevSw.baseRemainingMs - Math.max(0, perf - prevSw.basePerfMs))
+        : incomingRemaining;
+      // Preserve smooth monotonic cadence when already running the same timer phase within network-jitter bounds
+      const keepLocalRun =
+        prevSw.running &&
+        prevSw.kind === next.timer.kind &&
+        Math.abs(localNow - incomingRemaining) <= 800;
+
+      if (!keepLocalRun) {
+        stopwatchRef.current = {
+          running: true,
+          kind: next.timer.kind,
+          baseRemainingMs: incomingRemaining,
+          basePerfMs: perf,
+        };
+        setRemainingMs(Math.round(incomingRemaining));
+      }
+    } else {
+      stopwatchRef.current = {
+        running: false,
+        kind: next.timer.kind,
+        baseRemainingMs: next.timer.remainingMs,
+        basePerfMs: perf,
+      };
+      setRemainingMs(next.timer.remainingMs);
+    }
+
     setSnapshot(next);
-    setRemainingMs(next.timer.remainingMs);
     setError(null);
   }, [matchId]);
 
+  const optimisticPause = useCallback((): number => {
+    const frozenMs = getExactRemainingMs();
+    const perf = nowPerf();
+    stopwatchRef.current = {
+      ...stopwatchRef.current,
+      running: false,
+      baseRemainingMs: frozenMs,
+      basePerfMs: perf,
+    };
+    setRemainingMs(frozenMs);
+    setSnapshot(prev =>
+      prev && prev.matchId === matchId
+        ? {
+            ...prev,
+            state: 'PAUSED',
+            timer: { ...prev.timer, running: false, remainingMs: frozenMs },
+          }
+        : prev,
+    );
+    return frozenMs;
+  }, [getExactRemainingMs, matchId]);
+
+  const optimisticStartOrResume = useCallback(() => {
+    const startMs = getExactRemainingMs();
+    if (startMs <= 0) return;
+    const perf = nowPerf();
+    stopwatchRef.current = {
+      ...stopwatchRef.current,
+      running: true,
+      baseRemainingMs: startMs,
+      basePerfMs: perf,
+    };
+    setRemainingMs(startMs);
+    setSnapshot(prev => {
+      if (!prev || prev.matchId !== matchId) return prev;
+      const nextState =
+        prev.timer.kind === 'BREAK'
+          ? 'ROUND_BREAK'
+          : prev.timer.kind === 'MEDICAL'
+            ? prev.state
+            : prev.timer.kind === 'GOLDEN_POINT'
+              ? 'GOLDEN_POINT'
+              : 'IN_PROGRESS';
+      return {
+        ...prev,
+        state: nextState,
+        timer: { ...prev.timer, running: true, remainingMs: startMs },
+      };
+    });
+  }, [getExactRemainingMs, matchId]);
+
   const refresh = useCallback(async () => {
     if (!matchId) return;
-    try { apply(await api<MatchSnapshot>(`/api/v1/matches/${matchId}`)); }
-    catch (reason) { setError(reason as Error); }
+    try {
+      const startedPerf = nowPerf();
+      const fetched = await api<MatchSnapshot>(`/api/v1/matches/${matchId}`);
+      const transitMs = Math.min(500, Math.max(0, (nowPerf() - startedPerf) / 2));
+      apply(fetched, transitMs);
+    } catch (reason) {
+      setError(reason as Error);
+    }
   }, [apply, matchId]);
 
   useEffect(() => {
     if (!matchId) return;
     mountedRef.current = true;
     sequenceRef.current = -1;
+    stopwatchRef.current = { running: false, kind: 'ROUND', baseRemainingMs: 0, basePerfMs: nowPerf() };
     let retry = 1000;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     const connect = () => {
@@ -50,7 +161,7 @@ export function useMatch(matchId?: string, deviceToken?: string, onSessionMatchC
           if (data.type === 'sequence.gap') { socket.send(JSON.stringify({ type: 'request_snapshot' })); return; }
           if ('payload' in data && data.payload && 'matchId' in data.payload) {
             if (sequenceRef.current >= 0 && data.sequence > sequenceRef.current + 1) socket.send(JSON.stringify({ type: 'request_snapshot' }));
-            apply(data.payload);
+            apply(data.payload, 0);
           }
         } catch { /* Ignore malformed packets; authoritative polling remains available. */ }
       };
@@ -90,11 +201,23 @@ export function useMatch(matchId?: string, deviceToken?: string, onSessionMatchC
   useEffect(() => {
     if (!snapshot?.timer.running || snapshot.matchId !== matchId) return;
     const timer = setInterval(() => {
-      setRemainingMs(Math.max(0, snapshot.timer.remainingMs - (Date.now() - receivedAtRef.current)));
-    }, 100);
+      const sw = stopwatchRef.current;
+      if (!sw.running) return;
+      setRemainingMs(Math.max(0, Math.round(sw.baseRemainingMs - Math.max(0, nowPerf() - sw.basePerfMs))));
+    }, 30);
     return () => clearInterval(timer);
-  }, [snapshot, matchId]);
+  }, [snapshot?.timer.running, snapshot?.matchId, matchId]);
 
   const visibleSnapshot = snapshot?.matchId === matchId ? snapshot : null;
-  return { snapshot: visibleSnapshot, connection: visibleSnapshot ? connection : 'CONNECTING' as const, error, remainingMs: visibleSnapshot ? remainingMs : 0, refresh };
+  return {
+    snapshot: visibleSnapshot,
+    connection: visibleSnapshot ? connection : ('CONNECTING' as const),
+    error,
+    remainingMs: visibleSnapshot ? remainingMs : 0,
+    refresh,
+    applySnapshot: apply,
+    getExactRemainingMs,
+    optimisticPause,
+    optimisticStartOrResume,
+  };
 }

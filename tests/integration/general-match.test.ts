@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { openDatabase, type SqliteDatabase } from '../../apps/local-server/src/persistence/database';
 import { seedDevelopment } from '../../apps/local-server/src/persistence/seed';
 import { TournamentRepository } from '../../apps/local-server/src/persistence/repository';
@@ -8,6 +8,7 @@ import type { Actor } from '../../apps/local-server/src/types';
 
 const databases: SqliteDatabase[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const db of databases.splice(0)) if (db.open) db.close();
 });
 
@@ -145,5 +146,53 @@ describe('general match (Chung vs Hong)', () => {
     });
     expect(secondProp.status).toBe('ACCEPTED');
     expect(matches.snapshot(second.matchId).redScore).toBe(3);
+  });
+
+  it('locks PAUSE and RESUME to the exact millisecond captured on operator click across network RTT', () => {
+    const { repository, matches, actor, tournamentId } = createFixture();
+    const created = repository.createGeneralMatch(actor, tournamentId, {
+      rounds: 3,
+      roundDurationMs: 10_000,
+      breakDurationMs: 30_000,
+    });
+
+    let fakeNow = 500_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => fakeNow);
+
+    matches.execute(actor, created.matchId, { type: 'START' });
+
+    // Scoring while running never double-subtracts elapsed time (10,000 - 2,000 = 8,000 ms)
+    fakeNow = 500_000 + 2_000;
+    const afterScore = matches.execute(actor, created.matchId, {
+      type: 'SCORE',
+      side: 'BLUE',
+      pointType: 'BODY_KICK',
+    });
+    expect(afterScore.timer.remainingMs).toBe(8_000);
+
+    // Operator clicks Pause at 6.51 (6,510 ms), request arrives on server 320 ms later (at 6,190 ms server-side)
+    fakeNow = 500_000 + 3_810;
+    const paused = matches.execute(actor, created.matchId, {
+      type: 'PAUSE',
+      clientRemainingMs: 6_510,
+    });
+    expect(paused.state).toBe('PAUSED');
+    expect(paused.timer.running).toBe(false);
+    expect(paused.timer.remainingMs).toBe(6_510);
+
+    // Resuming 5 seconds later starts cleanly from the exact paused 6,510 ms
+    fakeNow += 5_000;
+    const resumed = matches.execute(actor, created.matchId, { type: 'RESUME' });
+    expect(resumed.state).toBe('IN_PROGRESS');
+    expect(resumed.timer.running).toBe(true);
+    expect(resumed.timer.remainingMs).toBe(6_510);
+
+    // Out-of-bounds spoofed clientRemainingMs (> 2.5s drift) is ignored in favor of authoritative server time
+    fakeNow += 1_000; // true remaining = 5,510 ms
+    const spoofPaused = matches.execute(actor, created.matchId, {
+      type: 'PAUSE',
+      clientRemainingMs: 9_999,
+    });
+    expect(spoofPaused.timer.remainingMs).toBe(5_510);
   });
 });
