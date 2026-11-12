@@ -6,8 +6,8 @@ import { buildScoringActivity, type JudgeProposalRecord, type ScoringEventRecord
 export const MATCH_SELECT = `
 SELECT m.*, t.name AS tournament_name, c.name AS category_name, m.phase AS phase_name,
   mat.name AS mat_name, c.rounds AS total_rounds, tr.config_json AS ruleset_json,
-  ba.first_name || ' ' || ba.last_name AS blue_name, ba.nationality AS blue_country, ba.country_code AS blue_code, bc.name AS blue_club,
-  ra.first_name || ' ' || ra.last_name AS red_name, ra.nationality AS red_country, ra.country_code AS red_code, rc.name AS red_club
+  NULLIF(TRIM(ba.first_name || ' ' || ba.last_name), '') AS blue_name, ba.nationality AS blue_country, ba.country_code AS blue_code, bc.name AS blue_club,
+  NULLIF(TRIM(ra.first_name || ' ' || ra.last_name), '') AS red_name, ra.nationality AS red_country, ra.country_code AS red_code, rc.name AS red_club
 FROM matches m
 JOIN tournaments t ON t.id=m.tournament_id
 JOIN categories c ON c.id=m.category_id

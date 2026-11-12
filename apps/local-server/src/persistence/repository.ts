@@ -174,13 +174,13 @@ export class TournamentRepository {
   getTournament(id: string): Record<string, unknown> {
     const tournament = this.db.prepare('SELECT * FROM tournaments WHERE id=?').get(id) as TournamentRow|undefined;
     if (!tournament) throw new HttpError(404,'NOT_FOUND','Tournament not found.');
-    const clubs = this.db.prepare(`SELECT c.*,COUNT(a.id) AS athlete_count FROM clubs c LEFT JOIN athletes a ON a.club_id=c.id WHERE c.tournament_id=? GROUP BY c.id ORDER BY c.name`).all(id);
-    const athletes = this.db.prepare(`SELECT a.*,c.name AS club_name,cat.name AS category_name,cat.id AS category_id,r.id AS registration_id,w.weight_kg,w.passed AS weigh_in_passed,s.seed_position FROM athletes a LEFT JOIN clubs c ON c.id=a.club_id LEFT JOIN athlete_registrations r ON r.athlete_id=a.id LEFT JOIN categories cat ON cat.id=r.category_id LEFT JOIN weigh_ins w ON w.registration_id=r.id LEFT JOIN tournament_seeds s ON s.athlete_id=a.id AND s.category_id=cat.id WHERE a.tournament_id=? ORDER BY a.last_name,a.first_name`).all(id);
-    const categories = this.db.prepare(`SELECT c.*,COUNT(r.id) AS entrant_count FROM categories c LEFT JOIN athlete_registrations r ON r.category_id=c.id WHERE c.tournament_id=? GROUP BY c.id ORDER BY c.name`).all(id);
+    const clubs = this.db.prepare(`SELECT c.*,COUNT(a.id) AS athlete_count FROM clubs c LEFT JOIN athletes a ON a.club_id=c.id AND COALESCE(a.external_number,'') NOT LIKE 'GENERAL-%' WHERE c.tournament_id=? GROUP BY c.id ORDER BY c.name`).all(id);
+    const athletes = this.db.prepare(`SELECT a.*,c.name AS club_name,cat.name AS category_name,cat.id AS category_id,r.id AS registration_id,w.weight_kg,w.passed AS weigh_in_passed,s.seed_position FROM athletes a LEFT JOIN clubs c ON c.id=a.club_id LEFT JOIN athlete_registrations r ON r.athlete_id=a.id LEFT JOIN categories cat ON cat.id=r.category_id LEFT JOIN weigh_ins w ON w.registration_id=r.id LEFT JOIN tournament_seeds s ON s.athlete_id=a.id AND s.category_id=cat.id WHERE a.tournament_id=? AND COALESCE(a.external_number,'') NOT LIKE 'GENERAL-%' ORDER BY a.last_name,a.first_name`).all(id);
+    const categories = this.db.prepare(`SELECT c.*,COUNT(r.id) AS entrant_count FROM categories c LEFT JOIN athlete_registrations r ON r.category_id=c.id WHERE c.tournament_id=? AND c.age_group NOT LIKE 'GENERAL:%' GROUP BY c.id ORDER BY c.name`).all(id);
     const mats = this.db.prepare('SELECT * FROM mats WHERE tournament_id=? ORDER BY name').all(id);
-    const matches = this.db.prepare(`SELECT m.id,m.match_number,m.state,m.current_round,m.blue_score,m.red_score,m.mat_id,m.queue_position,m.scheduled_at,c.name AS category_name,ba.first_name||' '||ba.last_name AS blue_name,ra.first_name||' '||ra.last_name AS red_name,mat.name AS mat_name FROM matches m JOIN categories c ON c.id=m.category_id LEFT JOIN athletes ba ON ba.id=m.blue_athlete_id LEFT JOIN athletes ra ON ra.id=m.red_athlete_id LEFT JOIN mats mat ON mat.id=m.mat_id WHERE m.tournament_id=? ORDER BY CAST(m.match_number AS INTEGER),m.match_number`).all(id);
+    const matches = this.db.prepare(`SELECT m.id,m.match_number,m.phase,m.state,m.current_round,m.blue_score,m.red_score,m.mat_id,m.queue_position,m.scheduled_at,c.name AS category_name,NULLIF(TRIM(ba.first_name||' '||ba.last_name),'') AS blue_name,NULLIF(TRIM(ra.first_name||' '||ra.last_name),'') AS red_name,mat.name AS mat_name FROM matches m JOIN categories c ON c.id=m.category_id LEFT JOIN athletes ba ON ba.id=m.blue_athlete_id LEFT JOIN athletes ra ON ra.id=m.red_athlete_id LEFT JOIN mats mat ON mat.id=m.mat_id WHERE m.tournament_id=? ORDER BY CAST(m.match_number AS INTEGER),m.match_number`).all(id);
     const draws = this.db.prepare(`SELECT d.*,c.name AS category_name FROM draws d JOIN categories c ON c.id=d.category_id WHERE c.tournament_id=? ORDER BY d.created_at DESC`).all(id);
-    const results = this.db.prepare(`SELECT r.*,m.match_number,c.name AS category_name,w.first_name||' '||w.last_name AS winner_name,l.first_name||' '||l.last_name AS loser_name FROM tournament_results r JOIN matches m ON m.id=r.match_id JOIN categories c ON c.id=m.category_id LEFT JOIN athletes w ON w.id=r.winner_athlete_id LEFT JOIN athletes l ON l.id=r.loser_athlete_id WHERE r.tournament_id=? ORDER BY r.completed_at DESC`).all(id);
+    const results = this.db.prepare(`SELECT r.*,m.match_number,c.name AS category_name,NULLIF(TRIM(w.first_name||' '||w.last_name),'') AS winner_name,NULLIF(TRIM(l.first_name||' '||l.last_name),'') AS loser_name FROM tournament_results r JOIN matches m ON m.id=r.match_id JOIN categories c ON c.id=m.category_id LEFT JOIN athletes w ON w.id=r.winner_athlete_id LEFT JOIN athletes l ON l.id=r.loser_athlete_id WHERE r.tournament_id=? ORDER BY r.completed_at DESC`).all(id);
     const medals = this.db.prepare(`SELECT ms.id,ms.place,a.first_name||' '||a.last_name AS athlete_name,cl.name AS club_name,cat.name AS category_name FROM medal_standings ms JOIN athletes a ON a.id=ms.athlete_id LEFT JOIN clubs cl ON cl.id=ms.club_id JOIN categories cat ON cat.id=ms.category_id WHERE ms.tournament_id=? ORDER BY ms.place,a.last_name`).all(id);
     const ruleset = this.db.prepare('SELECT * FROM tournament_rulesets WHERE tournament_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1').get(id) as {config_json:string}|undefined;
     return { tournament, clubs, athletes, categories, mats, matches, draws, results, medals, ruleset: ruleset ? JSON.parse(ruleset.config_json) as Ruleset : EXAMPLE_WT_STYLE_RULESET };
@@ -215,8 +215,82 @@ export class TournamentRepository {
     if (!(input.maxWeightKg>input.minWeightKg) || input.minWeightKg<0) throw new HttpError(400,'INVALID_WEIGHT_RANGE','Maximum weight must exceed minimum weight.');
     const tournament=this.db.prepare('SELECT ruleset_id FROM tournaments WHERE id=?').get(tournamentId) as {ruleset_id:string};
     const id=randomUUID();
-    this.db.transaction(()=>{const duplicate=this.db.prepare('SELECT id FROM categories WHERE tournament_id=? AND lower(name)=lower(?)').get(tournamentId,input.name.trim());if(duplicate)throw new HttpError(409,'POSSIBLE_DUPLICATE','A category with this name already exists in the tournament.');this.db.prepare(`INSERT INTO categories(id,tournament_id,name,division,age_group,min_weight_kg,max_weight_kg,ruleset_id,format,rounds,round_duration_ms,break_duration_ms,golden_point_policy,repechage_policy) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,tournamentId,requiredString(input.name,'Category name'),input.division,requiredString(input.ageGroup,'Age group'),input.minWeightKg,input.maxWeightKg,tournament.ruleset_id,input.format,input.rounds||3,input.roundDurationMs||120000,input.breakDurationMs||60000,input.goldenPointPolicy||'CONFIGURED',input.format==='REPECHAGE'?input.repechagePolicy||null:null);audit(this.db,{tournamentId,actorId:actor.id,action:'CATEGORY_CREATED',entityType:'category',entityId:id,after:input});})();
+    this.db.transaction(()=>{const duplicate=this.db.prepare(`SELECT id FROM categories WHERE tournament_id=? AND lower(name)=lower(?) AND age_group NOT LIKE 'GENERAL:%'`).get(tournamentId,input.name.trim());if(duplicate)throw new HttpError(409,'POSSIBLE_DUPLICATE','A category with this name already exists in the tournament.');this.db.prepare(`INSERT INTO categories(id,tournament_id,name,division,age_group,min_weight_kg,max_weight_kg,ruleset_id,format,rounds,round_duration_ms,break_duration_ms,golden_point_policy,repechage_policy) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,tournamentId,requiredString(input.name,'Category name'),input.division,requiredString(input.ageGroup,'Age group'),input.minWeightKg,input.maxWeightKg,tournament.ruleset_id,input.format,input.rounds||3,input.roundDurationMs||120000,input.breakDurationMs||60000,input.goldenPointPolicy||'CONFIGURED',input.format==='REPECHAGE'?input.repechagePolicy||null:null);audit(this.db,{tournamentId,actorId:actor.id,action:'CATEGORY_CREATED',entityType:'category',entityId:id,after:input});})();
     return {id};
+  }
+
+  createGeneralMatch(actor: Actor, tournamentId: string, input: {blueName?:string;redName?:string;blueCountryCode?:string;redCountryCode?:string;categoryName?:string;rounds?:number;roundDurationMs?:number;breakDurationMs?:number;matId?:string|null;previousMatchId?:string;carryOverDevices?:boolean}): {matchId:string;matchNumber:string;matId:string|null} {
+    this.authorizeTournament(actor,tournamentId,true);
+    if(!['SUPER_ADMIN','TOURNAMENT_ADMIN','MAT_OPERATOR'].includes(actor.role))throw new HttpError(403,'PERMISSION_DENIED','Match creation requires tournament administrator or mat operator permission.');
+    const tournament=this.db.prepare('SELECT id,country,ruleset_id FROM tournaments WHERE id=?').get(tournamentId) as {id:string;country:string;ruleset_id:string}|undefined;
+    if(!tournament)throw new HttpError(404,'NOT_FOUND','Tournament not found.');
+    const prevTiming=input.previousMatchId?(this.db.prepare(`SELECT c.name AS category_name,c.rounds,c.round_duration_ms,c.break_duration_ms,m.mat_id FROM matches m JOIN categories c ON c.id=m.category_id WHERE m.id=? AND m.tournament_id=?`).get(input.previousMatchId,tournamentId) as {category_name:string;rounds:number;round_duration_ms:number;break_duration_ms:number;mat_id:string|null}|undefined):undefined;
+    const blueName=(input.blueName?.trim()||'CHUNG').slice(0,100);
+    const redName=(input.redName?.trim()||'HONG').slice(0,100);
+    const blueCode=(input.blueCountryCode?.trim()||'MAR').toUpperCase().slice(0,3).padEnd(3,'X');
+    const redCode=(input.redCountryCode?.trim()||'MAR').toUpperCase().slice(0,3).padEnd(3,'X');
+    const categoryLabel=(input.categoryName?.trim()||prevTiming?.category_name||'General Match').slice(0,100);
+    const rounds=input.rounds??prevTiming?.rounds??3;
+    const roundDurationMs=input.roundDurationMs??prevTiming?.round_duration_ms??120000;
+    const breakDurationMs=input.breakDurationMs??prevTiming?.break_duration_ms??60000;
+    const timingKey=`GENERAL:${rounds}x${roundDurationMs}:${breakDurationMs}`;
+    const matchId=randomUUID();
+    let matchNumber='1';
+    let resolvedMatId:string|null=null;
+    this.db.transaction(()=>{
+      const now=isoNow();
+      let categoryRow=this.db.prepare('SELECT id FROM categories WHERE tournament_id=? AND lower(name)=lower(?) AND age_group=?').get(tournamentId,categoryLabel,timingKey) as {id:string}|undefined;
+      if(!categoryRow){
+        const catId=randomUUID();
+        this.db.prepare(`INSERT INTO categories(id,tournament_id,name,division,age_group,min_weight_kg,max_weight_kg,ruleset_id,format,rounds,round_duration_ms,break_duration_ms,golden_point_policy,status) VALUES(?,?,?,'MEN',?,0,200,?,'SINGLE_ELIMINATION',?,?,?,'GOLDEN_POINT','IN_PROGRESS')`).run(catId,tournamentId,categoryLabel,timingKey,tournament.ruleset_id,rounds,roundDurationMs,breakDurationMs);
+        categoryRow={id:catId};
+      }
+      const existingMats=this.db.prepare('SELECT id FROM mats WHERE tournament_id=? ORDER BY name').all(tournamentId) as Array<{id:string}>;
+      if(existingMats.length===0){
+        const firstMatId=randomUUID();
+        this.db.prepare(`INSERT INTO mats(id,tournament_id,name,display_slug,status,network_status) VALUES(?,?,'Mat 1',?,'AVAILABLE','ONLINE')`).run(firstMatId,tournamentId,`mat-1-${firstMatId.slice(0,6)}`);
+      }
+      const requestedMatId=input.matId===null?null:(input.matId||prevTiming?.mat_id||undefined);
+      if(requestedMatId){
+        const mat=this.db.prepare('SELECT id FROM mats WHERE id=? AND tournament_id=?').get(requestedMatId,tournamentId) as {id:string}|undefined;
+        if(!mat)throw new HttpError(400,'INVALID_MAT','Selected mat must belong to this tournament.');
+        const activeOnMat=this.db.prepare(`SELECT ma.match_id,m.state FROM match_assignments ma JOIN matches m ON m.id=ma.match_id WHERE ma.mat_id=? AND ma.unassigned_at IS NULL`).get(requestedMatId) as {match_id:string;state:string}|undefined;
+        if(activeOnMat){
+          if(['IN_PROGRESS','PAUSED','ROUND_BREAK','GOLDEN_POINT','UNDER_REVIEW'].includes(activeOnMat.state)&&activeOnMat.match_id!==input.previousMatchId){
+            throw new HttpError(409,'MAT_OCCUPIED','The selected mat has a live match in progress. Complete it first or choose another mat.');
+          }
+          this.db.prepare('UPDATE match_assignments SET unassigned_at=? WHERE mat_id=? AND unassigned_at IS NULL').run(now,requestedMatId);
+          this.db.prepare(`UPDATE matches SET mat_id=NULL,version=version+1,updated_at=? WHERE id=? AND state IN ('READY','PENDING','CALLED')`).run(now,activeOnMat.match_id);
+        }
+        resolvedMatId=requestedMatId;
+      }else if(input.matId!==null){
+        const freeMat=this.db.prepare(`SELECT m.id FROM mats m WHERE m.tournament_id=? AND NOT EXISTS(SELECT 1 FROM match_assignments ma WHERE ma.mat_id=m.id AND ma.unassigned_at IS NULL) ORDER BY m.name LIMIT 1`).get(tournamentId) as {id:string}|undefined;
+        resolvedMatId=freeMat?.id??null;
+      }
+      const blueId=randomUUID();const redId=randomUUID();
+      const country=tournament.country||'Morocco';
+      this.db.prepare(`INSERT INTO athletes(id,tournament_id,club_id,first_name,last_name,date_of_birth,division,nationality,country_code,external_number,coach,eligibility_status,created_at) VALUES(?,?,NULL,?,'','2000-01-01','MEN',?,?,?,'','ELIGIBLE',?)`).run(blueId,tournamentId,blueName,country,blueCode,`GENERAL-B-${blueId.slice(0,12)}`,now);
+      this.db.prepare(`INSERT INTO athletes(id,tournament_id,club_id,first_name,last_name,date_of_birth,division,nationality,country_code,external_number,coach,eligibility_status,created_at) VALUES(?,?,NULL,?,'','2000-01-02','MEN',?,?,?,'','ELIGIBLE',?)`).run(redId,tournamentId,redName,country,redCode,`GENERAL-R-${redId.slice(0,12)}`,now);
+      const count=(this.db.prepare('SELECT COUNT(*) AS count FROM matches WHERE tournament_id=?').get(tournamentId) as {count:number}).count;
+      const maxNum=(this.db.prepare('SELECT COALESCE(MAX(CAST(match_number AS INTEGER)),0) AS max_num FROM matches WHERE tournament_id=?').get(tournamentId) as {max_num:number}).max_num;
+      let nextNum=Math.max(count+1,maxNum+1);
+      while(this.db.prepare('SELECT 1 FROM matches WHERE tournament_id=? AND match_number=?').get(tournamentId,String(nextNum)))nextNum+=1;
+      matchNumber=String(nextNum);
+      const timer={remainingMs:roundDurationMs,running:false,authoritativeAt:Date.now(),kind:'ROUND'};
+      this.db.prepare(`INSERT INTO matches(id,tournament_id,category_id,bracket_node_id,match_number,phase,mat_id,blue_athlete_id,red_athlete_id,state,timer_json,created_at,updated_at) VALUES(?,?,?,NULL,?,'GENERAL',?,?,?,?,?,?,?)`).run(matchId,tournamentId,categoryRow.id,matchNumber,resolvedMatId,blueId,redId,resolvedMatId?'READY':'PENDING',JSON.stringify(timer),now,now);
+      for(let r=1;r<=rounds;r++)this.db.prepare('INSERT INTO match_rounds(id,match_id,number) VALUES(?,?,?)').run(randomUUID(),matchId,r);
+      if(resolvedMatId){
+        this.db.prepare('INSERT INTO match_assignments(id,match_id,mat_id,assigned_at) VALUES(?,?,?,?)').run(randomUUID(),matchId,resolvedMatId,now);
+        this.db.prepare(`UPDATE mats SET status='OCCUPIED' WHERE id=?`).run(resolvedMatId);
+      }
+      if(input.previousMatchId&&input.carryOverDevices!==false){
+        this.db.prepare(`UPDATE judge_sessions SET match_id=? WHERE match_id=? AND tournament_id=? AND status='ACTIVE'`).run(matchId,input.previousMatchId,tournamentId);
+        this.db.prepare(`UPDATE referee_sessions SET match_id=? WHERE match_id=? AND tournament_id=? AND status='ACTIVE'`).run(matchId,input.previousMatchId,tournamentId);
+        this.db.prepare('UPDATE device_presence SET match_id=? WHERE match_id=?').run(matchId,input.previousMatchId);
+      }
+      audit(this.db,{tournamentId,actorId:actor.id,action:'GENERAL_MATCH_CREATED',entityType:'match',entityId:matchId,after:{matchNumber,blueName,redName,categoryLabel,rounds,roundDurationMs,breakDurationMs,matId:resolvedMatId,previousMatchId:input.previousMatchId??null}});
+    })();
+    return{matchId,matchNumber,matId:resolvedMatId};
   }
 
   createAthlete(actor: Actor, tournamentId: string, input: AthleteInput): {id:string} {
@@ -327,11 +401,11 @@ export class TournamentRepository {
   dashboard(actor: Actor): Record<string,unknown> {
     const tournaments=this.listTournaments(actor);const ids=tournaments.map(t=>t.id);if(ids.length===0)return{tournaments:[],activeTournament:null,stats:{},liveMatches:[],recentResults:[],schedule:[],medals:[]};const placeholders=ids.map(()=>'?').join(',');
     const scalar=(sql:string):number=>(this.db.prepare(sql).get(...ids) as {value:number}).value;
-    const stats={activeTournaments:scalar(`SELECT COUNT(*) AS value FROM tournaments WHERE id IN (${placeholders}) AND status='IN_PROGRESS'`),athletes:scalar(`SELECT COUNT(*) AS value FROM athletes WHERE tournament_id IN (${placeholders})`),clubs:scalar(`SELECT COUNT(*) AS value FROM clubs WHERE tournament_id IN (${placeholders})`),categories:scalar(`SELECT COUNT(*) AS value FROM categories WHERE tournament_id IN (${placeholders})`),completedMatches:scalar(`SELECT COUNT(*) AS value FROM matches WHERE tournament_id IN (${placeholders}) AND state IN ('COMPLETED','WALKOVER','DISQUALIFIED')`),liveMatches:scalar(`SELECT COUNT(*) AS value FROM matches WHERE tournament_id IN (${placeholders}) AND state IN ('IN_PROGRESS','PAUSED','ROUND_BREAK','GOLDEN_POINT','UNDER_REVIEW')`),waitingMatches:scalar(`SELECT COUNT(*) AS value FROM matches WHERE tournament_id IN (${placeholders}) AND state IN ('READY','CALLED','PENDING')`),connectedJudges:scalar(`SELECT COUNT(*) AS value FROM device_presence WHERE match_id IN (SELECT id FROM matches WHERE tournament_id IN (${placeholders})) AND status='ONLINE' AND last_seen_at>${Date.now()-15000}`)};
+    const stats={activeTournaments:scalar(`SELECT COUNT(*) AS value FROM tournaments WHERE id IN (${placeholders}) AND status='IN_PROGRESS'`),athletes:scalar(`SELECT COUNT(*) AS value FROM athletes WHERE tournament_id IN (${placeholders}) AND COALESCE(external_number,'') NOT LIKE 'GENERAL-%'`),clubs:scalar(`SELECT COUNT(*) AS value FROM clubs WHERE tournament_id IN (${placeholders})`),categories:scalar(`SELECT COUNT(*) AS value FROM categories WHERE tournament_id IN (${placeholders}) AND age_group NOT LIKE 'GENERAL:%'`),completedMatches:scalar(`SELECT COUNT(*) AS value FROM matches WHERE tournament_id IN (${placeholders}) AND state IN ('COMPLETED','WALKOVER','DISQUALIFIED')`),liveMatches:scalar(`SELECT COUNT(*) AS value FROM matches WHERE tournament_id IN (${placeholders}) AND state IN ('IN_PROGRESS','PAUSED','ROUND_BREAK','GOLDEN_POINT','UNDER_REVIEW')`),waitingMatches:scalar(`SELECT COUNT(*) AS value FROM matches WHERE tournament_id IN (${placeholders}) AND state IN ('READY','CALLED','PENDING')`),connectedJudges:scalar(`SELECT COUNT(*) AS value FROM device_presence WHERE match_id IN (SELECT id FROM matches WHERE tournament_id IN (${placeholders})) AND status='ONLINE' AND last_seen_at>${Date.now()-15000}`)};
     const activeTournament=tournaments.find(t=>t.status==='IN_PROGRESS')??tournaments[0];
     const liveRows=this.db.prepare(`SELECT id FROM matches WHERE tournament_id IN (${placeholders}) AND state IN ('IN_PROGRESS','PAUSED','ROUND_BREAK','GOLDEN_POINT','UNDER_REVIEW') ORDER BY updated_at DESC LIMIT 6`).all(...ids) as Array<{id:string}>;
-    const schedule=this.db.prepare(`SELECT m.id,m.match_number,m.state,m.scheduled_at,m.queue_position,c.name AS category_name,ba.first_name||' '||ba.last_name AS blue_name,ra.first_name||' '||ra.last_name AS red_name,mat.name AS mat_name FROM matches m JOIN categories c ON c.id=m.category_id LEFT JOIN athletes ba ON ba.id=m.blue_athlete_id LEFT JOIN athletes ra ON ra.id=m.red_athlete_id LEFT JOIN mats mat ON mat.id=m.mat_id WHERE m.tournament_id IN (${placeholders}) AND m.state IN ('READY','CALLED','PENDING') AND m.blue_athlete_id IS NOT NULL AND m.red_athlete_id IS NOT NULL ORDER BY COALESCE(m.queue_position,999),m.match_number LIMIT 12`).all(...ids);
-    const recentResults=this.db.prepare(`SELECT r.*,m.match_number,c.name AS category_name,w.first_name||' '||w.last_name AS winner_name,l.first_name||' '||l.last_name AS loser_name FROM tournament_results r JOIN matches m ON m.id=r.match_id JOIN categories c ON c.id=m.category_id LEFT JOIN athletes w ON w.id=r.winner_athlete_id LEFT JOIN athletes l ON l.id=r.loser_athlete_id WHERE r.tournament_id IN (${placeholders}) ORDER BY r.completed_at DESC LIMIT 8`).all(...ids);
+    const schedule=this.db.prepare(`SELECT m.id,m.match_number,m.state,m.scheduled_at,m.queue_position,c.name AS category_name,NULLIF(TRIM(ba.first_name||' '||ba.last_name),'') AS blue_name,NULLIF(TRIM(ra.first_name||' '||ra.last_name),'') AS red_name,mat.name AS mat_name FROM matches m JOIN categories c ON c.id=m.category_id LEFT JOIN athletes ba ON ba.id=m.blue_athlete_id LEFT JOIN athletes ra ON ra.id=m.red_athlete_id LEFT JOIN mats mat ON mat.id=m.mat_id WHERE m.tournament_id IN (${placeholders}) AND m.state IN ('READY','CALLED','PENDING') AND m.blue_athlete_id IS NOT NULL AND m.red_athlete_id IS NOT NULL ORDER BY COALESCE(m.queue_position,999),m.match_number LIMIT 12`).all(...ids);
+    const recentResults=this.db.prepare(`SELECT r.*,m.match_number,c.name AS category_name,NULLIF(TRIM(w.first_name||' '||w.last_name),'') AS winner_name,NULLIF(TRIM(l.first_name||' '||l.last_name),'') AS loser_name FROM tournament_results r JOIN matches m ON m.id=r.match_id JOIN categories c ON c.id=m.category_id LEFT JOIN athletes w ON w.id=r.winner_athlete_id LEFT JOIN athletes l ON l.id=r.loser_athlete_id WHERE r.tournament_id IN (${placeholders}) ORDER BY r.completed_at DESC LIMIT 8`).all(...ids);
     const medals=this.db.prepare(`SELECT cl.name AS club_name,cl.country_code,SUM(CASE WHEN ms.place=1 THEN 1 ELSE 0 END) AS gold,SUM(CASE WHEN ms.place=2 THEN 1 ELSE 0 END) AS silver,SUM(CASE WHEN ms.place=3 THEN 1 ELSE 0 END) AS bronze FROM medal_standings ms JOIN clubs cl ON cl.id=ms.club_id WHERE ms.tournament_id IN (${placeholders}) GROUP BY cl.id ORDER BY gold DESC,silver DESC,bronze DESC LIMIT 6`).all(...ids);
     return{tournaments,activeTournament,stats,liveMatchIds:liveRows.map(row=>row.id),schedule,recentResults,medals};
   }

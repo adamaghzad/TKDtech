@@ -5,7 +5,7 @@ import { api } from './api';
 
 export type ConnectionState = 'CONNECTING' | 'ONLINE' | 'RECONNECTING' | 'OFFLINE';
 
-export function useMatch(matchId?: string, deviceToken?: string) {
+export function useMatch(matchId?: string, deviceToken?: string, onSessionMatchChange?: (nextMatchId: string) => void) {
   const [snapshot, setSnapshot] = useState<MatchSnapshot | null>(null);
   const [connection, setConnection] = useState<ConnectionState>('CONNECTING');
   const [error, setError] = useState<Error | null>(null);
@@ -67,7 +67,9 @@ export function useMatch(matchId?: string, deviceToken?: string) {
     const poll = setInterval(() => void refresh(), 20000);
     const heartbeat = setInterval(() => {
       if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(JSON.stringify({ type: 'heartbeat' }));
-      if (deviceToken) void api('/api/v1/device/heartbeat', { method: 'POST', headers: { Authorization: `Bearer ${deviceToken}` }, body: '{}' }).catch(() => setConnection('RECONNECTING'));
+      if (deviceToken) void api<{ matchId?: string }>('/api/v1/device/heartbeat', { method: 'POST', headers: { Authorization: `Bearer ${deviceToken}` }, body: '{}' }).then(res => {
+        if (res?.matchId && res.matchId !== matchId && onSessionMatchChange) onSessionMatchChange(res.matchId);
+      }).catch(() => setConnection('RECONNECTING'));
     }, 5000);
     const online = () => { setConnection('RECONNECTING'); void refresh(); };
     const offline = () => setConnection('OFFLINE');
@@ -83,7 +85,7 @@ export function useMatch(matchId?: string, deviceToken?: string) {
       window.removeEventListener('offline', offline);
       socketRef.current?.close();
     };
-  }, [matchId, deviceToken, apply, refresh]);
+  }, [matchId, deviceToken, apply, refresh, onSessionMatchChange]);
 
   useEffect(() => {
     if (!snapshot?.timer.running || snapshot.matchId !== matchId) return;

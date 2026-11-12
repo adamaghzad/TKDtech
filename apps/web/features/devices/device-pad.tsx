@@ -111,7 +111,10 @@ function useDeviceSession(pairingOrSessionToken: string) {
       active = false;
     };
   }, [pairingOrSessionToken]);
-  return { session, token, error, loading };
+  const updateSessionMatch = useCallback((nextMatchId: string) => {
+    setSession(prev => prev && prev.matchId !== nextMatchId ? { ...prev, matchId: nextMatchId } : prev);
+  }, []);
+  return { session, token, error, loading, updateSessionMatch };
 }
 const points: Array<{
   type: PointType;
@@ -149,7 +152,7 @@ export function DevicePad({
   pairingOrSessionToken: string;
   expectedRole: "JUDGE" | "REFEREE";
 }) {
-  const { session, token, error, loading } = useDeviceSession(
+  const { session, token, error, loading, updateSessionMatch } = useDeviceSession(
     pairingOrSessionToken,
   );
   if (loading)
@@ -189,9 +192,9 @@ export function DevicePad({
       </main>
     );
   return session.role === "REFEREE" ? (
-    <RefereePad session={session} token={token} />
+    <RefereePad session={session} token={token} onMatchChange={updateSessionMatch} />
   ) : (
-    <JudgePad session={session} token={token} />
+    <JudgePad session={session} token={token} onMatchChange={updateSessionMatch} />
   );
 }
 function DeviceHeader({
@@ -252,10 +255,11 @@ function DeviceHeader({
     </>
   );
 }
-function JudgePad({ session, token }: { session: Session; token: string }) {
+function JudgePad({ session, token, onMatchChange }: { session: Session; token: string; onMatchChange: (nextMatchId: string) => void }) {
   const { snapshot, remainingMs, connection, refresh } = useMatch(
     session.matchId,
     token,
+    onMatchChange,
   );
   const [response, setResponse] = useState<{
     status: string;
@@ -526,10 +530,11 @@ function JudgePad({ session, token }: { session: Session; token: string }) {
     </main>
   );
 }
-function RefereePad({ session, token }: { session: Session; token: string }) {
+function RefereePad({ session, token, onMatchChange }: { session: Session; token: string; onMatchChange: (nextMatchId: string) => void }) {
   const { snapshot, remainingMs, connection, refresh } = useMatch(
     session.matchId,
     token,
+    onMatchChange,
   );
   const [pending, setPending] = useState(false);
   const [complete, setComplete] = useState(false);

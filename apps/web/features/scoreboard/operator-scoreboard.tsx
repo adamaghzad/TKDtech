@@ -1,7 +1,8 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ChevronLeft, CircleStop, Clock3, ExternalLink, History, Keyboard, Minus, Pause, Play, Plus, QrCode, Radio, RotateCcw, ShieldAlert, Stethoscope, Undo2, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, ChevronLeft, CircleStop, Clock3, ExternalLink, History, Keyboard, Minus, Pause, Play, Plus, QrCode, Radio, RotateCcw, ShieldAlert, Stethoscope, Swords, Undo2, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
 import type { MatchCommand } from '../../../local-server/src/types';
 import type { MatchSnapshot, PointType, Side } from '@tkd/contracts';
 import { useMatchCloud } from '@/lib/use-match-cloud';
@@ -71,6 +72,7 @@ const proSoundButtons: ReadonlyArray<{ id: PreviewableProSound; label: string; s
 ];
 
 export function OperatorScoreboard({ matchId }: { matchId: string }) {
+  const router = useRouter();
   const { snapshot, remainingMs, connection, error, refresh, cloudConfigured } = useMatchCloud(matchId);
   const audio = useTimerAudio(snapshot, remainingMs);
   const events = useApi<EventRow[]>(`/api/v1/matches/${matchId}/events`);
@@ -112,6 +114,32 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
       setPending(false);
     }
   }, [events, matchId, refresh, snapshot, toast]);
+
+  const startNextGeneralBout = useCallback(async () => {
+    if (!snapshot) return;
+    setPending(true);
+    try {
+      const created = await post<{ matchId: string; matchNumber: string }>(
+        `/api/v1/tournaments/${snapshot.tournamentId}/general-matches`,
+        {
+          blueName: 'CHUNG',
+          redName: 'HONG',
+          blueCountryCode: snapshot.blue.countryCode || 'MAR',
+          redCountryCode: snapshot.red.countryCode || 'MAR',
+          categoryName: snapshot.categoryName || 'General Match',
+          matId: snapshot.matId ?? undefined,
+          previousMatchId: snapshot.matchId,
+          carryOverDevices: true,
+        },
+      );
+      toast(`Match #${created.matchNumber} ready`, 'Next Chung vs Hong bout created (connected judges carried over).');
+      router.push(`/scoreboard/${created.matchId}`);
+    } catch (err) {
+      toast('Could not create next bout', (err as Error).message, 'error');
+    } finally {
+      setPending(false);
+    }
+  }, [router, snapshot, toast]);
 
   const scoringOpen = snapshot ? ['IN_PROGRESS', 'PAUSED', 'GOLDEN_POINT'].includes(snapshot.state) : false;
   const canStart = snapshot ? ['READY', 'CALLED'].includes(snapshot.state) : false;
@@ -331,6 +359,16 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
           <Button variant={soundDeckOpen ? 'default' : 'secondary'} data-testid="toggle-sound-deck" onClick={() => setSoundDeckOpen(open => !open)}>
             <Radio /> Pro FX
           </Button>
+          {snapshot.phase === 'GENERAL' && (
+            <Button
+              variant={['COMPLETED', 'WALKOVER', 'DISQUALIFIED'].includes(snapshot.state) ? 'default' : 'secondary'}
+              disabled={pending}
+              data-testid="next-general-match"
+              onClick={() => void startNextGeneralBout()}
+            >
+              <Swords /> Next Chung vs Hong
+            </Button>
+          )}
           <Button variant="secondary" onClick={() => setPairing(true)}>
             <QrCode /> Pair devices <Keycap token={kb.OPEN_PAIRING} enabled={kbOn} />
           </Button>
