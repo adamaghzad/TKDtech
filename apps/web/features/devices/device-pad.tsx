@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Loading } from "@/components/ui/states";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { flagEmoji, formatTime, titleCase } from "@/lib/utils";
+import { cn, flagEmoji, formatTime, isRoundClosingSeconds, titleCase } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import {
   HeadguardIcon,
@@ -232,7 +232,7 @@ function DeviceHeader({
             {snapshot.blueScore}
           </p>
         </div>
-        <div className="rounded-lg bg-timer px-4 py-2 text-center text-black">
+        <div className={cn("rounded-lg px-4 py-2 text-center transition-colors", isRoundClosingSeconds(snapshot.timer.kind, remainingMs) ? "bg-[#e60019] text-white" : "bg-timer text-black")}>
           <p className="numeric text-3xl font-black">
             {formatTime(remainingMs)}
           </p>

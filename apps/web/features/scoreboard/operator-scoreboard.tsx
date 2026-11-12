@@ -10,7 +10,7 @@ import type { PreviewableProSound } from '@/lib/pro-arena-synth';
 import { openPublicTv } from '@/lib/public-tv';
 import { useApi } from '@/lib/use-api';
 import { post } from '@/lib/api';
-import { formatTime, titleCase } from '@/lib/utils';
+import { formatTime, isRoundClosingSeconds, titleCase } from '@/lib/utils';
 import { ScoreboardView } from './scoreboard-view';
 import { VideoReviewManager } from './video-review-manager';
 import { PairingManager } from './pairing-manager';
@@ -375,7 +375,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
               <CardTitle className="flex items-center gap-2">
                 <Clock3 className="size-4 text-primary" /> Time control
               </CardTitle>
-              <span className="numeric text-2xl font-bold">{formatTime(remainingMs)}</span>
+              <span className={`numeric rounded-md px-2.5 py-0.5 text-2xl font-bold transition-colors ${isRoundClosingSeconds(snapshot.timer.kind, remainingMs) ? 'bg-[#e60019] text-white' : ''}`}>{formatTime(remainingMs)}</span>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
