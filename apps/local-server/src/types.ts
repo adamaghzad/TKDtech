@@ -26,7 +26,7 @@ export interface MatchJoinedRow extends MatchRow {
 export interface SessionContext { user: AuthUser; token?: string }
 export interface CommandContext { actor: Actor; expectedVersion?: number; reason?: string; idempotencyKey?: string }
 // TIMER_EXPIRED, HOLD_FOR_SUPERIORITY, and EVALUATE_POINT_GAP are internal; the public command schema does not accept them.
-export type TimerCommand = 'START'|'PAUSE'|'RESUME'|'RESET_TIMER'|'NEXT_ROUND'|'PREVIOUS_ROUND'|'SCORE'|'GAM_JEOM'|'MEDICAL_TIMEOUT'|'VIDEO_REVIEW'|'END_REVIEW'|'ROUND_SUPERIORITY'|'COMPLETE'|'WALKOVER'|'UNDO'|'PUBLIC_WAITING'|'TIMER_EXPIRED'|'HOLD_FOR_SUPERIORITY'|'EVALUATE_POINT_GAP';
+export type TimerCommand = 'START'|'PAUSE'|'RESUME'|'RESET_TIMER'|'NEXT_ROUND'|'PREVIOUS_ROUND'|'SCORE'|'GAM_JEOM'|'CANCEL_SCORE_WITH_GAM_JEOM'|'MEDICAL_TIMEOUT'|'VIDEO_REVIEW'|'END_REVIEW'|'ROUND_SUPERIORITY'|'COMPLETE'|'WALKOVER'|'UNDO'|'PUBLIC_WAITING'|'TIMER_EXPIRED'|'HOLD_FOR_SUPERIORITY'|'EVALUATE_POINT_GAP';
 export type ReviewOutcome = 'ACCEPTED' | 'REJECTED';
 export type ReviewCorrectionKind = 'GAM_JEOM' | 'POINTS';
 export interface MatchCommand {

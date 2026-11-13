@@ -93,7 +93,7 @@ export interface ResultRound {
 }
 export interface MatchResult {
   winner: Side | null;
-  decisionMethod: 'ROUND_WINS' | 'TOTAL_POINTS' | 'DISQUALIFICATION' | 'GOLDEN_POINT' | 'POINT_GAP' | 'UNRESOLVED_TIE';
+  decisionMethod: 'ROUND_WINS' | 'TOTAL_POINTS' | 'DISQUALIFICATION' | 'PUN' | 'GOLDEN_POINT' | 'POINT_GAP' | 'UNRESOLVED_TIE';
   blueRoundWins: number;
   redRoundWins: number;
   reason: string;
@@ -123,15 +123,29 @@ export function matchPointGapLeader(ruleset: Ruleset, round: number, blueScore: 
 }
 
 export function determineMatchResult(rounds: readonly ResultRound[], ruleset: Ruleset): MatchResult {
-  const blueDisqualified = rounds.reduce((sum, round) => sum + round.bluePenalties, 0) >= ruleset.disqualificationThreshold;
-  const redDisqualified = rounds.reduce((sum, round) => sum + round.redPenalties, 0) >= ruleset.disqualificationThreshold;
-  if (blueDisqualified || redDisqualified) {
-    if (blueDisqualified && redDisqualified) return { winner: null, decisionMethod: 'UNRESOLVED_TIE', blueRoundWins: 0, redRoundWins: 0, reason: 'Both athletes reached the disqualification threshold; authorized review is required.' };
-    return { winner: blueDisqualified ? 'RED' : 'BLUE', decisionMethod: 'DISQUALIFICATION', blueRoundWins: 0, redRoundWins: 0, reason: 'Configured penalty threshold reached.' };
+  if (ruleset.resultValidation === 'TOTAL_POINTS') {
+    const blueDisqualified = rounds.reduce((sum, round) => sum + round.bluePenalties, 0) >= ruleset.disqualificationThreshold;
+    const redDisqualified = rounds.reduce((sum, round) => sum + round.redPenalties, 0) >= ruleset.disqualificationThreshold;
+    if (blueDisqualified || redDisqualified) {
+      if (blueDisqualified && redDisqualified) return { winner: null, decisionMethod: 'UNRESOLVED_TIE', blueRoundWins: 0, redRoundWins: 0, reason: 'Both athletes reached the disqualification threshold; authorized review is required.' };
+      return { winner: blueDisqualified ? 'RED' : 'BLUE', decisionMethod: 'DISQUALIFICATION', blueRoundWins: 0, redRoundWins: 0, reason: 'Configured penalty threshold reached.' };
+    }
   }
   let blueRoundWins = 0; let redRoundWins = 0;
   for (const round of rounds) {
-    const roundWinner = round.winner ?? (round.blueScore === round.redScore ? null : round.blueScore > round.redScore ? 'BLUE' : 'RED');
+    let roundWinner: Side | null = round.winner ?? null;
+    if (!roundWinner && ruleset.resultValidation === 'ROUND_WINS') {
+      const bluePun = round.bluePenalties >= ruleset.disqualificationThreshold;
+      const redPun = round.redPenalties >= ruleset.disqualificationThreshold;
+      if (bluePun && redPun) {
+        return { winner: null, decisionMethod: 'UNRESOLVED_TIE', blueRoundWins, redRoundWins, reason: 'Both athletes reached the per-round Gam-Jeom limit; authorized review is required.' };
+      }
+      if (bluePun) roundWinner = 'RED';
+      else if (redPun) roundWinner = 'BLUE';
+    }
+    if (!roundWinner) {
+      roundWinner = round.blueScore === round.redScore ? null : round.blueScore > round.redScore ? 'BLUE' : 'RED';
+    }
     if (roundWinner === 'BLUE') blueRoundWins++;
     else if (roundWinner === 'RED') redRoundWins++;
   }

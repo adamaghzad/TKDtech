@@ -106,7 +106,7 @@ export function ScoringActivityRail({ side, activity, gamJeom }: { side: Side; a
 
     <div
       data-testid={`${testSide}-gam-jeom`}
-      title="Cumulative Gam-Jeom penalties"
+      title="Round Gam-Jeom penalties (5 in one round = PUN round loss)"
       className="shrink-0 border-t border-timer/35 bg-black/15 px-[6%] py-[7%] text-center"
     >
       <p className="text-[clamp(.36rem,.52vw,.62rem)] font-black uppercase tracking-[.14em] text-timer/75">Gam-Jeom</p>

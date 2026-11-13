@@ -237,4 +237,69 @@ describe('general match (Chung vs Hong)', () => {
     expect(waitingOff.winner).toBe('RED');
     expect(waitingOff.publicWaiting).toBe(false);
   });
+
+  it('enforces WT Best-of-3 Gam-Jeom rules: +1 opponent point, 5 Gam-Jeom per round = PUN round loss (resets next round), and Annulation des points + Gam-Jeom', () => {
+    const { repository, matches, actor, tournamentId } = createFixture();
+    const created = repository.createGeneralMatch(actor, tournamentId, { rounds: 3 });
+
+    matches.execute(actor, created.matchId, { type: 'START' });
+
+    // 1. Annulation des points: Blue scores +3 Head Kick while fouling -> cancelled (-3 Blue) + Gam-Jeom on Blue (+1 Red)
+    const afterKick = matches.execute(actor, created.matchId, { type: 'SCORE', side: 'BLUE', pointType: 'HEAD_KICK' });
+    expect(afterKick.rounds[0]).toMatchObject({ blueScore: 3, redScore: 0, bluePenalties: 0 });
+    expect(afterKick.scoringActivity.blue.headHits).toBe(1);
+
+    const afterFoulCancel = matches.execute(actor, created.matchId, {
+      type: 'CANCEL_SCORE_WITH_GAM_JEOM',
+      side: 'BLUE',
+    });
+    expect(afterFoulCancel.rounds[0]).toMatchObject({ blueScore: 0, redScore: 1, bluePenalties: 1 });
+    expect(afterFoulCancel.blueScore).toBe(0);
+    expect(afterFoulCancel.redScore).toBe(1);
+    expect(afterFoulCancel.scoringActivity.blue.headHits).toBe(0);
+
+    // Rejects cancelling when Red has no scored points in this round
+    expect(() =>
+      matches.execute(actor, created.matchId, { type: 'CANCEL_SCORE_WITH_GAM_JEOM', side: 'RED' }),
+    ).toThrow(/no active scored point/i);
+
+    // 2. Blue leads 6-4 on points in Round 1, then commits 5th Gam-Jeom in Round 1 -> loses ONLY Round 1 by PUN!
+    matches.execute(actor, created.matchId, { type: 'SCORE', side: 'BLUE', pointType: 'TURNING_HEAD_KICK' });
+    matches.execute(actor, created.matchId, { type: 'GAM_JEOM', side: 'BLUE' }); // GJ 2
+    matches.execute(actor, created.matchId, { type: 'GAM_JEOM', side: 'BLUE' }); // GJ 3
+    matches.execute(actor, created.matchId, { type: 'GAM_JEOM', side: 'BLUE' }); // GJ 4
+    const endR1ByPun = matches.execute(actor, created.matchId, { type: 'GAM_JEOM', side: 'BLUE' }); // GJ 5 in R1!
+    expect(endR1ByPun.state).toBe('ROUND_BREAK');
+    expect(endR1ByPun.currentRound).toBe(2);
+    expect(endR1ByPun.winner).toBeNull();
+    expect(endR1ByPun.rounds[0]).toMatchObject({
+      blueScore: 6,
+      redScore: 5,
+      bluePenalties: 5,
+      winner: 'RED',
+      decisionMethod: 'PUN',
+    });
+
+    // 3. Round 2 starts at 0-0 penalties: 4 Gam-Jeom in Round 2 (9 cumulative) does NOT end Round 2 or disqualify Blue
+    const r2Live = matches.execute(actor, created.matchId, { type: 'RESUME' });
+    expect(r2Live.rounds[1]).toMatchObject({ blueScore: 0, redScore: 0, bluePenalties: 0, redPenalties: 0 });
+    for (let i = 1; i <= 4; i++) {
+      const s = matches.execute(actor, created.matchId, { type: 'GAM_JEOM', side: 'BLUE' });
+      expect(s.state).toBe('IN_PROGRESS');
+      expect(s.rounds[1]?.bluePenalties).toBe(i);
+    }
+
+    // 5th Gam-Jeom in Round 2 ends Round 2 by PUN -> Red reaches 2 round wins (0-2) and wins the match!
+    const matchWon = matches.execute(actor, created.matchId, { type: 'GAM_JEOM', side: 'BLUE' });
+    expect(matchWon.state).toBe('COMPLETED');
+    expect(matchWon.winner).toBe('RED');
+    expect(matchWon.decisionMethod).toBe('ROUND_WINS');
+    expect(matchWon.rounds[1]).toMatchObject({
+      blueScore: 0,
+      redScore: 5,
+      bluePenalties: 5,
+      winner: 'RED',
+      decisionMethod: 'PUN',
+    });
+  });
 });

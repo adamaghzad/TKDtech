@@ -700,7 +700,29 @@ function RefereePad({ session, token, onMatchChange }: { session: Session; token
               />
               <p className="mt-2 text-sm font-bold">Gam-Jeom {side}</p>
               <p className="mt-1 text-[10px] text-muted">
-                +1 point to opponent
+                +1 pt opponent · 5 in round = PUN
+              </p>
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {(["BLUE", "RED"] as const).map((side) => (
+            <button
+              key={`cancel-gj-${side}`}
+              disabled={
+                pending ||
+                !["IN_PROGRESS", "PAUSED", "GOLDEN_POINT"].includes(
+                  snapshot.state,
+                )
+              }
+              onClick={() => void command("CANCEL_SCORE_WITH_GAM_JEOM", side)}
+              className="min-h-20 rounded-xl border border-timer/50 bg-timer/10 p-3 text-left disabled:opacity-30"
+            >
+              <p className="text-xs font-black uppercase text-timer">
+                Annuler Pt + GJ ({side})
+              </p>
+              <p className="mt-1 text-[10px] text-muted">
+                Cancels {side} last score + Gam-Jeom (+1 opponent)
               </p>
             </button>
           ))}

@@ -15,6 +15,16 @@ describe('penalties and result validation',()=>{
   it('prevents an unresolved tie from fabricating a winner',()=>{const result=determineMatchResult([{number:1,blueScore:2,redScore:2,bluePenalties:0,redPenalties:0}],{...ruleset,tieBreak:'NONE'});expect(result.winner).toBeNull();expect(result.decisionMethod).toBe('UNRESOLVED_TIE');});
   it('counts the officials’ superiority winner without changing equal round points',()=>{const result=determineMatchResult([{number:1,blueScore:7,redScore:7,bluePenalties:0,redPenalties:0,winner:'RED',decisionMethod:'SUPERIORITY'}],ruleset);expect(result).toMatchObject({winner:'RED',decisionMethod:'ROUND_WINS',blueRoundWins:0,redRoundWins:1});});
   it('uses configured round wins and Golden Point policy',()=>{const rounds=[{number:1,blueScore:2,redScore:1,bluePenalties:0,redPenalties:0},{number:2,blueScore:1,redScore:3,bluePenalties:0,redPenalties:0},{number:3,blueScore:0,redScore:0,bluePenalties:0,redPenalties:0,goldenPointWinner:'RED' as const}];expect(determineMatchResult(rounds,ruleset)).toMatchObject({winner:'RED',decisionMethod:'GOLDEN_POINT'});});
-  it('applies disqualification threshold',()=>{const result=determineMatchResult([{number:1,blueScore:0,redScore:0,bluePenalties:5,redPenalties:0}],ruleset);expect(result).toMatchObject({winner:'RED',decisionMethod:'DISQUALIFICATION'});});
+  it('awards per-round PUN in Best-of-3 without disqualifying across cumulative rounds, and keeps cumulative DQ in TOTAL_POINTS',()=>{
+    const punRound=determineMatchResult([{number:1,blueScore:10,redScore:5,bluePenalties:5,redPenalties:0}],ruleset);
+    expect(punRound).toMatchObject({winner:'RED',decisionMethod:'ROUND_WINS',blueRoundWins:0,redRoundWins:1});
+    const cumulativeAcrossRounds=determineMatchResult([
+      {number:1,blueScore:8,redScore:4,bluePenalties:4,redPenalties:0},
+      {number:2,blueScore:7,redScore:4,bluePenalties:4,redPenalties:0}
+    ],ruleset);
+    expect(cumulativeAcrossRounds).toMatchObject({winner:'BLUE',decisionMethod:'ROUND_WINS',blueRoundWins:2,redRoundWins:0});
+    const legacyTotalPoints=determineMatchResult([{number:1,blueScore:0,redScore:0,bluePenalties:5,redPenalties:0}],{...ruleset,resultValidation:'TOTAL_POINTS'});
+    expect(legacyTotalPoints).toMatchObject({winner:'RED',decisionMethod:'DISQUALIFICATION'});
+  });
 });
 describe('authoritative timer math',()=>{it('derives remaining time from timestamps and reconciles pause/reset',()=>{const timer=resetTimer({remainingMs:0,running:false,authoritativeAt:0,kind:'ROUND'},120000,1000);const running=startTimer(timer,1000);expect(remainingAt(running,31000)).toBe(90000);const paused=pauseTimer(running,31000);expect(paused).toMatchObject({remainingMs:90000,running:false});expect(remainingAt(paused,90000)).toBe(90000);});});

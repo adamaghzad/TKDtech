@@ -292,6 +292,9 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
         case 'BLUE_GAM_JEOM':
           gamJeomOrUndo('BLUE');
           break;
+        case 'BLUE_CANCEL_SCORE_GAM_JEOM':
+          if (scoringOpen) void execute('CANCEL_SCORE_WITH_GAM_JEOM', 'BLUE');
+          break;
         case 'RED_PUNCH':
           scoreOrUndo('RED', 'BODY_PUNCH');
           break;
@@ -312,6 +315,9 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
           break;
         case 'RED_GAM_JEOM':
           gamJeomOrUndo('RED');
+          break;
+        case 'RED_CANCEL_SCORE_GAM_JEOM':
+          if (scoringOpen) void execute('CANCEL_SCORE_WITH_GAM_JEOM', 'RED');
           break;
         case 'VIDEO_REVIEW_BLUE':
           if (canRequestReview) void execute('VIDEO_REVIEW', 'BLUE');
@@ -507,14 +513,18 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
             {(['BLUE', 'RED'] as const).map((side) => {
               const athlete = side === 'BLUE' ? snapshot.blue : snapshot.red;
               const gamJeomKey = side === 'BLUE' ? kb.BLUE_GAM_JEOM : kb.RED_GAM_JEOM;
+              const foulCancelKey = side === 'BLUE' ? kb.BLUE_CANCEL_SCORE_GAM_JEOM : kb.RED_CANCEL_SCORE_GAM_JEOM;
               const techKey = side === 'BLUE' ? kb.BLUE_TECHNICAL : kb.RED_TECHNICAL;
+              const roundScore = side === 'BLUE' ? (currentRound?.blueScore ?? 0) : (currentRound?.redScore ?? 0);
+              const roundPenalties = side === 'BLUE' ? (currentRound?.bluePenalties ?? 0) : (currentRound?.redPenalties ?? 0);
               return (
                 <Card key={side} className={side === 'BLUE' ? 'border-blue/40' : 'border-red/40'}>
                   <CardHeader className={side === 'BLUE' ? 'bg-blue/10' : 'bg-red/10'}>
-                    <CardTitle>
-                      <span className={side === 'BLUE' ? 'text-[#8baeff]' : 'text-[#ff8b96]'}>{side}</span> · {athlete.name}
+                    <CardTitle className="flex items-center gap-2">
+                      <span><span className={side === 'BLUE' ? 'text-[#8baeff]' : 'text-[#ff8b96]'}>{side}</span> · {athlete.name}</span>
+                      <Badge tone={roundPenalties >= 4 ? 'yellow' : 'neutral'}>GJ {roundPenalties}/5</Badge>
                     </CardTitle>
-                    <span className="numeric text-2xl font-black">{side === 'BLUE' ? snapshot.blueScore : snapshot.redScore}</span>
+                    <span className="numeric text-2xl font-black">{roundScore}</span>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
@@ -541,7 +551,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                           disabled={pending || !scoringOpen}
                           onClick={() => void (pointMode === 'ADD' ? execute('GAM_JEOM', side) : setConfirm('UNDO'))}
                           className={`relative flex h-16 flex-col items-center justify-center rounded-lg px-1 text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue/80 hover:bg-blue' : 'bg-red/80 hover:bg-red'}`}
-                          title={pointMode === 'ADD' ? 'Gam-Jeom' : 'Cancel last scoring event'}
+                          title={pointMode === 'ADD' ? 'Gam-Jeom (+1 pt opponent; 5 in round = PUN round loss)' : 'Cancel last scoring event'}
                         >
                           <ShieldAlert className="size-4" />
                           <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-80">{pointMode === 'ADD' ? 'Gam-Jeom' : 'Cancel'}</span>
@@ -560,8 +570,8 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                         </button>
                       </div>
 
-                      {/* Row 2: Technical point + Cancel point */}
-                      <div className="grid grid-cols-2 gap-1.5">
+                      {/* Row 2: Technical point + Annuler Pt + Gam-Jeom (foul during score) + Cancel point */}
+                      <div className="grid grid-cols-3 gap-1.5">
                         <button
                           key="technical"
                           disabled={pending || !scoringOpen}
@@ -574,6 +584,20 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                             <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-80">{pointMode === 'ADD' ? 'Technical' : 'Cancel'}</span>
                           </div>
                           <Keycap token={techKey} enabled={kbOn} />
+                        </button>
+                        <button
+                          key="cancel-score-gam-jeom"
+                          data-testid={`${side.toLowerCase()}-cancel-score-gam-jeom`}
+                          disabled={pending || !scoringOpen}
+                          onClick={() => void execute('CANCEL_SCORE_WITH_GAM_JEOM', side)}
+                          className="flex h-14 items-center justify-center gap-1.5 rounded-lg border-2 border-timer/60 bg-timer/15 px-1.5 text-timer transition hover:bg-timer/25 disabled:cursor-not-allowed disabled:opacity-30"
+                          title={`Score annulé + Gam-Jeom: cancels ${side === 'BLUE' ? 'Chung' : 'Hong'}'s last point in this round and awards Gam-Jeom (+1 pt to opponent)`}
+                        >
+                          <div className="flex flex-col items-center text-center">
+                            <span className="text-[10px] font-black uppercase leading-tight">Annuler Pt + GJ</span>
+                            <span className="mt-0.5 text-[7px] uppercase leading-3 text-white/80">-Pt · +1 Adv</span>
+                          </div>
+                          <Keycap token={foulCancelKey} enabled={kbOn} />
                         </button>
                         <button
                           key="cancel"
@@ -692,6 +716,11 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
               {displayRound?.decisionMethod === 'SUPERIORITY' && (
                 <p className="col-span-2 rounded-lg bg-timer/10 p-2 text-[10px] font-bold text-timer">
                   {displayRound.winner} won this tied round by superiority.
+                </p>
+              )}
+              {displayRound?.decisionMethod === 'PUN' && (
+                <p className="col-span-2 rounded-lg bg-timer/10 p-2 text-[10px] font-bold text-timer">
+                  {displayRound.winner} won this round by PUN (Punitive Declaration · 5 Gam-Jeom).
                 </p>
               )}
             </CardContent>
