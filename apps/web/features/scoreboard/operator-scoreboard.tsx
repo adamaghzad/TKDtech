@@ -182,7 +182,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
     }
   }, [router, snapshot, toast]);
 
-  const scoringOpen = snapshot ? ['IN_PROGRESS', 'PAUSED', 'GOLDEN_POINT'].includes(snapshot.state) : false;
+  const scoringOpen = snapshot ? ['IN_PROGRESS', 'PAUSED', 'GOLDEN_POINT'].includes(snapshot.state) && snapshot.timer.kind !== 'BREAK' : false;
   const canStart = snapshot ? ['READY', 'CALLED'].includes(snapshot.state) : false;
   const currentRound = snapshot?.rounds.find(round => round.number === snapshot.currentRound);
   const endedRound = snapshot?.timer.kind === 'BREAK' ? snapshot.rounds.find(round => round.number === snapshot.currentRound - 1 && round.endedAt !== null) : undefined;
@@ -250,7 +250,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
       const gamJeomOrUndo = (side: Side) => {
         if (!scoringOpen) return;
         if (pointMode === 'ADD') void execute('GAM_JEOM', side);
-        else setConfirm('UNDO');
+        else void execute('REMOVE_GAM_JEOM', side);
       };
 
       switch (action) {
@@ -292,9 +292,6 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
         case 'BLUE_GAM_JEOM':
           gamJeomOrUndo('BLUE');
           break;
-        case 'BLUE_CANCEL_SCORE_GAM_JEOM':
-          if (scoringOpen) void execute('CANCEL_SCORE_WITH_GAM_JEOM', 'BLUE');
-          break;
         case 'RED_PUNCH':
           scoreOrUndo('RED', 'BODY_PUNCH');
           break;
@@ -315,9 +312,6 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
           break;
         case 'RED_GAM_JEOM':
           gamJeomOrUndo('RED');
-          break;
-        case 'RED_CANCEL_SCORE_GAM_JEOM':
-          if (scoringOpen) void execute('CANCEL_SCORE_WITH_GAM_JEOM', 'RED');
           break;
         case 'VIDEO_REVIEW_BLUE':
           if (canRequestReview) void execute('VIDEO_REVIEW', 'BLUE');
@@ -512,8 +506,8 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
           <div className="grid gap-4 lg:grid-cols-2">
             {(['BLUE', 'RED'] as const).map((side) => {
               const athlete = side === 'BLUE' ? snapshot.blue : snapshot.red;
+              const opponentLabel = side === 'BLUE' ? 'RED' : 'BLUE';
               const gamJeomKey = side === 'BLUE' ? kb.BLUE_GAM_JEOM : kb.RED_GAM_JEOM;
-              const foulCancelKey = side === 'BLUE' ? kb.BLUE_CANCEL_SCORE_GAM_JEOM : kb.RED_CANCEL_SCORE_GAM_JEOM;
               const techKey = side === 'BLUE' ? kb.BLUE_TECHNICAL : kb.RED_TECHNICAL;
               const roundScore = side === 'BLUE' ? (currentRound?.blueScore ?? 0) : (currentRound?.redScore ?? 0);
               const roundPenalties = side === 'BLUE' ? (currentRound?.bluePenalties ?? 0) : (currentRound?.redPenalties ?? 0);
@@ -548,13 +542,14 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                         })}
                         <button
                           key="gam-jeom"
-                          disabled={pending || !scoringOpen}
-                          onClick={() => void (pointMode === 'ADD' ? execute('GAM_JEOM', side) : setConfirm('UNDO'))}
-                          className={`relative flex h-16 flex-col items-center justify-center rounded-lg px-1 text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${side === 'BLUE' ? 'bg-blue/80 hover:bg-blue' : 'bg-red/80 hover:bg-red'}`}
-                          title={pointMode === 'ADD' ? 'Gam-Jeom (+1 pt opponent; 5 in round = PUN round loss)' : 'Cancel last scoring event'}
+                          data-testid={`${side.toLowerCase()}-gam-jeom-button`}
+                          disabled={pending || !scoringOpen || (pointMode === 'REMOVE' && roundPenalties < 1)}
+                          onClick={() => void (pointMode === 'ADD' ? execute('GAM_JEOM', side) : execute('REMOVE_GAM_JEOM', side))}
+                          className={`relative flex h-16 flex-col items-center justify-center rounded-lg px-1 text-white transition disabled:cursor-not-allowed disabled:opacity-30 ${pointMode === 'REMOVE' ? 'border-2 border-timer/70 bg-timer/20 text-timer hover:bg-timer/30' : side === 'BLUE' ? 'bg-blue/80 hover:bg-blue' : 'bg-red/80 hover:bg-red'}`}
+                          title={pointMode === 'ADD' ? `${side} +1 Gam-Jeom & ${opponentLabel} +1 point (5 in 1 round = PUN round loss)` : `Remove 1 Gam-Jeom from ${side} (-1 point from ${opponentLabel})`}
                         >
                           <ShieldAlert className="size-4" />
-                          <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-80">{pointMode === 'ADD' ? 'Gam-Jeom' : 'Cancel'}</span>
+                          <span className="mt-0.5 text-[7px] font-bold uppercase leading-3 opacity-90">{pointMode === 'ADD' ? `GJ (+1 ${opponentLabel})` : '-1 GJ'}</span>
                           <Keycap token={gamJeomKey} enabled={kbOn} className="mt-1 px-1 py-0 text-[9px]" />
                         </button>
                         <button
@@ -562,7 +557,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                           disabled={pending}
                           onClick={() => setPointMode(pointMode === 'ADD' ? 'REMOVE' : 'ADD')}
                           className={`relative flex h-16 flex-col items-center justify-center rounded-lg border-2 px-1 transition disabled:cursor-not-allowed disabled:opacity-30 ${pointMode === 'ADD' ? 'bg-white/[.1] border-primary/50 text-primary hover:bg-white/[.2]' : 'bg-white/[.1] border-red/50 text-red hover:bg-red/10'}`}
-                          title={pointMode === 'ADD' ? 'Switch to remove points' : 'Switch to add points'}
+                          title={pointMode === 'ADD' ? 'Switch to remove points / Gam-Jeom' : 'Switch to add points / Gam-Jeom'}
                         >
                           {pointMode === 'ADD' ? <Minus className="size-4" /> : <Plus className="size-4" />}
                           <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-80">{pointMode === 'ADD' ? 'Mode +' : 'Mode -'}</span>
@@ -570,8 +565,8 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                         </button>
                       </div>
 
-                      {/* Row 2: Technical point + Annuler Pt + Gam-Jeom (foul during score) + Cancel point */}
-                      <div className="grid grid-cols-3 gap-1.5">
+                      {/* Row 2: Technical point + Cancel point */}
+                      <div className="grid grid-cols-2 gap-1.5">
                         <button
                           key="technical"
                           disabled={pending || !scoringOpen}
@@ -584,20 +579,6 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                             <span className="mt-0.5 text-[7px] uppercase leading-3 opacity-80">{pointMode === 'ADD' ? 'Technical' : 'Cancel'}</span>
                           </div>
                           <Keycap token={techKey} enabled={kbOn} />
-                        </button>
-                        <button
-                          key="cancel-score-gam-jeom"
-                          data-testid={`${side.toLowerCase()}-cancel-score-gam-jeom`}
-                          disabled={pending || !scoringOpen}
-                          onClick={() => void execute('CANCEL_SCORE_WITH_GAM_JEOM', side)}
-                          className="flex h-14 items-center justify-center gap-1.5 rounded-lg border-2 border-timer/60 bg-timer/15 px-1.5 text-timer transition hover:bg-timer/25 disabled:cursor-not-allowed disabled:opacity-30"
-                          title={`Score annulé + Gam-Jeom: cancels ${side === 'BLUE' ? 'Chung' : 'Hong'}'s last point in this round and awards Gam-Jeom (+1 pt to opponent)`}
-                        >
-                          <div className="flex flex-col items-center text-center">
-                            <span className="text-[10px] font-black uppercase leading-tight">Annuler Pt + GJ</span>
-                            <span className="mt-0.5 text-[7px] uppercase leading-3 text-white/80">-Pt · +1 Adv</span>
-                          </div>
-                          <Keycap token={foulCancelKey} enabled={kbOn} />
                         </button>
                         <button
                           key="cancel"
@@ -720,7 +701,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
               )}
               {displayRound?.decisionMethod === 'PUN' && (
                 <p className="col-span-2 rounded-lg bg-timer/10 p-2 text-[10px] font-bold text-timer">
-                  {displayRound.winner} won this round by PUN (Punitive Declaration · 5 Gam-Jeom).
+                  {displayRound.winner} won Round {displayRound.number} by PUN (5 Gam-Jeom) · Next round Gam-Jeom reset to 0.
                 </p>
               )}
             </CardContent>

@@ -21,6 +21,7 @@ import type {
   Side,
 } from "@tkd/contracts";
 import { api, post } from "@/lib/api";
+import { liveScoreboardScores } from "@/lib/match-result";
 import { createClientUuid } from "@/lib/uuid";
 import { useMatch } from "@/lib/use-match";
 import { BrandMark } from "@/components/brand";
@@ -208,6 +209,12 @@ function DeviceHeader({
   remainingMs: number;
   connection: string;
 }) {
+  const liveScores = liveScoreboardScores(snapshot);
+  const currentRoundRecord = snapshot.rounds.find(
+    (item) => item.number === snapshot.currentRound,
+  );
+  const blueRoundGj = currentRoundRecord?.bluePenalties ?? 0;
+  const redRoundGj = currentRoundRecord?.redPenalties ?? 0;
   return (
     <>
       <header className="flex items-center gap-3 border-b border-line/60 bg-sidebar px-4 py-3">
@@ -231,9 +238,14 @@ function DeviceHeader({
           <p className="truncate text-xs font-semibold text-[#8baeff]">
             {flagEmoji(snapshot.blue.countryCode)} {snapshot.blue.name}
           </p>
-          <p className="numeric mt-1 text-3xl font-black">
-            {snapshot.blueScore}
-          </p>
+          <div className="mt-1 flex items-baseline gap-2">
+            <p className="numeric text-3xl font-black">
+              {liveScores.blue}
+            </p>
+            <span className="numeric text-[10px] font-bold text-muted">
+              GJ {blueRoundGj}/5
+            </span>
+          </div>
         </div>
         <div className={cn("rounded-lg px-4 py-2 text-center transition-colors", isRoundClosingSeconds(snapshot.timer.kind, remainingMs) ? "bg-[#e60019] text-white" : "bg-timer text-black")}>
           <p className="numeric text-3xl font-black">
@@ -247,9 +259,14 @@ function DeviceHeader({
           <p className="truncate text-xs font-semibold text-[#ff8b96]">
             {snapshot.red.name} {flagEmoji(snapshot.red.countryCode)}
           </p>
-          <p className="numeric mt-1 text-3xl font-black">
-            {snapshot.redScore}
-          </p>
+          <div className="mt-1 flex items-baseline justify-end gap-2">
+            <span className="numeric text-[10px] font-bold text-muted">
+              GJ {redRoundGj}/5
+            </span>
+            <p className="numeric text-3xl font-black">
+              {liveScores.red}
+            </p>
+          </div>
         </div>
       </div>
     </>
@@ -681,51 +698,45 @@ function RefereePad({ session, token, onMatchChange }: { session: Session; token
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          {(["BLUE", "RED"] as const).map((side) => (
-            <button
-              key={side}
-              disabled={
-                pending ||
-                !["IN_PROGRESS", "PAUSED", "GOLDEN_POINT"].includes(
-                  snapshot.state,
-                )
-              }
-              onClick={() => void command("GAM_JEOM", side)}
-              className={`min-h-24 rounded-xl border p-4 text-left disabled:opacity-30 ${side === "BLUE" ? "border-blue/40 bg-blue/10" : "border-red/40 bg-red/10"}`}
-            >
-              <ShieldAlert
-                className={
-                  side === "BLUE" ? "text-[#8baeff]" : "text-[#ff8b96]"
+          {(["BLUE", "RED"] as const).map((side) => {
+            const opponent = side === "BLUE" ? "RED" : "BLUE";
+            const activeRound = snapshot.rounds.find(
+              (item) => item.number === snapshot.currentRound,
+            );
+            const roundGj =
+              side === "BLUE"
+                ? (activeRound?.bluePenalties ?? 0)
+                : (activeRound?.redPenalties ?? 0);
+            return (
+              <button
+                key={side}
+                disabled={
+                  pending ||
+                  snapshot.timer.kind === "BREAK" ||
+                  !["IN_PROGRESS", "PAUSED", "GOLDEN_POINT"].includes(
+                    snapshot.state,
+                  )
                 }
-              />
-              <p className="mt-2 text-sm font-bold">Gam-Jeom {side}</p>
-              <p className="mt-1 text-[10px] text-muted">
-                +1 pt opponent · 5 in round = PUN
-              </p>
-            </button>
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          {(["BLUE", "RED"] as const).map((side) => (
-            <button
-              key={`cancel-gj-${side}`}
-              disabled={
-                pending ||
-                !["IN_PROGRESS", "PAUSED", "GOLDEN_POINT"].includes(
-                  snapshot.state,
-                )
-              }
-              onClick={() => void command("CANCEL_SCORE_WITH_GAM_JEOM", side)}
-              className="min-h-20 rounded-xl border border-timer/50 bg-timer/10 p-3 text-left disabled:opacity-30"
-            >
-              <p className="text-xs font-black uppercase text-timer">
-                Annuler Pt + GJ ({side})
-              </p>
-              <p className="mt-1 text-[10px] text-muted">
-                Cancels {side} last score + Gam-Jeom (+1 opponent)
-              </p>
-            </button>
-          ))}
+                onClick={() => void command("GAM_JEOM", side)}
+                className={`min-h-24 rounded-xl border p-4 text-left disabled:opacity-30 ${side === "BLUE" ? "border-blue/40 bg-blue/10" : "border-red/40 bg-red/10"}`}
+              >
+                <div className="flex items-center justify-between">
+                  <ShieldAlert
+                    className={
+                      side === "BLUE" ? "text-[#8baeff]" : "text-[#ff8b96]"
+                    }
+                  />
+                  <Badge tone={roundGj >= 4 ? "yellow" : "neutral"}>
+                    GJ {roundGj}/5
+                  </Badge>
+                </div>
+                <p className="mt-2 text-sm font-bold">Gam-Jeom {side}</p>
+                <p className="mt-1 text-[10px] text-muted">
+                  +1 pt {opponent} · 5 in round = PUN
+                </p>
+              </button>
+            );
+          })}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Button

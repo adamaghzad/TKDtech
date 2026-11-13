@@ -46,7 +46,7 @@ export class MatchService {
     if(duplicate)return this.snapshot(matchId);
     const match=getMatchRow(this.db,matchId);this.repository.authorizeTournament(actor,match.tournament_id);
     if(!['SUPER_ADMIN','TOURNAMENT_ADMIN','MAT_OPERATOR','REFEREE'].includes(actor.role))throw new HttpError(403,'PERMISSION_DENIED','Match control permission required.');
-    if(actor.role==='REFEREE'&&!['START','PAUSE','RESUME','GAM_JEOM','CANCEL_SCORE_WITH_GAM_JEOM','MEDICAL_TIMEOUT','VIDEO_REVIEW','END_REVIEW','ROUND_SUPERIORITY','COMPLETE','PUBLIC_WAITING'].includes(command.type))throw new HttpError(403,'PERMISSION_DENIED','This referee action is not authorized.');
+    if(actor.role==='REFEREE'&&!['START','PAUSE','RESUME','GAM_JEOM','REMOVE_GAM_JEOM','CANCEL_SCORE_WITH_GAM_JEOM','MEDICAL_TIMEOUT','VIDEO_REVIEW','END_REVIEW','ROUND_SUPERIORITY','COMPLETE','PUBLIC_WAITING'].includes(command.type))throw new HttpError(403,'PERMISSION_DENIED','This referee action is not authorized.');
     if(actor.role==='REFEREE'&&(command.outcome||command.reviewCorrection||command.reviewAction||command.reviewPoints))throw new HttpError(403,'PERMISSION_DENIED','Only an authorized review operator can decide a review or apply its correction.');
     if(command.expectedVersion!=null&&command.expectedVersion!==match.version)throw new HttpError(409,'VERSION_CONFLICT',`Match version changed. Expected ${command.expectedVersion}, current ${match.version}. Refresh before retrying.`);
     const ruleset=this.ruleset(match.tournament_id);let eventType='timer.updated';let payload:Record<string,unknown>={command:command.type};let skipPersistence=false;
@@ -99,7 +99,9 @@ export class MatchService {
         }
         const timing=this.timing(current.category_id);
         if(endedRound<timing.rounds){
-          round=endedRound+1;transition('ROUND_BREAK');nextTimer=startTimer(resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now),now);
+          round=endedRound+1;
+          this.db.prepare('UPDATE match_rounds SET blue_penalties=0,red_penalties=0 WHERE match_id=? AND number=? AND started_at IS NULL').run(matchId,round);
+          transition('ROUND_BREAK');nextTimer=startTimer(resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now),now);
           return{punitiveDeclaration:true,previousRound:endedRound,round,automatic:true,roundPenalties,disqualificationThreshold:ruleset.disqualificationThreshold,roundResult};
         }
         const ended=this.db.prepare('SELECT winner_side FROM match_rounds WHERE match_id=? AND number<=? AND ended_at IS NOT NULL').all(matchId,endedRound) as Array<{winner_side:Side|null}>;
@@ -108,7 +110,7 @@ export class MatchService {
           winner=bWins>rWins?'BLUE':'RED';decision=timing.rounds===1?'PUN':'ROUND_WINS';transition('COMPLETED');nextTimer={...pauseTimer(nextTimer,now),holdReason:undefined};actualEnd=new Date(now).toISOString();
           return{punitiveDeclaration:true,previousRound:endedRound,round:endedRound,automatic:true,roundPenalties,disqualificationThreshold:ruleset.disqualificationThreshold,roundResult,winner,decisionMethod:decision};
         }
-        transition('PAUSED');nextTimer={...pauseTimer(nextTimer,now),holdReason:undefined};
+        transition('PAUSED');nextTimer={...pauseTimer(nextTimer,now),remainingMs:0,holdReason:undefined};
         return{punitiveDeclaration:true,previousRound:endedRound,round:endedRound,automatic:true,roundPenalties,disqualificationThreshold:ruleset.disqualificationThreshold,roundResult};
       };
       switch(command.type){
@@ -177,7 +179,7 @@ export class MatchService {
           round-=1;nextTimer={...pauseTimer(nextTimer,now),holdReason:undefined};eventType='match.round_correction';payload={...payload,round,reason:command.reason};break;
         }
         case 'SCORE': {
-          if(!['IN_PROGRESS','PAUSED','GOLDEN_POINT'].includes(state))throw new HttpError(409,'INVALID_STATE','Scoring is closed in the current match state.');
+          if(!['IN_PROGRESS','PAUSED','GOLDEN_POINT'].includes(state)||nextTimer.kind==='BREAK')throw new HttpError(409,'INVALID_STATE','Scoring is closed in the current match state.');
           if(!command.side||!command.pointType)throw new HttpError(400,'VALIDATION_ERROR','Side and configured point type are required.');
           const points=ruleset.points[command.pointType];if(!Number.isInteger(points))throw new HttpError(400,'INVALID_POINT_TYPE','Point type is not configured.');
           if(command.side==='BLUE')blueScore+=points;else redScore+=points;
@@ -185,7 +187,7 @@ export class MatchService {
           eventType='score.manual';payload={side:command.side,pointType:command.pointType,points,roundId:currentRound.id,round,undoable:true};break;
         }
         case 'GAM_JEOM': {
-          if(!['IN_PROGRESS','PAUSED','GOLDEN_POINT'].includes(state))throw new HttpError(409,'INVALID_STATE','Penalties are closed in the current match state.');
+          if(!['IN_PROGRESS','PAUSED','GOLDEN_POINT'].includes(state)||nextTimer.kind==='BREAK')throw new HttpError(409,'INVALID_STATE','Penalties are closed in the current match state.');
           if(!command.side)throw new HttpError(400,'VALIDATION_ERROR','Penalized side is required.');
           const appliedRound=round;
           const updated=applyGamJeom({number:round,blueScore:currentRound.blue_score,redScore:currentRound.red_score,bluePenalties:currentRound.blue_penalties,redPenalties:currentRound.red_penalties},command.side,ruleset);
@@ -195,8 +197,29 @@ export class MatchService {
           eventType='penalty.accepted';payload={side:command.side,points:ruleset.gamJeomOpponentPoints,roundId:currentRound.id,round:appliedRound,undoable:!thresholdDetails,...(thresholdDetails??{})};
           break;
         }
+        case 'REMOVE_GAM_JEOM': {
+          if(!['IN_PROGRESS','PAUSED','GOLDEN_POINT'].includes(state)||nextTimer.kind==='BREAK')throw new HttpError(409,'INVALID_STATE','Penalties are closed in the current match state.');
+          if(!command.side)throw new HttpError(400,'VALIDATION_ERROR','Penalized side is required.');
+          const sidePenalties=command.side==='BLUE'?currentRound.blue_penalties:currentRound.red_penalties;
+          if(sidePenalties<1)throw new HttpError(409,'NOTHING_TO_UNDO',`${command.side==='BLUE'?'Blue (Chung)':'Red (Hong)'} has no Gam-Jeom in Round ${round}.`);
+          const target=this.db.prepare(`SELECT event_id,payload_json FROM match_events WHERE match_id=? AND event_type='penalty.accepted' AND json_extract(payload_json,'$.side')=? AND json_extract(payload_json,'$.roundId')=? AND json_extract(payload_json,'$.undoable')=1 AND NOT EXISTS(SELECT 1 FROM match_events correction WHERE correction.match_id=match_events.match_id AND json_extract(correction.payload_json,'$.targetEventId')=match_events.event_id) ORDER BY sequence DESC LIMIT 1`).get(matchId,command.side,currentRound.id) as {event_id:string;payload_json:string}|undefined;
+          const original=target?JSON.parse(target.payload_json) as {side:Side;points:number;roundId:string}:{side:command.side,points:ruleset.gamJeomOpponentPoints,roundId:currentRound.id};
+          const deductPoints=original.points;
+          if(command.side==='BLUE'){
+            blueGam=Math.max(0,blueGam-1);
+            redScore=Math.max(0,redScore-deductPoints);
+            this.db.prepare('UPDATE match_rounds SET blue_penalties=MAX(0,blue_penalties-1),red_score=MAX(0,red_score-?) WHERE id=?').run(deductPoints,currentRound.id);
+          }else{
+            redGam=Math.max(0,redGam-1);
+            blueScore=Math.max(0,blueScore-deductPoints);
+            this.db.prepare('UPDATE match_rounds SET red_penalties=MAX(0,red_penalties-1),blue_score=MAX(0,blue_score-?) WHERE id=?').run(deductPoints,currentRound.id);
+          }
+          eventType='score.correction';
+          payload={...(target?{targetEventId:target.event_id}:{}),reason:command.reason||`Removed Gam-Jeom for ${command.side}`,original,round};
+          break;
+        }
         case 'CANCEL_SCORE_WITH_GAM_JEOM': {
-          if(!['IN_PROGRESS','PAUSED','GOLDEN_POINT'].includes(state))throw new HttpError(409,'INVALID_STATE','Score cancellation and penalties are closed in the current match state.');
+          if(!['IN_PROGRESS','PAUSED','GOLDEN_POINT'].includes(state)||nextTimer.kind==='BREAK')throw new HttpError(409,'INVALID_STATE','Score cancellation and penalties are closed in the current match state.');
           if(!command.side)throw new HttpError(400,'VALIDATION_ERROR','Fouling athlete side is required.');
           const target=this.db.prepare(`SELECT event_id,event_type,payload_json FROM match_events WHERE match_id=? AND event_type IN ('score.manual','score.accepted') AND json_extract(payload_json,'$.side')=? AND json_extract(payload_json,'$.roundId')=? AND json_extract(payload_json,'$.undoable')=1 AND NOT EXISTS(SELECT 1 FROM match_events correction WHERE correction.match_id=match_events.match_id AND json_extract(correction.payload_json,'$.targetEventId')=match_events.event_id) ORDER BY sequence DESC LIMIT 1`).get(matchId,command.side,currentRound.id) as {event_id:string;event_type:string;payload_json:string}|undefined;
           if(!target)throw new HttpError(409,'NOTHING_TO_CANCEL',`${command.side==='BLUE'?'Chung (Blue)':'Hong (Red)'} has no active scored point in Round ${round} to cancel.`);

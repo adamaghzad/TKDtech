@@ -11,7 +11,6 @@ export type OperatorActionId =
   | 'BLUE_TURNING_HEAD'
   | 'BLUE_TECHNICAL'
   | 'BLUE_GAM_JEOM'
-  | 'BLUE_CANCEL_SCORE_GAM_JEOM'
   | 'RED_PUNCH'
   | 'RED_BODY_KICK'
   | 'RED_HEAD_KICK'
@@ -19,7 +18,6 @@ export type OperatorActionId =
   | 'RED_TURNING_HEAD'
   | 'RED_TECHNICAL'
   | 'RED_GAM_JEOM'
-  | 'RED_CANCEL_SCORE_GAM_JEOM'
   | 'VIDEO_REVIEW_BLUE'
   | 'VIDEO_REVIEW_RED'
   | 'TOGGLE_POINT_MODE'
@@ -58,8 +56,7 @@ export const OPERATOR_ACTIONS: readonly OperatorActionMeta[] = [
   { id: 'BLUE_TURNING_BODY', group: 'BLUE', label: 'Blue +4 Turning Body', description: 'Awards +4 turning body kick to Chung', defaultKey: 'Digit4' },
   { id: 'BLUE_TURNING_HEAD', group: 'BLUE', label: 'Blue +6 Turning Head', description: 'Awards +6 turning head kick to Chung', defaultKey: 'Digit6' },
   { id: 'BLUE_TECHNICAL', group: 'BLUE', label: 'Blue +1 Technical', description: 'Awards +1 technical point to Chung', defaultKey: 'Key:T' },
-  { id: 'BLUE_GAM_JEOM', group: 'BLUE', label: 'Blue Gam-Jeom', description: 'Gives Gam-Jeom penalty to Chung (+1 opponent; 5 in round = PUN)', defaultKey: 'Key:G' },
-  { id: 'BLUE_CANCEL_SCORE_GAM_JEOM', group: 'BLUE', label: 'Blue Annuler Pt + Gam-Jeom', description: 'Cancels Chung last point in round + gives Gam-Jeom (+1 Hong)', defaultKey: 'Key:F' },
+  { id: 'BLUE_GAM_JEOM', group: 'BLUE', label: 'Blue Gam-Jeom', description: 'Blue +1 Gam-Jeom & Red +1 point (5 in round = PUN round loss)', defaultKey: 'Key:G' },
 
   // Hong / Red Scoring (Right hand + Numpad secondary keys)
   { id: 'RED_PUNCH', group: 'RED', label: 'Red +1 Punch', description: 'Awards +1 punch to Hong (also Numpad 1)', defaultKey: 'Key:U', secondaryKeys: ['Numpad1'] },
@@ -68,8 +65,7 @@ export const OPERATOR_ACTIONS: readonly OperatorActionMeta[] = [
   { id: 'RED_TURNING_BODY', group: 'RED', label: 'Red +4 Turning Body', description: 'Awards +4 turning body kick to Hong (also Numpad 4)', defaultKey: 'Key:P', secondaryKeys: ['Numpad4'] },
   { id: 'RED_TURNING_HEAD', group: 'RED', label: 'Red +6 Turning Head', description: 'Awards +6 turning head kick to Hong (also Numpad 6)', defaultKey: 'Key:L', secondaryKeys: ['Numpad6'] },
   { id: 'RED_TECHNICAL', group: 'RED', label: 'Red +1 Technical', description: 'Awards +1 technical point to Hong (also Numpad 0)', defaultKey: 'Key:Y', secondaryKeys: ['Numpad0'] },
-  { id: 'RED_GAM_JEOM', group: 'RED', label: 'Red Gam-Jeom', description: 'Gives Gam-Jeom penalty to Hong (+1 opponent; 5 in round = PUN)', defaultKey: 'Key:H', secondaryKeys: ['NumpadDecimal'] },
-  { id: 'RED_CANCEL_SCORE_GAM_JEOM', group: 'RED', label: 'Red Annuler Pt + Gam-Jeom', description: 'Cancels Hong last point in round + gives Gam-Jeom (+1 Chung)', defaultKey: 'Key:J', secondaryKeys: ['NumpadSubtract'] },
+  { id: 'RED_GAM_JEOM', group: 'RED', label: 'Red Gam-Jeom', description: 'Red +1 Gam-Jeom & Blue +1 point (5 in round = PUN round loss)', defaultKey: 'Key:H', secondaryKeys: ['NumpadDecimal'] },
 
   // Video Replay, Corrections, Completion & Utilities
   { id: 'VIDEO_REVIEW_BLUE', group: 'CONTROL', label: 'IVR — Chung / Blue', description: 'Requests Instant Video Replay for Blue & pauses timer', defaultKey: 'Key:V' },
