@@ -6,6 +6,7 @@ import { Play, Swords } from 'lucide-react';
 import type { Mat } from '@/lib/types';
 import { post } from '@/lib/api';
 import { Button, type ButtonProps } from '@/components/ui/button';
+import { CountryFlag, normalizeCountryCode } from '@/components/ui/country-flag';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/form';
 import { useToast } from '@/components/ui/toast';
@@ -79,8 +80,8 @@ export function GeneralMatchDialog({
         {
           blueName: blueName.trim() || 'CHUNG',
           redName: redName.trim() || 'HONG',
-          blueCountryCode: (blueCode.trim() || 'MAR').toUpperCase(),
-          redCountryCode: (redCode.trim() || 'MAR').toUpperCase(),
+          blueCountryCode: normalizeCountryCode(blueCode, 'MAR'),
+          redCountryCode: normalizeCountryCode(redCode, 'MAR'),
           categoryName: categoryName.trim() || 'General Match',
           rounds: Math.min(9, Math.max(1, Number(rounds) || 3)),
           roundDurationMs: Math.min(600, Math.max(5, Number(roundSec) || 120)) * 1000,
@@ -128,8 +129,28 @@ export function GeneralMatchDialog({
                   data-testid="general-blue-name"
                 />
               </Field>
-              <Field label="Country code (3 letters)">
-                <Input maxLength={3} value={blueCode} onChange={e => setBlueCode(e.target.value.toUpperCase())} placeholder="MAR" />
+              <Field label="Country code">
+                <div className="flex items-center gap-2">
+                  <CountryFlag code={blueCode} className="w-9 rounded-[3px] ring-1 ring-white/30 shadow-sm" />
+                  <Input maxLength={3} value={blueCode} onChange={e => setBlueCode(e.target.value.toUpperCase())} placeholder="MAR" />
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {(['MAR', 'TUN', 'ALG', 'FRA', 'ESP', 'KOR'] as const).map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setBlueCode(c)}
+                      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-bold transition ${
+                        normalizeCountryCode(blueCode, '') === c
+                          ? 'border-[#8baeff] bg-blue/30 text-white'
+                          : 'border-white/15 bg-black/25 text-white/70 hover:border-white/35 hover:text-white'
+                      }`}
+                    >
+                      <CountryFlag code={c} className="w-3.5 rounded-[1.5px]" />
+                      {c}
+                    </button>
+                  ))}
+                </div>
               </Field>
             </div>
             <div className="rounded-xl border border-red/40 bg-red/10 p-3 space-y-2.5">
@@ -142,8 +163,28 @@ export function GeneralMatchDialog({
                   data-testid="general-red-name"
                 />
               </Field>
-              <Field label="Country code (3 letters)">
-                <Input maxLength={3} value={redCode} onChange={e => setRedCode(e.target.value.toUpperCase())} placeholder="MAR" />
+              <Field label="Country code">
+                <div className="flex items-center gap-2">
+                  <CountryFlag code={redCode} className="w-9 rounded-[3px] ring-1 ring-white/30 shadow-sm" />
+                  <Input maxLength={3} value={redCode} onChange={e => setRedCode(e.target.value.toUpperCase())} placeholder="MAR" />
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {(['MAR', 'TUN', 'ALG', 'FRA', 'ESP', 'KOR'] as const).map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setRedCode(c)}
+                      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-bold transition ${
+                        normalizeCountryCode(redCode, '') === c
+                          ? 'border-[#ff8b96] bg-red/30 text-white'
+                          : 'border-white/15 bg-black/25 text-white/70 hover:border-white/35 hover:text-white'
+                      }`}
+                    >
+                      <CountryFlag code={c} className="w-3.5 rounded-[1.5px]" />
+                      {c}
+                    </button>
+                  ))}
+                </div>
               </Field>
             </div>
           </div>

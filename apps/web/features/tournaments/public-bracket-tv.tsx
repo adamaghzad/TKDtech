@@ -20,7 +20,8 @@ import {
 } from 'lucide-react';
 import type { Bracket } from '@tkd/domain';
 import { api } from '@/lib/api';
-import { cn, flagEmoji } from '@/lib/utils';
+import { CountryFlag } from '@/components/ui/country-flag';
+import { cn } from '@/lib/utils';
 import { ErrorState, Loading } from '@/components/ui/states';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import {
@@ -470,8 +471,9 @@ export function PublicBracketTv({
             <span className="text-[10px] font-black uppercase tracking-widest text-yellow-300">
               Champion
             </span>
-            <span className="text-sm font-black text-white">
-              {flagEmoji(stats.champion.countryCode)} {stats.champion.name}
+            <span className="flex items-center gap-2 text-sm font-black text-white">
+              <CountryFlag code={stats.champion.countryCode} className="w-6 rounded-[3px] ring-1 ring-white/40 shadow" />
+              <span>{stats.champion.name}</span>
             </span>
           </div>
         ) : brackets.length > 1 ? (

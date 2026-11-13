@@ -29,7 +29,8 @@ import { Button } from "@/components/ui/button";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Loading } from "@/components/ui/states";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { cn, flagEmoji, formatTime, isRoundClosingSeconds, titleCase } from "@/lib/utils";
+import { CountryFlag } from "@/components/ui/country-flag";
+import { cn, formatTime, isRoundClosingSeconds, titleCase } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import {
   HeadguardIcon,
@@ -235,8 +236,9 @@ function DeviceHeader({
       </header>
       <div className="grid grid-cols-[1fr_auto_1fr] items-center border-b border-line/60 bg-[#090e18] px-4 py-3">
         <div className="min-w-0">
-          <p className="truncate text-xs font-semibold text-[#8baeff]">
-            {flagEmoji(snapshot.blue.countryCode)} {snapshot.blue.name}
+          <p className="flex items-center gap-1.5 truncate text-xs font-semibold text-[#8baeff]">
+            <CountryFlag code={snapshot.blue.countryCode} className="w-4 rounded-[2px] ring-1 ring-white/30" />
+            <span className="truncate">{snapshot.blue.name}</span>
           </p>
           <div className="mt-1 flex items-baseline gap-2">
             <p className="numeric text-3xl font-black">
@@ -256,8 +258,9 @@ function DeviceHeader({
           </p>
         </div>
         <div className="min-w-0 text-right">
-          <p className="truncate text-xs font-semibold text-[#ff8b96]">
-            {snapshot.red.name} {flagEmoji(snapshot.red.countryCode)}
+          <p className="flex items-center justify-end gap-1.5 truncate text-xs font-semibold text-[#ff8b96]">
+            <span className="truncate">{snapshot.red.name}</span>
+            <CountryFlag code={snapshot.red.countryCode} className="w-4 rounded-[2px] ring-1 ring-white/30" />
           </p>
           <div className="mt-1 flex items-baseline justify-end gap-2">
             <span className="numeric text-[10px] font-bold text-muted">

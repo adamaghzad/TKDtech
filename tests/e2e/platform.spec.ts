@@ -170,13 +170,14 @@ test('Public TV opens a separate mat popup and supports clean fullscreen keyboar
  }finally{if(display)await display.close();}
 });
 
-test('result waiting shortcut toggles and an authoritative live state restores the scoreboard',async({page,browser})=>{
+test('result waiting shortcut toggles from operator control and an authoritative live state restores the scoreboard',async({page,browser})=>{
  await page.goto('/');await expect(page).toHaveURL(/\/dashboard/);const id=createWaitingMatch();setPointGapResultFixture(id);const resolved=await snapshot(page,id);const display=await browser.newPage({viewport:{width:1440,height:900}});
  try{
+  const waitingBtn=page.getByTestId('toggle-tv-waiting');await page.goto(`/scoreboard/${id}`);await expect(waitingBtn).toBeVisible();
   await display.goto(`/display/${id}`);const result=display.getByRole('heading',{name:`MATCH ${resolved.matchNumber} RESULT`,exact:true});const waiting=display.getByTestId('waiting-view');await expect(result).toBeVisible();
-  await display.keyboard.press('w');await expect(waiting).toBeVisible();await expect(waiting).toHaveAttribute('data-waiting-reason','NEXT_MATCH');await expect(result).toHaveCount(0);
-  await display.keyboard.press('w');await expect(result).toBeVisible();await expect(waiting).toHaveCount(0);
-  await display.keyboard.press('w');await expect(waiting).toBeVisible();
+  await expect(waitingBtn).toBeEnabled();await page.keyboard.press('w');await expect(waiting).toBeVisible();await expect(waiting).toHaveAttribute('data-waiting-reason','NEXT_MATCH');await expect(result).toHaveCount(0);
+  await expect(waitingBtn).toBeEnabled();await page.keyboard.press('w');await expect(result).toBeVisible();await expect(waiting).toHaveCount(0);
+  await expect(waitingBtn).toBeEnabled();await page.keyboard.press('w');await expect(waiting).toBeVisible();
   const timer=JSON.stringify({remainingMs:84000,running:true,authoritativeAt:Date.now(),kind:'ROUND'});const db=openDatabase(process.env.TKD_DATABASE_PATH||'/tmp/tkd-e2e.db');try{db.prepare("UPDATE matches SET state='IN_PROGRESS',winner_side=NULL,decision_method=NULL,actual_end_at=NULL,timer_json=? WHERE id=?").run(timer,id);}finally{db.close();}
   await display.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(waiting).toHaveCount(0);await expect(display.getByTestId('blue-points')).toBeVisible();await expect(display.getByTestId('red-points')).toBeVisible();
  }finally{await display.close();setPointGapResultFixture(id);}

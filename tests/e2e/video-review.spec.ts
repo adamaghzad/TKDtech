@@ -66,7 +66,7 @@ test('IVR request, managed result, responsive public overlays, and Doctor Call s
     await expectOverlayWithinViewport(display, 'ivr-request-overlay', 740, 360);
     await display.setViewportSize({ width: 1440, height: 900 });
 
-    await page.getByRole('button', { name: '4', exact: true }).click();
+    await page.getByTestId('video-review-manager').getByRole('button', { name: '+4 Turning body' }).click();
     await page.getByRole('button', { name: 'Apply', exact: true }).click();
     await expect(display.getByTestId('ivr-accepted-overlay')).toBeVisible();
     await expect(display.getByTestId('ivr-accepted-overlay')).toContainText('Accepted');

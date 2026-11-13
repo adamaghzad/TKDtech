@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Trophy, Crown, Award, Check, Radio } from 'lucide-react';
 import type { Bracket, BracketNode } from '@tkd/domain';
-import { cn, flagEmoji } from '@/lib/utils';
+import { CountryFlag } from '@/components/ui/country-flag';
+import { cn } from '@/lib/utils';
 
 export interface BracketEntrant {
   id: string;
@@ -178,8 +179,8 @@ function AthleteSlot({
       >
         {seed != null ? seed : corner === 'BLUE' ? 'B' : 'R'}
       </span>
-      <span className="shrink-0 text-xs leading-none opacity-90">
-        {athlete ? flagEmoji(athlete.countryCode) : '·'}
+      <span className="flex shrink-0 items-center">
+        {athlete ? <CountryFlag code={athlete.countryCode} className="w-[18px] rounded-[2px] ring-1 ring-white/25" /> : <span className="text-xs leading-none opacity-60">·</span>}
       </span>
       <span className="min-w-0 flex-1 truncate font-semibold">
         {athlete?.name ?? 'Unknown Athlete'}
