@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ChevronLeft, CircleStop, Clock3, ExternalLink, History, Keyboard, Minus, Pause, Play, Plus, QrCode, Radio, RotateCcw, ShieldAlert, Stethoscope, Swords, Undo2, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, CircleStop, Clock3, ExternalLink, History, Keyboard, Minus, MonitorPause, Pause, Play, Plus, QrCode, Radio, RotateCcw, ShieldAlert, Stethoscope, Swords, Undo2, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
 import type { MatchCommand } from '../../../local-server/src/types';
 import type { MatchSnapshot, PointType, Side } from '@tkd/contracts';
 import { useMatchCloud } from '@/lib/use-match-cloud';
@@ -137,9 +137,13 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
       });
       const nowT = typeof performance !== 'undefined' ? performance.now() : Date.now();
       applySnapshot(updated, Math.min(500, Math.max(0, (nowT - reqStart) / 2)));
-      if (typeof BroadcastChannel !== 'undefined' && ['START', 'RESUME'].includes(type)) {
+      if (typeof BroadcastChannel !== 'undefined' && ['START', 'RESUME', 'PUBLIC_WAITING'].includes(type)) {
         const ch = new BroadcastChannel('tkd-mat-display');
-        ch.postMessage({ matId: updated.matId ?? snapshot.matId ?? undefined });
+        ch.postMessage({
+          matId: updated.matId ?? snapshot.matId ?? undefined,
+          matchId: updated.matchId,
+          publicWaiting: Boolean(updated.publicWaiting),
+        });
         ch.close();
       }
       void events.refresh();
@@ -330,6 +334,9 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
         case 'SUPERIORITY_RED':
           if (superiorityRequired) setConfirm('SUPERIORITY_RED');
           break;
+        case 'TOGGLE_TV_WAITING':
+          void execute('PUBLIC_WAITING');
+          break;
       }
     };
 
@@ -408,6 +415,16 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
           )}
           <Button variant="secondary" onClick={() => setPairing(true)}>
             <QrCode /> Pair devices <Keycap token={kb.OPEN_PAIRING} enabled={kbOn} />
+          </Button>
+          <Button
+            variant={snapshot.publicWaiting ? 'yellow' : 'secondary'}
+            disabled={pending}
+            data-testid="toggle-tv-waiting"
+            aria-pressed={Boolean(snapshot.publicWaiting)}
+            title="Switch Public TV between Waiting screen and Scoreboard / Match Result"
+            onClick={() => void execute('PUBLIC_WAITING')}
+          >
+            <MonitorPause /> {snapshot.publicWaiting ? 'TV: Waiting (Show Live)' : 'TV Waiting'} <Keycap token={kb.TOGGLE_TV_WAITING} enabled={kbOn} />
           </Button>
           <Button asChild variant="secondary">
             <Link href={tvPath} target="_blank" rel="noopener noreferrer" onClick={event => { if (openPublicTv(tvPath)) event.preventDefault(); }}>

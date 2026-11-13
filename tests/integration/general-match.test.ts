@@ -194,5 +194,15 @@ describe('general match (Chung vs Hong)', () => {
       clientRemainingMs: 9_999,
     });
     expect(spoofPaused.timer.remainingMs).toBe(5_510);
+
+    // Operator Control PUBLIC_WAITING toggles Public TV waiting state and auto-clears on RESUME
+    const waitingOn = matches.execute(actor, created.matchId, { type: 'PUBLIC_WAITING' });
+    expect(waitingOn.publicWaiting).toBe(true);
+    const waitingOff = matches.execute(actor, created.matchId, { type: 'PUBLIC_WAITING' });
+    expect(waitingOff.publicWaiting).toBe(false);
+    matches.execute(actor, created.matchId, { type: 'PUBLIC_WAITING', publicWaiting: true });
+    expect(matches.snapshot(created.matchId).publicWaiting).toBe(true);
+    const resumedClearsWaiting = matches.execute(actor, created.matchId, { type: 'RESUME' });
+    expect(resumedClearsWaiting.publicWaiting).toBe(false);
   });
 });

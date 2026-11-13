@@ -47,7 +47,7 @@ export function snapshotFromRow(db: SqliteDatabase, row: MatchJoinedRow, now = D
     redScore: row.red_score, blueGamJeom: row.blue_gam_jeom, redGamJeom: row.red_gam_jeom,
     rounds: roundSnapshots, timer: displayTimer, winner: row.winner_side, decisionMethod: row.decision_method,
     judges: presence.map(item => ({ role: item.role, status: item.status==='ONLINE'&&item.last_seen_at<=presenceCutoff?'OFFLINE':item.status, lastSeenAt: new Date(item.last_seen_at).toISOString() })),
-    scoringActivity, videoReview,
+    scoringActivity, videoReview, publicWaiting: Boolean(timer.publicWaiting),
     updatedAt: row.updated_at, serverTime: now
   };
 }

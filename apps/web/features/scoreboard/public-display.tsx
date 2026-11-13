@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeftRight, Expand, Loader2, MonitorPause, Shrink, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeftRight, Expand, Loader2, Shrink, Volume2, VolumeX } from 'lucide-react';
+import type { MatchSnapshot } from '@tkd/contracts';
 import { useMatchCloud } from '@/lib/use-match-cloud';
 import { useTimerAudio } from '@/lib/use-timer-audio';
 import { ScoreboardView } from './scoreboard-view';
@@ -15,22 +16,18 @@ const UNSTARTED_STATES = new Set(['PENDING', 'READY', 'CALLED']);
 
 interface PublicDisplayProps {
   matchId: string;
+  queuedSnapshot?: MatchSnapshot | null;
   onLiveOrResolved?: (matchId: string) => void;
-  onReleaseResult?: () => void;
 }
 
-export function PublicDisplay({ matchId, onLiveOrResolved, onReleaseResult }: PublicDisplayProps) {
+export function PublicDisplay({ matchId, queuedSnapshot, onLiveOrResolved }: PublicDisplayProps) {
   const { snapshot, remainingMs, connection, error, refresh, cloudConfigured } = useMatchCloud(matchId);
   const audio = useTimerAudio(snapshot, remainingMs);
   const [flipped, setFlipped] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [waitingOverride, setWaitingOverride] = useState<string | null>(null);
   const container = useRef<HTMLDivElement>(null);
-  const state = snapshot?.state;
-  const resultKey = snapshot && state && RESULT_STATES.has(state) ? `${matchId}:${state}:${snapshot.sequence}` : null;
-  const result = resultKey !== null;
   const automaticWaiting = Boolean(snapshot && UNSTARTED_STATES.has(snapshot.state));
-  const manualWaiting = result && waitingOverride === resultKey;
+  const operatorWaiting = Boolean(snapshot?.publicWaiting);
   const toggleAudio = audio.toggle;
 
   useEffect(() => {
@@ -64,15 +61,6 @@ export function PublicDisplay({ matchId, onLiveOrResolved, onReleaseResult }: Pu
     localStorage.setItem(`tkd_flip_${matchId}`, next ? '1' : '0');
   }, [flipped, matchId]);
 
-  const toggleWaiting = useCallback(() => {
-    if (!resultKey) return;
-    if (onReleaseResult) {
-      onReleaseResult();
-      return;
-    }
-    setWaitingOverride((current) => (current === resultKey ? null : resultKey));
-  }, [onReleaseResult, resultKey]);
-
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -86,9 +74,6 @@ export function PublicDisplay({ matchId, onLiveOrResolved, onReleaseResult }: Pu
       } else if (key === 'f') {
         event.preventDefault();
         flip();
-      } else if (key === 'w' && result) {
-        event.preventDefault();
-        toggleWaiting();
       } else if (key === 'f11') {
         event.preventDefault();
         void toggleFullscreen();
@@ -100,7 +85,14 @@ export function PublicDisplay({ matchId, onLiveOrResolved, onReleaseResult }: Pu
 
     document.addEventListener('keydown', keydown);
     return () => document.removeEventListener('keydown', keydown);
-  }, [flip, result, toggleAudio, toggleFullscreen, toggleWaiting]);
+  }, [flip, toggleAudio, toggleFullscreen]);
+
+  const waitingTargetSnapshot =
+    queuedSnapshot && UNSTARTED_STATES.has(queuedSnapshot.state)
+      ? queuedSnapshot
+      : snapshot && !RESULT_STATES.has(snapshot.state)
+        ? snapshot
+        : undefined;
 
   return (
     <div
@@ -114,18 +106,6 @@ export function PublicDisplay({ matchId, onLiveOrResolved, onReleaseResult }: Pu
           <Badge tone={connection === 'ONLINE' ? 'green' : 'yellow'}>
             {connection}{cloudConfigured ? ' · Cloud' : ' · Local'}
           </Badge>
-          {result && (
-            <Button
-              size="sm"
-              variant="secondary"
-              aria-keyshortcuts="w"
-              title="Switch to waiting screen (W)"
-              onClick={toggleWaiting}
-            >
-              <MonitorPause />
-              <span className="hidden sm:inline">{manualWaiting ? 'Show result' : 'Waiting (W)'}</span>
-            </Button>
-          )}
           <Button
             size="sm"
             variant={audio.ready ? 'success' : 'yellow'}
@@ -148,8 +128,8 @@ export function PublicDisplay({ matchId, onLiveOrResolved, onReleaseResult }: Pu
       )}
 
       {snapshot ? (
-        manualWaiting ? (
-          <WaitingView />
+        operatorWaiting ? (
+          <WaitingView snapshot={waitingTargetSnapshot} />
         ) : automaticWaiting ? (
           <WaitingView snapshot={snapshot} />
         ) : (

@@ -42,6 +42,7 @@ export interface TimerState {
   authoritativeAt: number;
   kind: 'ROUND' | 'BREAK' | 'MEDICAL' | 'GOLDEN_POINT';
   holdReason?: 'SUPERIORITY';
+  publicWaiting?: boolean;
 }
 
 export interface MatchAthlete {
@@ -130,6 +131,7 @@ export interface MatchSnapshot {
   judges: Array<{ role: 'J1'|'J2'|'J3'|'REFEREE'; status: 'ONLINE'|'RECONNECTING'|'OFFLINE'; lastSeenAt: string | null }>;
   scoringActivity: MatchScoringActivity;
   videoReview: VideoReviewSnapshot | null;
+  publicWaiting?: boolean;
   updatedAt: string;
   serverTime: number;
 }

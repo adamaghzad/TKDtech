@@ -80,7 +80,7 @@ export class MatchService {
           if(!current.blue_athlete_id||!current.red_athlete_id)throw new HttpError(409,'ENTRANTS_UNKNOWN','Both athletes must be confirmed.');
           if(!current.mat_id)throw new HttpError(409,'MAT_REQUIRED','Assign an available mat before starting.');
           if(!['READY','CALLED'].includes(state))throw new HttpError(409,'INVALID_STATE','Start requires a ready or called match.');
-          transition('IN_PROGRESS');nextTimer=startTimer(nextTimer,now);eventType='match.started';
+          transition('IN_PROGRESS');nextTimer={...startTimer(nextTimer,now),publicWaiting:false};eventType='match.started';
           this.db.prepare('UPDATE match_rounds SET started_at=COALESCE(started_at,?) WHERE match_id=? AND number=?').run(new Date(now).toISOString(),matchId,round);
           this.db.prepare('UPDATE matches SET actual_start_at=COALESCE(actual_start_at,?) WHERE id=?').run(new Date(now).toISOString(),matchId);break;
         }
@@ -98,19 +98,19 @@ export class MatchService {
         }
         case 'RESUME': {
           if(state==='ROUND_BREAK'){
-            if(!timer.running&&nextTimer.remainingMs>0){assertBreakSuperiorityResolved();nextTimer=startTimer(nextTimer,now);eventType='match.resumed';payload={...payload,round,breakResumed:true};break;}
+            if(!timer.running&&nextTimer.remainingMs>0){assertBreakSuperiorityResolved();nextTimer={...startTimer(nextTimer,now),publicWaiting:false};eventType='match.resumed';payload={...payload,round,breakResumed:true};break;}
             const timing=this.timing(current.category_id);assertBreakSuperiorityResolved();
-            transition('IN_PROGRESS');nextTimer=startTimer(resetTimer({...nextTimer,kind:'ROUND'},timing.roundDurationMs,now),now);eventType='match.resumed';
+            transition('IN_PROGRESS');nextTimer={...startTimer(resetTimer({...nextTimer,kind:'ROUND'},timing.roundDurationMs,now),now),publicWaiting:false};eventType='match.resumed';
             this.db.prepare('UPDATE match_rounds SET started_at=COALESCE(started_at,?) WHERE match_id=? AND number=?').run(new Date(now).toISOString(),matchId,round);
             payload={...payload,round,breakSkipped:true};break;
           }
           if(state!=='PAUSED')throw new HttpError(409,'INVALID_STATE','Resume requires a paused match or an active round break.');
           if(nextTimer.kind==='BREAK'){
-            assertBreakSuperiorityResolved();transition('ROUND_BREAK');nextTimer=startTimer(nextTimer,now);eventType='match.resumed';payload={...payload,round,breakResumed:true};break;
+            assertBreakSuperiorityResolved();transition('ROUND_BREAK');nextTimer={...startTimer(nextTimer,now),publicWaiting:false};eventType='match.resumed';payload={...payload,round,breakResumed:true};break;
           }
           if(nextTimer.remainingMs<=0)throw new HttpError(409,'TIMER_EXPIRED','Reset the timer or advance the round before resuming.');
-          if(nextTimer.kind==='MEDICAL'){nextTimer=startTimer(nextTimer,now);eventType='timer.medical_started';}
-          else{transition('IN_PROGRESS');nextTimer=startTimer(nextTimer,now);eventType='match.resumed';}break;
+          if(nextTimer.kind==='MEDICAL'){nextTimer={...startTimer(nextTimer,now),publicWaiting:false};eventType='timer.medical_started';}
+          else{transition('IN_PROGRESS');nextTimer={...startTimer(nextTimer,now),publicWaiting:false};eventType='match.resumed';}break;
         }
         case 'RESET_TIMER': {
           if(state==='IN_PROGRESS')throw new HttpError(409,'INVALID_STATE','Pause before resetting the timer.');
@@ -304,9 +304,16 @@ export class MatchService {
           }
           eventType='score.correction';payload={targetEventId:target.event_id,reason:command.reason,original:original};break;
         }
+        case 'PUBLIC_WAITING': {
+          const nextWaiting=command.publicWaiting??!Boolean(timer.publicWaiting);
+          nextTimer={...nextTimer,publicWaiting:nextWaiting};
+          eventType='timer.updated';
+          payload={...payload,publicWaiting:nextWaiting};
+          break;
+        }
       }
       if(skipPersistence)return;
-      if(!['VIDEO_REVIEW','END_REVIEW','EVALUATE_POINT_GAP','TIMER_EXPIRED'].includes(command.type))nextReview=null;
+      if(!['VIDEO_REVIEW','END_REVIEW','EVALUATE_POINT_GAP','TIMER_EXPIRED','PUBLIC_WAITING'].includes(command.type))nextReview=null;
       const sequence=current.sequence+1;const updatedAt=isoNow();
       const update=this.db.prepare(`UPDATE matches SET state=?,current_round=?,blue_score=?,red_score=?,blue_gam_jeom=?,red_gam_jeom=?,winner_side=?,decision_method=?,timer_json=?,review_json=?,sequence=?,version=version+1,actual_end_at=?,updated_at=? WHERE id=? AND version=?`).run(state,round,blueScore,redScore,blueGam,redGam,winner,decision,JSON.stringify(nextTimer),nextReview?JSON.stringify(nextReview):null,sequence,actualEnd,updatedAt,matchId,current.version);
       if(update.changes!==1)throw new HttpError(409,'VERSION_CONFLICT','Match changed concurrently. No command was applied.');
