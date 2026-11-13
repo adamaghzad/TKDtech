@@ -46,7 +46,7 @@ export class MatchService {
     if(duplicate)return this.snapshot(matchId);
     const match=getMatchRow(this.db,matchId);this.repository.authorizeTournament(actor,match.tournament_id);
     if(!['SUPER_ADMIN','TOURNAMENT_ADMIN','MAT_OPERATOR','REFEREE'].includes(actor.role))throw new HttpError(403,'PERMISSION_DENIED','Match control permission required.');
-    if(actor.role==='REFEREE'&&!['START','PAUSE','RESUME','GAM_JEOM','MEDICAL_TIMEOUT','VIDEO_REVIEW','END_REVIEW','ROUND_SUPERIORITY','COMPLETE'].includes(command.type))throw new HttpError(403,'PERMISSION_DENIED','This referee action is not authorized.');
+    if(actor.role==='REFEREE'&&!['START','PAUSE','RESUME','GAM_JEOM','MEDICAL_TIMEOUT','VIDEO_REVIEW','END_REVIEW','ROUND_SUPERIORITY','COMPLETE','PUBLIC_WAITING'].includes(command.type))throw new HttpError(403,'PERMISSION_DENIED','This referee action is not authorized.');
     if(actor.role==='REFEREE'&&(command.outcome||command.reviewCorrection||command.reviewAction||command.reviewPoints))throw new HttpError(403,'PERMISSION_DENIED','Only an authorized review operator can decide a review or apply its correction.');
     if(command.expectedVersion!=null&&command.expectedVersion!==match.version)throw new HttpError(409,'VERSION_CONFLICT',`Match version changed. Expected ${command.expectedVersion}, current ${match.version}. Refresh before retrying.`);
     const ruleset=this.ruleset(match.tournament_id);let eventType='timer.updated';let payload:Record<string,unknown>={command:command.type};let skipPersistence=false;
@@ -319,7 +319,8 @@ export class MatchService {
       if(update.changes!==1)throw new HttpError(409,'VERSION_CONFLICT','Match changed concurrently. No command was applied.');
       appendMatchEvent(this.db,{tournamentId:current.tournament_id,matchId,sequence,type:eventType,actorId:actor.id,sessionId:actor.sessionId,payload,idempotencyKey});
       audit(this.db,{tournamentId:current.tournament_id,actorId:actor.id,action:`MATCH_${command.type}`,entityType:'match',entityId:matchId,before:{state:current.state,version:current.version,blueScore:current.blue_score,redScore:current.red_score},after:{state,version:current.version+1,blueScore,redScore},reason:command.reason});
-      if(winner&&['COMPLETED','WALKOVER','DISQUALIFIED'].includes(state)){
+      const newlyResolved=!['COMPLETED','WALKOVER','DISQUALIFIED'].includes(current.state)&&['COMPLETED','WALKOVER','DISQUALIFIED'].includes(state);
+      if(newlyResolved&&winner){
         const winnerId=winner==='BLUE'?current.blue_athlete_id:current.red_athlete_id;const loserId=winner==='BLUE'?current.red_athlete_id:current.blue_athlete_id;if(!winnerId)throw new HttpError(409,'RESULT_INVALID','Winner athlete is unknown.');
         this.db.prepare('INSERT INTO tournament_results(id,tournament_id,match_id,winner_athlete_id,loser_athlete_id,decision_method,blue_score,red_score,completed_at,version) VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),current.tournament_id,matchId,winnerId,loserId,decision??'RESULT',blueScore,redScore,actualEnd??updatedAt,current.version+1);
         this.repository.advanceFromCompletedMatch(actor,matchId,winnerId);this.repository.releaseMatAndAssignNext(current.tournament_id,matchId,actor.id);

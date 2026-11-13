@@ -15,12 +15,17 @@ const UNSTARTED_STATES = new Set(['PENDING', 'READY', 'CALLED']);
 export default function MatDisplay() {
   const { matId } = useParams<{ matId: string }>();
   const { data, error, loading, refresh } = useApi<MatchSnapshot>(`/api/v1/mats/${matId}/active-match`);
+  const lastResolved = useApi<MatchSnapshot | null>(`/api/v1/mats/${matId}/last-resolved-match`);
+  const refreshLastResolved = lastResolved.refresh;
   // Holds the most recent started/completed match on this mat so the official MATCH RESULT
   // screen stays visible until the next match actually starts or the Operator toggles TV Waiting.
   const [pinnedMatchId, setPinnedMatchId] = useState<string | null>(null);
 
   useEffect(() => {
-    const interval = setInterval(() => void refresh(), ASSIGNMENT_POLL_MS);
+    const interval = setInterval(() => {
+      void refresh();
+      void refreshLastResolved();
+    }, ASSIGNMENT_POLL_MS);
     let channel: BroadcastChannel | null = null;
     if (typeof BroadcastChannel !== 'undefined') {
       channel = new BroadcastChannel('tkd-mat-display');
@@ -30,6 +35,7 @@ export default function MatDisplay() {
             setPinnedMatchId(null);
           }
           void refresh();
+          void refreshLastResolved();
         }
       };
     }
@@ -37,14 +43,17 @@ export default function MatDisplay() {
       clearInterval(interval);
       channel?.close();
     };
-  }, [matId, pinnedMatchId, refresh]);
+  }, [matId, pinnedMatchId, refresh, refreshLastResolved]);
 
+  const noActiveMatch = error instanceof ApiRequestError && error.code === 'NO_ACTIVE_MATCH';
   const activeStartedMatchId = data && !UNSTARTED_STATES.has(data.state) ? data.matchId : null;
   const queuedForceWaiting = Boolean(data && UNSTARTED_STATES.has(data.state) && data.publicWaiting);
+  const fallbackResolvedId = noActiveMatch ? (lastResolved.data?.matchId ?? null) : null;
+  const candidateHeldId = pinnedMatchId ?? fallbackResolvedId;
 
   const heldMatchId =
     activeStartedMatchId ??
-    (!queuedForceWaiting && pinnedMatchId ? pinnedMatchId : null);
+    (!queuedForceWaiting && candidateHeldId ? candidateHeldId : null);
 
   const handleLiveOrResolved = useCallback((liveMatchId: string) => {
     setPinnedMatchId((current) => (current === liveMatchId ? current : liveMatchId));
@@ -61,8 +70,10 @@ export default function MatDisplay() {
     );
   }
 
-  if (loading && !data && !error) return <Loading label="Finding active mat assignment…" />;
-  if (error instanceof ApiRequestError && error.code === 'NO_ACTIVE_MATCH') {
+  if ((loading && !data && !error) || (noActiveMatch && lastResolved.loading)) {
+    return <Loading label="Finding active mat assignment…" />;
+  }
+  if (noActiveMatch) {
     return (
       <div className="h-[100dvh]">
         <WaitingView />

@@ -205,4 +205,36 @@ describe('general match (Chung vs Hong)', () => {
     const resumedClearsWaiting = matches.execute(actor, created.matchId, { type: 'RESUME' });
     expect(resumedClearsWaiting.publicWaiting).toBe(false);
   });
+
+  it('toggles PUBLIC_WAITING cleanly on a COMPLETED match without duplicate tournament_results conflicts', () => {
+    const { repository, matches, actor, tournamentId } = createFixture();
+    const created = repository.createGeneralMatch(actor, tournamentId, { rounds: 2 });
+
+    matches.execute(actor, created.matchId, { type: 'START' });
+    matches.execute(actor, created.matchId, { type: 'SCORE', side: 'RED', pointType: 'HEAD_KICK' });
+    matches.execute(actor, created.matchId, { type: 'PAUSE' });
+    matches.execute(actor, created.matchId, { type: 'NEXT_ROUND' });
+    matches.execute(actor, created.matchId, { type: 'RESUME' });
+    matches.execute(actor, created.matchId, { type: 'SCORE', side: 'RED', pointType: 'HEAD_KICK' });
+    const completed = matches.execute(actor, created.matchId, { type: 'COMPLETE' });
+    expect(completed.state).toBe('COMPLETED');
+    expect(completed.winner).toBe('RED');
+
+    // Toggling TV Waiting ON and OFF on a COMPLETED match must succeed without UNIQUE constraint error
+    const waitingOn = matches.execute(actor, created.matchId, {
+      type: 'PUBLIC_WAITING',
+      expectedVersion: completed.version,
+    });
+    expect(waitingOn.state).toBe('COMPLETED');
+    expect(waitingOn.winner).toBe('RED');
+    expect(waitingOn.publicWaiting).toBe(true);
+
+    const waitingOff = matches.execute(actor, created.matchId, {
+      type: 'PUBLIC_WAITING',
+      expectedVersion: waitingOn.version,
+    });
+    expect(waitingOff.state).toBe('COMPLETED');
+    expect(waitingOff.winner).toBe('RED');
+    expect(waitingOff.publicWaiting).toBe(false);
+  });
 });
