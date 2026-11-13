@@ -137,6 +137,11 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
       });
       const nowT = typeof performance !== 'undefined' ? performance.now() : Date.now();
       applySnapshot(updated, Math.min(500, Math.max(0, (nowT - reqStart) / 2)));
+      if (typeof BroadcastChannel !== 'undefined' && ['START', 'RESUME'].includes(type)) {
+        const ch = new BroadcastChannel('tkd-mat-display');
+        ch.postMessage({ matId: updated.matId ?? snapshot.matId ?? undefined });
+        ch.close();
+      }
       void events.refresh();
       toast(`${titleCase(type)} accepted`, 'Persisted before broadcast.');
     } catch (reason: unknown) {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeftRight, Expand, Loader2, Shrink, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeftRight, Expand, Loader2, MonitorPause, Shrink, Volume2, VolumeX } from 'lucide-react';
 import { useMatchCloud } from '@/lib/use-match-cloud';
 import { useTimerAudio } from '@/lib/use-timer-audio';
 import { ScoreboardView } from './scoreboard-view';
@@ -10,9 +10,16 @@ import { ErrorState } from '@/components/ui/states';
 import { Badge } from '@/components/ui/badge';
 import { WaitingView } from './waiting-view';
 
-const RESULT_STATES = new Set(['COMPLETED', 'DISQUALIFIED']);
+const RESULT_STATES = new Set(['COMPLETED', 'DISQUALIFIED', 'WALKOVER']);
+const UNSTARTED_STATES = new Set(['PENDING', 'READY', 'CALLED']);
 
-export function PublicDisplay({ matchId }: { matchId: string }) {
+interface PublicDisplayProps {
+  matchId: string;
+  onLiveOrResolved?: (matchId: string) => void;
+  onReleaseResult?: () => void;
+}
+
+export function PublicDisplay({ matchId, onLiveOrResolved, onReleaseResult }: PublicDisplayProps) {
   const { snapshot, remainingMs, connection, error, refresh, cloudConfigured } = useMatchCloud(matchId);
   const audio = useTimerAudio(snapshot, remainingMs);
   const [flipped, setFlipped] = useState(false);
@@ -22,9 +29,15 @@ export function PublicDisplay({ matchId }: { matchId: string }) {
   const state = snapshot?.state;
   const resultKey = snapshot && state && RESULT_STATES.has(state) ? `${matchId}:${state}:${snapshot.sequence}` : null;
   const result = resultKey !== null;
-  const automaticWaiting = Boolean(snapshot && ['PENDING', 'READY', 'CALLED'].includes(snapshot.state));
+  const automaticWaiting = Boolean(snapshot && UNSTARTED_STATES.has(snapshot.state));
   const manualWaiting = result && waitingOverride === resultKey;
   const toggleAudio = audio.toggle;
+
+  useEffect(() => {
+    if (snapshot && snapshot.matchId === matchId && !UNSTARTED_STATES.has(snapshot.state)) {
+      onLiveOrResolved?.(matchId);
+    }
+  }, [matchId, onLiveOrResolved, snapshot]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setFlipped(localStorage.getItem(`tkd_flip_${matchId}`) === '1'));
@@ -52,8 +65,13 @@ export function PublicDisplay({ matchId }: { matchId: string }) {
   }, [flipped, matchId]);
 
   const toggleWaiting = useCallback(() => {
-    if (resultKey) setWaitingOverride((current) => (current === resultKey ? null : resultKey));
-  }, [resultKey]);
+    if (!resultKey) return;
+    if (onReleaseResult) {
+      onReleaseResult();
+      return;
+    }
+    setWaitingOverride((current) => (current === resultKey ? null : resultKey));
+  }, [onReleaseResult, resultKey]);
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -96,6 +114,18 @@ export function PublicDisplay({ matchId }: { matchId: string }) {
           <Badge tone={connection === 'ONLINE' ? 'green' : 'yellow'}>
             {connection}{cloudConfigured ? ' · Cloud' : ' · Local'}
           </Badge>
+          {result && (
+            <Button
+              size="sm"
+              variant="secondary"
+              aria-keyshortcuts="w"
+              title="Switch to waiting screen (W)"
+              onClick={toggleWaiting}
+            >
+              <MonitorPause />
+              <span className="hidden sm:inline">{manualWaiting ? 'Show result' : 'Waiting (W)'}</span>
+            </Button>
+          )}
           <Button
             size="sm"
             variant={audio.ready ? 'success' : 'yellow'}
