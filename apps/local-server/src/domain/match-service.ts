@@ -138,9 +138,12 @@ export class MatchService {
           if(state==='ROUND_BREAK'){
             if(!timer.running&&nextTimer.remainingMs>0){assertBreakSuperiorityResolved();nextTimer={...startTimer(nextTimer,now),publicWaiting:false};eventType='match.resumed';payload={...payload,round,breakResumed:true};break;}
             const timing=this.timing(current.category_id);assertBreakSuperiorityResolved();
-            transition('IN_PROGRESS');nextTimer={...startTimer(resetTimer({...nextTimer,kind:'ROUND'},timing.roundDurationMs,now),now),publicWaiting:false};eventType='match.resumed';
+            const isGoldenRound=round>timing.rounds;
+            transition(isGoldenRound?'GOLDEN_POINT':'IN_PROGRESS');
+            nextTimer=isGoldenRound?{...startTimer(resetTimer({...nextTimer,kind:'GOLDEN_POINT'},ruleset.goldenPointDurationMs??timing.roundDurationMs,now),now),publicWaiting:false}:{...startTimer(resetTimer({...nextTimer,kind:'ROUND'},timing.roundDurationMs,now),now),publicWaiting:false};
+            eventType=isGoldenRound?'match.golden_point_started':'match.resumed';
             this.db.prepare('UPDATE match_rounds SET started_at=COALESCE(started_at,?) WHERE match_id=? AND number=?').run(new Date(now).toISOString(),matchId,round);
-            payload={...payload,round,breakSkipped:true};break;
+            payload={...payload,round,breakSkipped:true,goldenPoint:isGoldenRound};break;
           }
           if(state!=='PAUSED')throw new HttpError(409,'INVALID_STATE','Resume requires a paused match or an active round break.');
           if(nextTimer.kind==='BREAK'){
@@ -161,9 +164,12 @@ export class MatchService {
           if(!['PAUSED','ROUND_BREAK'].includes(state))throw new HttpError(409,'INVALID_STATE','Pause the match before changing rounds.');
           const timing=this.timing(current.category_id);
           if(state==='ROUND_BREAK'||nextTimer.kind==='BREAK'){
-            assertBreakSuperiorityResolved();transition('IN_PROGRESS');nextTimer=startTimer(resetTimer({...nextTimer,kind:'ROUND'},timing.roundDurationMs,now),now);eventType='match.round_changed';
+            assertBreakSuperiorityResolved();const isGoldenRound=round>timing.rounds;
+            transition(isGoldenRound?'GOLDEN_POINT':'IN_PROGRESS');
+            nextTimer=isGoldenRound?startTimer(resetTimer({...nextTimer,kind:'GOLDEN_POINT'},ruleset.goldenPointDurationMs??timing.roundDurationMs,now),now):startTimer(resetTimer({...nextTimer,kind:'ROUND'},timing.roundDurationMs,now),now);
+            eventType=isGoldenRound?'match.golden_point_started':'match.round_changed';
             this.db.prepare('UPDATE match_rounds SET started_at=COALESCE(started_at,?) WHERE match_id=? AND number=?').run(new Date(now).toISOString(),matchId,round);
-            payload={...payload,round,breakSkipped:true};break;
+            payload={...payload,round,breakSkipped:true,goldenPoint:isGoldenRound};break;
           }
           if(round>=timing.rounds)throw new HttpError(409,'FINAL_ROUND','The final round is already active. Complete the match after resolving the result.');
           const endedRound=round;const roundWinner=currentRound.blue_score===currentRound.red_score?null:currentRound.blue_score>currentRound.red_score?'BLUE':'RED';const roundGap=roundWinner?roundPointGapLeader(ruleset,currentRound.blue_score,currentRound.red_score):null;
@@ -378,9 +384,9 @@ export class MatchService {
             this.db.prepare('UPDATE match_rounds SET started_at=COALESCE(started_at,?) WHERE id=?').run(new Date(now).toISOString(),currentRound.id);
           }else{
             round+=1;
-            this.db.prepare('INSERT INTO match_rounds(id,match_id,number,started_at) VALUES(?,?,?,?)').run(randomUUID(),matchId,round,new Date(now).toISOString());
+            this.db.prepare('INSERT INTO match_rounds(id,match_id,number) VALUES(?,?,?)').run(randomUUID(),matchId,round);
           }
-          transition('GOLDEN_POINT');nextTimer={...startTimer(resetTimer({...nextTimer,kind:'GOLDEN_POINT'},ruleset.goldenPointDurationMs??timing.roundDurationMs,now),now),publicWaiting:false};eventType='match.golden_point_started';payload={...payload,round,goldenRound:round,blueRoundWins:blueWins,redRoundWins:redWins};break;
+          transition('ROUND_BREAK');nextTimer={...startTimer(resetTimer({...nextTimer,kind:'BREAK'},timing.breakDurationMs,now),now),publicWaiting:false};eventType='match.golden_point_scheduled';payload={...payload,round,goldenRound:round,blueRoundWins:blueWins,redRoundWins:redWins,breakDurationMs:timing.breakDurationMs};break;
         }
         case 'COMPLETE_GOLDEN_POINT': {
           if(state!=='GOLDEN_POINT'&&!(state==='PAUSED'&&nextTimer.kind==='GOLDEN_POINT'))throw new HttpError(409,'INVALID_STATE','Golden Point completion requires an active Golden Point round.');

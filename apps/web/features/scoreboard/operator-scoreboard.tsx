@@ -488,11 +488,11 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                   </Button>
                 ) : (
                   <Button variant="success" disabled={pending || !canResume} onClick={() => void execute('RESUME')}>
-                    <Play /> {snapshot.state === 'ROUND_BREAK' ? (breakPaused ? 'Resume rest' : 'Start next round') : 'Resume'} <Keycap token={kb.TOGGLE_CLOCK} enabled={kbOn} />
+                    <Play /> {snapshot.state === 'ROUND_BREAK' ? (breakPaused ? 'Resume rest' : snapshot.currentRound > snapshot.totalRounds ? 'Start Golden Point' : 'Start next round') : 'Resume'} <Keycap token={kb.TOGGLE_CLOCK} enabled={kbOn} />
                   </Button>
                 )}
                 <Button variant="secondary" disabled={pending || !canNextRound} onClick={() => void execute('NEXT_ROUND')}>
-                  {snapshot.state === 'ROUND_BREAK' ? 'Start next round' : 'End round & rest'} <Keycap token={kb.NEXT_ROUND} enabled={kbOn} />
+                  {snapshot.state === 'ROUND_BREAK' ? (snapshot.currentRound > snapshot.totalRounds ? 'Start Golden Point' : 'Start next round') : 'End round & rest'} <Keycap token={kb.NEXT_ROUND} enabled={kbOn} />
                 </Button>
                 <Button variant="secondary" disabled={pending || snapshot.state === 'IN_PROGRESS'} onClick={() => setConfirm('RESET')}>
                   <RotateCcw /> Reset timer <Keycap token={kb.RESET_TIMER} enabled={kbOn} />

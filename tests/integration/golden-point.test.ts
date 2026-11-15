@@ -53,10 +53,15 @@ describe('Golden Point sudden death after tied rounds', () => {
     expect(() => service.execute(actor, matchId, { type: 'COMPLETE' })).toThrow(/tied/i);
   });
 
-  it('starts Golden Point and completes the match on the first judge-consensus score', () => {
+  it('schedules a rest break before Golden Point, then completes on the first judge-consensus score', () => {
     const { db, service, actor, matchId } = system();
     tiedTwoRoundMatch(db, matchId);
-    const started = service.execute(actor, matchId, { type: 'START_GOLDEN_POINT' });
+    const scheduled = service.execute(actor, matchId, { type: 'START_GOLDEN_POINT' });
+    expect(scheduled).toMatchObject({ state: 'ROUND_BREAK', currentRound: 3, totalRounds: 2 });
+    expect(scheduled.timer.kind).toBe('BREAK');
+    expect(scheduled.timer.running).toBe(true);
+
+    const started = service.execute(actor, matchId, { type: 'RESUME' });
     expect(started).toMatchObject({ state: 'GOLDEN_POINT', currentRound: 3, totalRounds: 2 });
     expect(started.timer.kind).toBe('GOLDEN_POINT');
     expect(started.timer.running).toBe(true);
@@ -77,26 +82,29 @@ describe('Golden Point sudden death after tied rounds', () => {
     expect(result).toMatchObject({ winner_athlete_id: completed.blue.id, decision_method: 'GOLDEN_POINT' });
   });
 
-  it('completes Golden Point immediately on a manual operator score', () => {
+  it('completes Golden Point immediately on a manual operator score after the rest break', () => {
     const { db, service, actor, matchId } = system();
     tiedTwoRoundMatch(db, matchId);
     service.execute(actor, matchId, { type: 'START_GOLDEN_POINT' });
+    service.execute(actor, matchId, { type: 'RESUME' });
     const completed = service.execute(actor, matchId, { type: 'SCORE', side: 'RED', pointType: 'BODY_KICK' });
     expect(completed).toMatchObject({ state: 'COMPLETED', winner: 'RED', decisionMethod: 'GOLDEN_POINT' });
     expect(completed.rounds.find(item => item.number === 3)).toMatchObject({ winner: 'RED', decisionMethod: 'GOLDEN_POINT' });
   });
 
-  it('pauses on Golden Point timer expiry and restarts the same Golden Point round', () => {
+  it('holds the Golden Point rest on expiry and starts Golden Point on resume', () => {
     const { db, service, actor, matchId } = system();
     tiedTwoRoundMatch(db, matchId);
     service.execute(actor, matchId, { type: 'START_GOLDEN_POINT' });
     vi.spyOn(Date, 'now').mockReturnValue(100_000 + 61_000);
-    const paused = service.execute(actor, matchId, { type: 'TIMER_EXPIRED' });
-    expect(paused).toMatchObject({ state: 'PAUSED' });
-    expect(paused.timer.kind).toBe('GOLDEN_POINT');
-    const restarted = service.execute(actor, matchId, { type: 'START_GOLDEN_POINT' });
-    expect(restarted).toMatchObject({ state: 'GOLDEN_POINT', currentRound: 3 });
-    expect(restarted.rounds.filter(item => item.number > 2)).toHaveLength(1);
+    const held = service.execute(actor, matchId, { type: 'TIMER_EXPIRED' });
+    expect(held).toMatchObject({ state: 'ROUND_BREAK' });
+    expect(held.timer.kind).toBe('BREAK');
+    expect(held.timer.running).toBe(false);
+    const started = service.execute(actor, matchId, { type: 'RESUME' });
+    expect(started).toMatchObject({ state: 'GOLDEN_POINT', currentRound: 3 });
+    expect(started.timer.kind).toBe('GOLDEN_POINT');
+    expect(started.rounds.filter(item => item.number > 2)).toHaveLength(1);
   });
 
   it('rejects Golden Point before the final round and when round wins are not tied', () => {
