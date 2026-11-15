@@ -242,6 +242,58 @@ if (!hasSingleInstanceLock) {
     void controlWindow.loadFile(paths.controlHtml);
   }
 
+  const tvWindows = new Map<string, BrowserWindow>();
+
+  function isOperatorUrl(value: string): boolean {
+    try { return new URL(value).origin === operatorUrl; }
+    catch { return false; }
+  }
+
+  function isTvUrl(value: string): boolean {
+    try {
+      const parsed = new URL(value);
+      return parsed.origin === operatorUrl && parsed.pathname.startsWith('/display/');
+    } catch { return false; }
+  }
+
+  function openTvWindow(url: string): void {
+    const existing = tvWindows.get(url);
+    if (existing && !existing.isDestroyed()) {
+      if (existing.isMinimized()) existing.restore();
+      existing.show();
+      existing.focus();
+      return;
+    }
+    const paths = resourcePaths();
+    const tvWindow = new BrowserWindow({
+      width: 1280,
+      height: 720,
+      minWidth: 800,
+      minHeight: 450,
+      title: 'TKD Scoring · Public TV',
+      icon: paths.icon,
+      backgroundColor: '#080d18',
+      autoHideMenuBar: true,
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    tvWindows.set(url, tvWindow);
+    tvWindow.setMenuBarVisibility(false);
+    tvWindow.on('closed', () => { tvWindows.delete(url); });
+    tvWindow.webContents.setWindowOpenHandler(({ url: nestedUrl }) => {
+      if (nestedUrl.startsWith('https://') || nestedUrl.startsWith('mailto:')) {
+        void shell.openExternal(nestedUrl);
+      }
+      return { action: 'deny' };
+    });
+    tvWindow.webContents.on('will-navigate', (event, navUrl) => {
+      if (!isOperatorUrl(navUrl)) {
+        event.preventDefault();
+        if (navUrl.startsWith('https://') || navUrl.startsWith('mailto:')) void shell.openExternal(navUrl);
+      }
+    });
+    void tvWindow.loadURL(url);
+  }
+
   function openOperatorWindow(): void {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.show();
@@ -265,12 +317,10 @@ if (!hasSingleInstanceLock) {
       mainWindow = null;
       if (controlWindow && !controlWindow.isDestroyed() && !controlWindow.isVisible()) app.quit();
     });
-    const isOperatorUrl = (value: string): boolean => {
-      try { return new URL(value).origin === operatorUrl; }
-      catch { return false; }
-    };
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-      if (isOperatorUrl(url)) {
+      if (isTvUrl(url)) {
+        openTvWindow(url);
+      } else if (isOperatorUrl(url)) {
         void mainWindow?.loadURL(url);
       } else if (url.startsWith('https://') || url.startsWith('mailto:')) {
         void shell.openExternal(url);
@@ -278,7 +328,10 @@ if (!hasSingleInstanceLock) {
       return { action: 'deny' };
     });
     mainWindow.webContents.on('will-navigate', (event, url) => {
-      if (!isOperatorUrl(url)) {
+      if (isTvUrl(url)) {
+        event.preventDefault();
+        openTvWindow(url);
+      } else if (!isOperatorUrl(url)) {
         event.preventDefault();
         if (url.startsWith('https://') || url.startsWith('mailto:')) void shell.openExternal(url);
       }
