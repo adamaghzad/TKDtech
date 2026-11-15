@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ChevronLeft, CircleStop, Clock3, ExternalLink, History, Keyboard, Minus, MonitorPause, Pause, Play, Plus, QrCode, Radio, RotateCcw, ShieldAlert, Stethoscope, Swords, Undo2, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, CircleStop, Clock3, ExternalLink, History, Keyboard, Minus, MonitorPause, Pause, Play, Plus, QrCode, Radio, RotateCcw, ShieldAlert, Stethoscope, Swords, Undo2, Volume2, VolumeX, Wifi, WifiOff, Zap } from 'lucide-react';
 import type { MatchCommand } from '../../../local-server/src/types';
 import type { MatchSnapshot, PointType, Side } from '@tkd/contracts';
 import { useMatchCloud } from '@/lib/use-match-cloud';
@@ -195,6 +195,13 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
   const canRequestReview = Boolean(snapshot && ['IN_PROGRESS', 'PAUSED', 'GOLDEN_POINT', 'ROUND_BREAK'].includes(snapshot.state));
   const canUndo = Boolean(snapshot && !['COMPLETED', 'WALKOVER', 'DISQUALIFIED', 'WITHDRAWN'].includes(snapshot.state));
   const canComplete = Boolean(snapshot && ['IN_PROGRESS', 'PAUSED', 'ROUND_BREAK', 'GOLDEN_POINT', 'UNDER_REVIEW'].includes(snapshot.state));
+  const goldenPointAvailable = Boolean(snapshot && snapshot.state === 'PAUSED' && snapshot.currentRound >= snapshot.totalRounds && !superiorityRequired && (() => {
+    const ended = snapshot.rounds.filter(round => round.winner && round.endedAt);
+    const blueWins = ended.filter(round => round.winner === 'BLUE').length;
+    const redWins = ended.filter(round => round.winner === 'RED').length;
+    const unresolvedTie = snapshot.rounds.some(round => round.endedAt && !round.winner && round.blueScore === round.redScore);
+    return blueWins === redWins && !unresolvedTie && !snapshot.rounds.some(round => round.decisionMethod === 'GOLDEN_POINT');
+  })());
 
   useEffect(() => {
     if (!snapshot) return;
@@ -497,6 +504,11 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                   <Stethoscope /> {snapshot.timer.kind === 'MEDICAL' ? 'End medical' : 'Medical'} <Keycap token={kb.MEDICAL_TIMEOUT} enabled={kbOn} />
                 </Button>
               </div>
+              {goldenPointAvailable && (
+                <Button className="mt-2 w-full bg-timer text-black hover:bg-timer/90" disabled={pending} onClick={() => void execute('START_GOLDEN_POINT')}>
+                  <Zap /> Start Golden Point — first valid score wins the match
+                </Button>
+              )}
               <p className="mt-3 text-[10px] leading-5 text-muted">
                 Server time is authoritative. Browser countdown is a display estimate and reconciles with each snapshot. Restart recovery pauses uncertain running timers.
               </p>

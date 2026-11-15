@@ -131,6 +131,10 @@ export function determineMatchResult(rounds: readonly ResultRound[], ruleset: Ru
       return { winner: blueDisqualified ? 'RED' : 'BLUE', decisionMethod: 'DISQUALIFICATION', blueRoundWins: 0, redRoundWins: 0, reason: 'Configured penalty threshold reached.' };
     }
   }
+  const golden = rounds.find(round => round.goldenPointWinner);
+  if (ruleset.tieBreak === 'GOLDEN_POINT' && golden?.goldenPointWinner) {
+    return { winner: golden.goldenPointWinner, decisionMethod: 'GOLDEN_POINT', blueRoundWins: 0, redRoundWins: 0, reason: 'Valid Golden Point score.' };
+  }
   let blueRoundWins = 0; let redRoundWins = 0;
   for (const round of rounds) {
     let roundWinner: Side | null = round.winner ?? null;
@@ -156,10 +160,6 @@ export function determineMatchResult(rounds: readonly ResultRound[], ruleset: Ru
     const blue = rounds.reduce((sum, round) => sum + round.blueScore, 0);
     const red = rounds.reduce((sum, round) => sum + round.redScore, 0);
     if (blue !== red) return { winner: blue > red ? 'BLUE' : 'RED', decisionMethod: 'TOTAL_POINTS', blueRoundWins, redRoundWins, reason: 'Higher valid total score.' };
-  }
-  const golden = rounds.find(round => round.goldenPointWinner);
-  if (ruleset.tieBreak === 'GOLDEN_POINT' && golden?.goldenPointWinner) {
-    return { winner: golden.goldenPointWinner, decisionMethod: 'GOLDEN_POINT', blueRoundWins, redRoundWins, reason: 'Valid Golden Point score.' };
   }
   return { winner: null, decisionMethod: 'UNRESOLVED_TIE', blueRoundWins, redRoundWins, reason: 'The result is tied and the configured tie-break procedure has not resolved it.' };
 }

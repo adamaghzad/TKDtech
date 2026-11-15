@@ -46,7 +46,7 @@ export class MatchService {
     if(duplicate)return this.snapshot(matchId);
     const match=getMatchRow(this.db,matchId);this.repository.authorizeTournament(actor,match.tournament_id);
     if(!['SUPER_ADMIN','TOURNAMENT_ADMIN','MAT_OPERATOR','REFEREE'].includes(actor.role))throw new HttpError(403,'PERMISSION_DENIED','Match control permission required.');
-    if(actor.role==='REFEREE'&&!['START','PAUSE','RESUME','GAM_JEOM','REMOVE_GAM_JEOM','CANCEL_SCORE_WITH_GAM_JEOM','MEDICAL_TIMEOUT','VIDEO_REVIEW','END_REVIEW','ROUND_SUPERIORITY','COMPLETE','PUBLIC_WAITING'].includes(command.type))throw new HttpError(403,'PERMISSION_DENIED','This referee action is not authorized.');
+    if(actor.role==='REFEREE'&&!['START','PAUSE','RESUME','GAM_JEOM','REMOVE_GAM_JEOM','CANCEL_SCORE_WITH_GAM_JEOM','MEDICAL_TIMEOUT','VIDEO_REVIEW','END_REVIEW','ROUND_SUPERIORITY','START_GOLDEN_POINT','COMPLETE','PUBLIC_WAITING'].includes(command.type))throw new HttpError(403,'PERMISSION_DENIED','This referee action is not authorized.');
     if(actor.role==='REFEREE'&&(command.outcome||command.reviewCorrection||command.reviewAction||command.reviewPoints))throw new HttpError(403,'PERMISSION_DENIED','Only an authorized review operator can decide a review or apply its correction.');
     if(command.expectedVersion!=null&&command.expectedVersion!==match.version)throw new HttpError(409,'VERSION_CONFLICT',`Match version changed. Expected ${command.expectedVersion}, current ${match.version}. Refresh before retrying.`);
     const ruleset=this.ruleset(match.tournament_id);let eventType='timer.updated';let payload:Record<string,unknown>={command:command.type};let skipPersistence=false;
@@ -184,6 +184,12 @@ export class MatchService {
           const points=ruleset.points[command.pointType];if(!Number.isInteger(points))throw new HttpError(400,'INVALID_POINT_TYPE','Point type is not configured.');
           if(command.side==='BLUE')blueScore+=points;else redScore+=points;
           this.db.prepare(`UPDATE match_rounds SET ${command.side==='BLUE'?'blue_score':'red_score'}=${command.side==='BLUE'?'blue_score':'red_score'}+? WHERE id=?`).run(points,currentRound.id);
+          if(state==='GOLDEN_POINT'){
+            winner=command.side;decision='GOLDEN_POINT';
+            this.db.prepare("UPDATE match_rounds SET winner_side=?,decision_method='GOLDEN_POINT',ended_at=? WHERE id=?").run(command.side,new Date(now).toISOString(),currentRound.id);
+            transition('COMPLETED');nextTimer=pauseTimer(nextTimer,now);actualEnd=new Date(now).toISOString();
+            eventType='match.completed';payload={side:command.side,pointType:command.pointType,points,roundId:currentRound.id,round,winner,decisionMethod:decision,goldenPoint:true,undoable:false};break;
+          }
           eventType='score.manual';payload={side:command.side,pointType:command.pointType,points,roundId:currentRound.id,round,undoable:true};break;
         }
         case 'GAM_JEOM': {
@@ -357,10 +363,36 @@ export class MatchService {
           let restStarted=false;if(['ROUND_BREAK','PAUSED'].includes(state)&&nextTimer.kind==='BREAK'&&(!nextTimer.running||nextTimer.remainingMs<=0)){if(state==='PAUSED')transition('ROUND_BREAK');const duration=nextTimer.remainingMs>0?nextTimer.remainingMs:this.timing(current.category_id).breakDurationMs;nextTimer=startTimer(resetTimer({...nextTimer,kind:'BREAK'},duration,now),now);restStarted=true;}
           eventType='round.superiority_decided';payload={...payload,roundId:target.id,round:target.number,side:command.side,blueScore:target.blue_score,redScore:target.red_score,decisionMethod:'SUPERIORITY',reason:command.reason,restStarted,restRemainingMs:nextTimer.remainingMs};break;
         }
+        case 'START_GOLDEN_POINT': {
+          if(state!=='PAUSED')throw new HttpError(409,'INVALID_STATE','Golden Point requires a paused match after the final round.');
+          if(ruleset.tieBreak!=='GOLDEN_POINT')throw new HttpError(409,'INVALID_POLICY','Golden Point tie-break is not configured for this ruleset.');
+          const timing=this.timing(current.category_id);
+          if(round<timing.rounds)throw new HttpError(409,'INVALID_STATE','Golden Point is available only after the final round has ended.');
+          const ended=this.db.prepare('SELECT winner_side FROM match_rounds WHERE match_id=? AND winner_side IS NOT NULL').all(matchId) as Array<{winner_side:Side}>;
+          const blueWins=ended.filter(item=>item.winner_side==='BLUE').length;const redWins=ended.filter(item=>item.winner_side==='RED').length;
+          if(blueWins!==redWins)throw new HttpError(409,'INVALID_STATE','Golden Point requires tied round wins.');
+          const unresolvedTie=this.db.prepare('SELECT COUNT(*) AS count FROM match_rounds WHERE match_id=? AND ended_at IS NOT NULL AND winner_side IS NULL AND blue_score=red_score').get(matchId) as {count:number};
+          if(unresolvedTie.count>0)throw new HttpError(409,'SUPERIORITY_REQUIRED','Record the superiority decision for the tied round before starting Golden Point.');
+          const reuseGoldenRound=round>timing.rounds&&currentRound.decision_method===null;
+          if(reuseGoldenRound){
+            this.db.prepare('UPDATE match_rounds SET started_at=COALESCE(started_at,?) WHERE id=?').run(new Date(now).toISOString(),currentRound.id);
+          }else{
+            round+=1;
+            this.db.prepare('INSERT INTO match_rounds(id,match_id,number,started_at) VALUES(?,?,?,?)').run(randomUUID(),matchId,round,new Date(now).toISOString());
+          }
+          transition('GOLDEN_POINT');nextTimer={...startTimer(resetTimer({...nextTimer,kind:'GOLDEN_POINT'},ruleset.goldenPointDurationMs??timing.roundDurationMs,now),now),publicWaiting:false};eventType='match.golden_point_started';payload={...payload,round,goldenRound:round,blueRoundWins:blueWins,redRoundWins:redWins};break;
+        }
+        case 'COMPLETE_GOLDEN_POINT': {
+          if(state!=='GOLDEN_POINT'&&!(state==='PAUSED'&&nextTimer.kind==='GOLDEN_POINT'))throw new HttpError(409,'INVALID_STATE','Golden Point completion requires an active Golden Point round.');
+          if(!command.side)throw new HttpError(400,'VALIDATION_ERROR','Golden Point winner side is required.');
+          winner=command.side;decision='GOLDEN_POINT';
+          this.db.prepare("UPDATE match_rounds SET winner_side=?,decision_method='GOLDEN_POINT',ended_at=? WHERE id=?").run(command.side,new Date(now).toISOString(),currentRound.id);
+          transition('COMPLETED');nextTimer=pauseTimer(nextTimer,now);actualEnd=new Date(now).toISOString();eventType='match.completed';payload={...payload,winner,decisionMethod:decision,round,goldenPoint:true};break;
+        }
         case 'COMPLETE': {
           if(!['IN_PROGRESS','PAUSED','ROUND_BREAK','GOLDEN_POINT','UNDER_REVIEW'].includes(state))throw new HttpError(409,'INVALID_STATE','The match cannot be completed from its current state.');
           const rounds=this.db.prepare('SELECT * FROM match_rounds WHERE match_id=? ORDER BY number').all(matchId) as Array<{number:number;blue_score:number;red_score:number;blue_penalties:number;red_penalties:number;winner_side:Side|null;decision_method:string|null}>;
-          const result=determineMatchResult(rounds.map(item=>({number:item.number,blueScore:item.blue_score,redScore:item.red_score,bluePenalties:item.blue_penalties,redPenalties:item.red_penalties,winner:item.winner_side,decisionMethod:item.decision_method})),ruleset);if(!result.winner)throw new HttpError(409,'UNRESOLVED_TIE',result.reason);
+          const result=determineMatchResult(rounds.map(item=>({number:item.number,blueScore:item.blue_score,redScore:item.red_score,bluePenalties:item.blue_penalties,redPenalties:item.red_penalties,winner:item.winner_side,decisionMethod:item.decision_method,goldenPointWinner:item.decision_method==='GOLDEN_POINT'?item.winner_side:null})),ruleset);if(!result.winner)throw new HttpError(409,'UNRESOLVED_TIE',result.reason);
           winner=result.winner;decision=result.decisionMethod;transition('COMPLETED');nextTimer=pauseTimer(nextTimer,now);actualEnd=new Date(now).toISOString();eventType='match.completed';payload={winner,decisionMethod:decision,result};
           this.db.prepare('UPDATE match_rounds SET winner_side=CASE WHEN winner_side IS NOT NULL THEN winner_side WHEN blue_score=red_score THEN NULL WHEN blue_score>red_score THEN \'BLUE\' ELSE \'RED\' END,decision_method=CASE WHEN winner_side IS NOT NULL THEN decision_method WHEN blue_score=red_score THEN NULL ELSE \'SCORE\' END,ended_at=COALESCE(ended_at,?) WHERE match_id=? AND number<=?').run(new Date(now).toISOString(),matchId,round);break;
         }
@@ -496,7 +528,8 @@ export class MatchService {
       if(status!=='ACCEPTED'){const sequence=match.sequence+1;this.db.prepare('UPDATE matches SET sequence=?,version=version+1,updated_at=? WHERE id=?').run(sequence,isoNow(),match.id);appendMatchEvent(this.db,{tournamentId:match.tournament_id,matchId:match.id,sequence,type:status==='REJECTED'?'score.rejected':'score.proposed',actorId:session.id,sessionId:session.id,payload:{eventId:input.eventId,side:input.side,pointType:input.pointType,status,reason},idempotencyKey:`proposal:${input.eventId}`});}
       audit(this.db,{tournamentId:match.tournament_id,actorId:session.id,action:`SCORE_PROPOSAL_${status}`,entityType:'match',entityId:match.id,after:{eventId:input.eventId,status,reason,decisionId,clientSubmittedAt,scoringMode,onlineJudgeCount,consensusThreshold}});result={status,reason,decisionId,points,matchId:match.id,diagnostics:{serverReceivedAt:now,consensusWindowMs:ruleset.consensusWindowMs,consensusThreshold,matchingJudgeCount,expiredPriorCount,onlineJudgeCount,scoringMode}};
     })();if(!result)throw new HttpError(500,'PROPOSAL_NOT_RECORDED','Proposal transaction did not return a result.');
-    if(result.status==='ACCEPTED')this.execute({id:'system-point-gap',role:'SUPER_ADMIN',tournamentIds:[match.tournament_id],sessionId:session.id},match.id,{type:'EVALUATE_POINT_GAP'},`point-gap:consensus:${result.decisionId??input.eventId}`);
+    if(result.status==='ACCEPTED'&&match.state==='GOLDEN_POINT')this.execute({id:'system-golden-point',role:'SUPER_ADMIN',tournamentIds:[match.tournament_id],sessionId:session.id},match.id,{type:'COMPLETE_GOLDEN_POINT',side:input.side},`golden-point:consensus:${result.decisionId??input.eventId}`);
+    else if(result.status==='ACCEPTED')this.execute({id:'system-point-gap',role:'SUPER_ADMIN',tournamentIds:[match.tournament_id],sessionId:session.id},match.id,{type:'EVALUATE_POINT_GAP'},`point-gap:consensus:${result.decisionId??input.eventId}`);
     return result;
   }
 
