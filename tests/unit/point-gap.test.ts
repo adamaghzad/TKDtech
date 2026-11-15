@@ -31,4 +31,13 @@ describe('configurable point-gap policy', () => {
     expect(validateRuleset({ ...rules, matchPointGapCompletionRound: 4 })).toContain('Match point-gap completion round must be between 1 and the configured number of rounds.');
     expect(validateRuleset({ ...rules, matchPointGapLiveFromRound: 0 })).toContain('Match point-gap live round must be between 1 and the configured number of rounds.');
   });
+
+  it('validates the configurable judge consensus window (1000-5000ms)', () => {
+    expect(validateRuleset({ ...rules, consensusWindowMs: 999 })).toContain('Consensus window must be between 1000 and 5000ms.');
+    expect(validateRuleset({ ...rules, consensusWindowMs: 5001 })).toContain('Consensus window must be between 1000 and 5000ms.');
+    expect(validateRuleset({ ...rules, consensusWindowMs: 1000 })).not.toContain('Consensus window must be between 1000 and 5000ms.');
+    expect(validateRuleset({ ...rules, consensusWindowMs: 5000 })).not.toContain('Consensus window must be between 1000 and 5000ms.');
+    expect(validateRuleset({ ...rules, consensusThreshold: 0 })).toContain('Consensus threshold must be 1–3.');
+    expect(validateRuleset({ ...rules, consensusThreshold: 4 })).toContain('Consensus threshold must be 1–3.');
+  });
 });

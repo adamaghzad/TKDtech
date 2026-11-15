@@ -18,7 +18,7 @@ export function validateRuleset(ruleset: Ruleset): string[] {
   if (ruleset.rounds < 1 || ruleset.rounds > 9) errors.push('Rounds must be between 1 and 9.');
   if (ruleset.roundDurationMs < 1_000) errors.push('Round duration must be at least one second.');
   if (ruleset.consensusThreshold < 1 || ruleset.consensusThreshold > 3) errors.push('Consensus threshold must be 1–3.');
-  if (ruleset.consensusWindowMs < 100) errors.push('Consensus window must be at least 100ms.');
+  if (ruleset.consensusWindowMs < 1_000 || ruleset.consensusWindowMs > 5_000) errors.push('Consensus window must be between 1000 and 5000ms.');
   if (Object.values(ruleset.points).some(value => !Number.isInteger(value) || value < 0)) errors.push('Point values must be non-negative integers.');
   if (!Number.isInteger(ruleset.gamJeomOpponentPoints) || ruleset.gamJeomOpponentPoints < 0 || ruleset.gamJeomOpponentPoints > 20) errors.push('Gam-Jeom opponent points must be an integer between 0 and 20.');
   if (!Number.isInteger(ruleset.disqualificationThreshold) || ruleset.disqualificationThreshold < 1 || ruleset.disqualificationThreshold > 100) errors.push('Gam-Jeom disqualification threshold must be an integer between 1 and 100.');

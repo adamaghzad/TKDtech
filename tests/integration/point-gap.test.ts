@@ -197,4 +197,15 @@ describe('versioned point-gap configuration', () => {
     expect(() => repository.updateRuleset(actor, tournamentId, { ...input, matchPointGapCompletionRound: 4, expectedVersion: current.version })).toThrow(/validation failed/i);
     expect(() => repository.updateRuleset({ id: 'registration-manager', role: 'REGISTRATION_MANAGER', tournamentIds: [tournamentId] }, tournamentId, input)).toThrow(/administrator/i);
   });
+
+  it('configures the judge consensus window (1000-5000ms) and threshold in a new audited version', () => {
+    const { db, repository, actor, matchId, tournamentId } = system(); resetMatch(db, matchId, 1, 'READY');
+    const current = repository.getTournament(tournamentId).ruleset as Ruleset;
+    const saved = repository.updateRuleset(actor, tournamentId, { ...input, consensusWindowMs: 3000, consensusThreshold: 2, expectedVersion: current.version });
+    expect(saved).toMatchObject({ consensusWindowMs: 3000, consensusThreshold: 2, version: `${current.version}-r2` });
+    expect((repository.getTournament(tournamentId).ruleset as Ruleset).consensusWindowMs).toBe(3000);
+    expect(() => repository.updateRuleset(actor, tournamentId, { ...input, consensusWindowMs: 999, expectedVersion: saved.version })).toThrow(/validation failed/i);
+    expect(() => repository.updateRuleset(actor, tournamentId, { ...input, consensusWindowMs: 5001, expectedVersion: saved.version })).toThrow(/validation failed/i);
+    expect(() => repository.updateRuleset(actor, tournamentId, { ...input, consensusThreshold: 4, expectedVersion: saved.version })).toThrow(/validation failed/i);
+  });
 });
