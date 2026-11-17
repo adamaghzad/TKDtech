@@ -220,8 +220,7 @@ test('operator scoreboard toggles Public TV fullscreen remotely',async({page})=>
   await tvFullscreenButton.click();
   await expect(tvFullscreenButton).toHaveAttribute('aria-pressed','true');
   await expect.poll(()=>display!.evaluate(()=>window.localStorage.getItem('tkd_public_tv_fullscreen'))).toBe('1');
-  await display.locator('body').click({position:{x:20,y:400}});
-  await expect.poll(()=>display!.evaluate(()=>Boolean(document.fullscreenElement))).toBe(true);
+  await expect.poll(()=>display!.evaluate(()=>Boolean(document.fullscreenElement)),{timeout:15000}).toBe(true);
   await expect(display.getByTestId('public-display-controls')).toHaveCount(0);
   await tvFullscreenButton.click();
   await expect(tvFullscreenButton).toHaveAttribute('aria-pressed','false');

@@ -11,8 +11,8 @@ android {
         applicationId 'com.tkdtech.scoring'
         minSdk 24
         targetSdk 35
-        versionCode 19
-        versionName '0.1.18-validation'
+        versionCode 20
+        versionName '0.1.19-validation'
         externalNativeBuild {
             cmake {
                 arguments '-DANDROID_STL=c++_shared'

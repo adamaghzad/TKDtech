@@ -274,7 +274,12 @@ if (!hasSingleInstanceLock) {
       icon: paths.icon,
       backgroundColor: '#080d18',
       autoHideMenuBar: true,
-      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+      webPreferences: {
+        preload: path.join(app.getAppPath(), 'dist', 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
     });
     tvWindows.set(url, tvWindow);
     tvWindow.setMenuBarVisibility(false);

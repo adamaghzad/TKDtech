@@ -8,7 +8,7 @@ import type { MatchSnapshot, PointType, Side } from '@tkd/contracts';
 import { useMatchCloud } from '@/lib/use-match-cloud';
 import { useTimerAudio } from '@/lib/use-timer-audio';
 import type { PreviewableProSound } from '@/lib/pro-arena-synth';
-import { openPublicTv } from '@/lib/public-tv';
+import { applyPublicTvFullscreen, openPublicTv } from '@/lib/public-tv';
 import { desktopBridge, readTvFullscreenPref, TV_FULLSCREEN_PREF_KEY, writeTvFullscreenPref } from '@/lib/tv-fullscreen';
 import { useApi } from '@/lib/use-api';
 import { post } from '@/lib/api';
@@ -118,8 +118,15 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
     writeTvFullscreenPref(next);
     setTvFullscreen(next);
     const bridge = desktopBridge();
-    if (bridge?.setTvFullscreen) void bridge.setTvFullscreen(next).catch(() => {});
-  }, []);
+    if (bridge?.setTvFullscreen) {
+      // Desktop app: window-level fullscreen on every TV window, instantly.
+      void bridge.setTvFullscreen(next).catch(() => {});
+      return;
+    }
+    // Plain browser: apply the operator's click gesture directly to the TV popup
+    // window so the TV goes fullscreen without anyone touching the TV screen.
+    if (snapshot) applyPublicTvFullscreen(snapshot.matId ? `/display/mat/${snapshot.matId}` : `/display/${matchId}`, next);
+  }, [matchId, snapshot]);
   const { toast } = useToast();
 
   useEffect(() => {
