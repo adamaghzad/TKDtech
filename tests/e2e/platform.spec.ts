@@ -182,3 +182,30 @@ test('result waiting shortcut toggles from operator control and an authoritative
   await display.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(waiting).toHaveCount(0);await expect(display.getByTestId('blue-points')).toBeVisible();await expect(display.getByTestId('red-points')).toBeVisible();
  }finally{await display.close();setPointGapResultFixture(id);}
 });
+
+test('Public TV stays pinned to fullscreen when the operator starts the next match on the mat',async({page})=>{
+ await page.goto('/');await expect(page).toHaveURL(/\/dashboard/);const first=createWaitingMatch();const matId=createEmptyMat(first);
+ const assigned=await page.request.post(`/api/v1/matches/${first}/assign`,{data:{matId}});expect(assigned.ok(),await assigned.text()).toBeTruthy();
+ await command(page,first,'START');
+ setTimerFixture(first,{round:2,state:'PAUSED',remainingMs:84000,roundDurationMs:120000,breakDurationMs:60000});setRoundScore(first,1,5,2,5,2,'BLUE',true);setRoundScore(first,2,4,0,9,2,null,false);
+ await page.goto(`/scoreboard/${first}`);const operatorUrl=page.url();let display:Page|undefined;
+ try{
+  const popup=page.waitForEvent('popup');await page.getByRole('link',{name:'Public TV',exact:true}).click();display=await popup;await display.waitForURL(/\/display\/mat\//);await display.waitForLoadState('domcontentloaded');expect(page.url()).toBe(operatorUrl);expect(display.url()).toContain(`/display/mat/${matId}`);
+  const controls=display.getByTestId('public-display-controls');await expect(controls).toBeVisible();await expect(display.getByTestId('blue-points')).toBeVisible();
+  await display.getByRole('button',{name:'Fullscreen',exact:true}).click();await expect.poll(()=>display!.evaluate(()=>Boolean(document.fullscreenElement))).toBe(true);await expect(controls).toHaveCount(0);
+  await command(page,first,'NEXT_ROUND');const resolved=await snapshot(page,first);expect(resolved.state).toBe('COMPLETED');
+  await expect(display.getByRole('heading',{name:`MATCH ${resolved.matchNumber} RESULT`,exact:true})).toBeVisible();
+  await expect.poll(()=>display!.evaluate(()=>Boolean(document.fullscreenElement))).toBe(true);
+  const active=await page.request.get(`/api/v1/mats/${matId}/active-match`);
+  let second:string;
+  if(active.ok()){second=(await active.json() as{data:import('@tkd/contracts').MatchSnapshot}).data.matchId;}
+  else{expect(await active.text()).toContain('NO_ACTIVE_MATCH');second=createWaitingMatch();const nextAssigned=await page.request.post(`/api/v1/matches/${second}/assign`,{data:{matId}});expect(nextAssigned.ok(),await nextAssigned.text()).toBeTruthy();}
+  const secondSnapshot=await snapshot(page,second);expect(secondSnapshot.state).toBe('READY');
+  await command(page,second,'START');
+  await expect(display.getByTestId('blue-points')).toHaveText('0');
+  await expect(display.getByLabel(`BLUE athlete ${secondSnapshot.blue.name}`)).toBeVisible();
+  await expect(display.getByLabel(`RED athlete ${secondSnapshot.red.name}`)).toBeVisible();
+  await expect.poll(()=>display!.evaluate(()=>Boolean(document.fullscreenElement))).toBe(true);await expect(controls).toHaveCount(0);
+  await display.screenshot({path:'artifacts/public-tv-fullscreen-next-match.png',fullPage:true});
+ }finally{if(display)await display.close();}
+});

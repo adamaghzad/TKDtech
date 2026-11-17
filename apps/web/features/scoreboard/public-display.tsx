@@ -13,6 +13,7 @@ import { WaitingView } from './waiting-view';
 
 const RESULT_STATES = new Set(['COMPLETED', 'DISQUALIFIED', 'WALKOVER']);
 const UNSTARTED_STATES = new Set(['PENDING', 'READY', 'CALLED']);
+const FULLSCREEN_PREF_KEY = 'tkd_public_tv_fullscreen';
 
 interface PublicDisplayProps {
   matchId: string;
@@ -36,24 +37,63 @@ export function PublicDisplay({ matchId, queuedSnapshot, onLiveOrResolved }: Pub
     }
   }, [matchId, onLiveOrResolved, snapshot]);
 
+  // Fullscreen is requested on <html> (which never unmounts) so changing the displayed
+  // match — e.g. starting a new Hong vs Chung match — keeps the Public TV fullscreen.
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        localStorage.removeItem(FULLSCREEN_PREF_KEY);
+        await document.exitFullscreen();
+      } else {
+        localStorage.setItem(FULLSCREEN_PREF_KEY, '1');
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      // A browser may deny fullscreen outside a user gesture; the display remains usable.
+    }
+  }, []);
+
+  // If the sticky fullscreen choice was lost (browser reload, crash), re-enter on the
+  // first interaction with the TV screen. Exiting through the TV's own controls clears
+  // the preference, so an intentional exit is always respected.
+  const restoreFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement && localStorage.getItem(FULLSCREEN_PREF_KEY) === '1') {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      // Browsers require a user gesture; the choice is re-applied on the next interaction.
+    }
+  }, []);
+
   useEffect(() => {
     const frame = requestAnimationFrame(() => setFlipped(localStorage.getItem(`tkd_flip_${matchId}`) === '1'));
-    const handler = () => setFullscreen(Boolean(document.fullscreenElement));
+    // Sync with fullscreen that is already active (e.g. after the displayed match changed):
+    // no fullscreenchange event fires for an already-fullscreen document.
+    setFullscreen(Boolean(document.fullscreenElement));
+    // Re-apply the sticky fullscreen choice after the TV page (re)loads — kiosk TVs stay pinned.
+    void restoreFullscreen();
+    const handler = () => {
+      const active = Boolean(document.fullscreenElement);
+      setFullscreen(active);
+      if (active) localStorage.setItem(FULLSCREEN_PREF_KEY, '1');
+    };
     document.addEventListener('fullscreenchange', handler);
     return () => {
       cancelAnimationFrame(frame);
       document.removeEventListener('fullscreenchange', handler);
     };
-  }, [matchId]);
+  }, [matchId, restoreFullscreen]);
 
-  const toggleFullscreen = useCallback(async () => {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await container.current?.requestFullscreen();
-    } catch {
-      // A browser may deny fullscreen outside a user gesture; the display remains usable.
-    }
-  }, []);
+  useEffect(() => {
+    const onGesture = () => void restoreFullscreen();
+    document.addEventListener('click', onGesture);
+    document.addEventListener('keydown', onGesture);
+    return () => {
+      document.removeEventListener('click', onGesture);
+      document.removeEventListener('keydown', onGesture);
+    };
+  }, [restoreFullscreen]);
 
   const flip = useCallback(() => {
     const next = !flipped;

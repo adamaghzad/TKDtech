@@ -261,7 +261,7 @@ export function PublicBracketTv({
     if (typeof document === 'undefined') return;
     try {
       if (!document.fullscreenElement) {
-        await (rootRef.current ?? document.documentElement).requestFullscreen();
+        await document.documentElement.requestFullscreen();
       } else {
         await document.exitFullscreen();
       }
