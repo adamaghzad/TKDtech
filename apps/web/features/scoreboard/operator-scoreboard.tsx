@@ -168,6 +168,14 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
       });
       const nowT = typeof performance !== 'undefined' ? performance.now() : Date.now();
       applySnapshot(updated, Math.min(500, Math.max(0, (nowT - reqStart) / 2)));
+      if (['START', 'START_GOLDEN_POINT'].includes(type) && readTvFullscreenPref()) {
+        // Kiosk mode: starting a match puts the Public TV into fullscreen immediately.
+        // The operator's click/Space gesture is still active, so this also works in a
+        // plain browser; on the Desktop app the bridge fullscreens every TV window.
+        const bridge = desktopBridge();
+        if (bridge?.setTvFullscreen) void bridge.setTvFullscreen(true).catch(() => {});
+        else applyPublicTvFullscreen(updated.matId ? `/display/mat/${updated.matId}` : `/display/${updated.matchId}`, true);
+      }
       if (typeof BroadcastChannel !== 'undefined' && ['START', 'RESUME', 'PUBLIC_WAITING'].includes(type)) {
         const ch = new BroadcastChannel('tkd-mat-display');
         ch.postMessage({

@@ -84,6 +84,17 @@ export function PublicDisplay({ matchId, queuedSnapshot, onLiveOrResolved }: Pub
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
+  // Kiosk mode: with the fullscreen preference on, a match going live on this TV
+  // automatically (re-)enters fullscreen — instant on the Desktop app (window-level
+  // fullscreen needs no gesture) and on the operator's next interaction in a browser.
+  const matchUnderway = Boolean(
+    snapshot && ['IN_PROGRESS', 'PAUSED', 'ROUND_BREAK', 'GOLDEN_POINT', 'UNDER_REVIEW'].includes(snapshot.state),
+  );
+  useEffect(() => {
+    if (!matchUnderway || !readTvFullscreenPref() || document.fullscreenElement) return;
+    void applyTvFullscreen(true);
+  }, [matchUnderway]);
+
   useEffect(() => {
     const onGesture = () => void restoreFullscreen();
     document.addEventListener('click', onGesture);

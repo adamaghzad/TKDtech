@@ -229,3 +229,21 @@ test('operator scoreboard toggles Public TV fullscreen remotely',async({page})=>
   await expect(display.getByTestId('public-display-controls')).toBeVisible();
  }finally{if(display)await display.close();}
 });
+
+test('Public TV enters fullscreen automatically when the operator starts the match',async({page})=>{
+ await page.goto('/');await expect(page).toHaveURL(/\/dashboard/);const id=createWaitingMatch();const matId=createEmptyMat(id);
+ const assigned=await page.request.post(`/api/v1/matches/${id}/assign`,{data:{matId}});expect(assigned.ok(),await assigned.text()).toBeTruthy();
+ await page.goto(`/scoreboard/${id}`);let display:Page|undefined;
+ try{
+  const popup=page.waitForEvent('popup');await page.getByRole('link',{name:'Public TV',exact:true}).click();display=await popup;await display.waitForURL(/\/display\/mat\//);await display.waitForLoadState('domcontentloaded');
+  await expect(display.getByTestId('waiting-view')).toBeVisible();
+  await page.evaluate(() => window.localStorage.setItem('tkd_public_tv_fullscreen','1'));
+  await expect.poll(() => display!.evaluate(() => window.localStorage.getItem('tkd_public_tv_fullscreen'))).toBe('1');
+  await page.keyboard.press(' ');
+  await expect.poll(() => display!.evaluate(() => Boolean(document.fullscreenElement)),{timeout:15000}).toBe(true);
+  await expect(display.getByTestId('waiting-view')).toHaveCount(0);
+  await expect(display.getByTestId('blue-points')).toBeVisible();
+  await expect(display.getByTestId('public-display-controls')).toHaveCount(0);
+  await display.screenshot({path:'artifacts/public-tv-auto-fullscreen-match-start.png',fullPage:true});
+ }finally{if(display)await display.close();}
+});
