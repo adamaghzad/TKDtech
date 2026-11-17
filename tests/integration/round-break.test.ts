@@ -89,3 +89,46 @@ describe('authoritative round breaks',()=>{
     }finally{rmSync(directory,{recursive:true,force:true});}
   });
 });
+
+describe('Space keybind rest controls',()=>{
+  function runningBreak(db:SqliteDatabase,matchId:string,remainingMs=30000){
+    db.prepare("UPDATE match_rounds SET blue_score=5,red_score=2,winner_side='BLUE',decision_method='SCORE',ended_at=? WHERE match_id=? AND number=1").run(new Date(100000).toISOString(),matchId);
+    db.prepare("UPDATE matches SET current_round=2,state='ROUND_BREAK',blue_score=5,red_score=2,timer_json=? WHERE id=?").run(JSON.stringify({remainingMs,running:true,authoritativeAt:100000,kind:'BREAK'}),matchId);
+  }
+
+  it('pauses a running rest (Space), resumes the remaining rest (Space), and starts the round early (N)',()=>{
+    const{db,service,actor,matchId}=system();runningBreak(db,matchId);const clock=vi.spyOn(Date,'now').mockReturnValue(100000);
+    const paused=service.execute(actor,matchId,{type:'PAUSE'});
+    expect(paused).toMatchObject({state:'ROUND_BREAK',currentRound:2});
+    expect(paused.timer).toMatchObject({kind:'BREAK',remainingMs:30000,running:false});
+    expect(paused.timer.holdReason).toBeUndefined();
+    const event=db.prepare("SELECT payload_json FROM match_events WHERE match_id=? AND event_type='match.paused' ORDER BY sequence DESC LIMIT 1").get(matchId) as{payload_json:string};
+    expect(JSON.parse(event.payload_json)).toMatchObject({restPaused:true});
+    expect(()=>service.execute(actor,matchId,{type:'PAUSE'})).toThrow(/running round or rest break/i);
+    clock.mockReturnValue(105000);
+    const resumed=service.execute(actor,matchId,{type:'RESUME'});
+    expect(resumed).toMatchObject({state:'ROUND_BREAK',currentRound:2});
+    expect(resumed.timer).toMatchObject({kind:'BREAK',remainingMs:30000,running:true});
+    const early=service.execute(actor,matchId,{type:'NEXT_ROUND'});
+    expect(early).toMatchObject({state:'IN_PROGRESS',currentRound:2});
+    expect(early.timer).toMatchObject({kind:'ROUND',remainingMs:120000,running:true});
+  });
+
+  it('still pauses running rounds and refuses to pause an expired or held rest',()=>{
+    const{db,service,actor,matchId}=system();setRound(db,matchId,1,'IN_PROGRESS');vi.spyOn(Date,'now').mockReturnValue(100000);
+    expect(service.execute(actor,matchId,{type:'PAUSE'})).toMatchObject({state:'PAUSED',timer:{kind:'ROUND',running:false}});
+    db.prepare("UPDATE matches SET current_round=2,state='ROUND_BREAK',timer_json=? WHERE id=?").run(JSON.stringify({remainingMs:0,running:false,authoritativeAt:100000,kind:'BREAK'}),matchId);
+    expect(()=>service.execute(actor,matchId,{type:'PAUSE'})).toThrow(/running round or rest break/i);
+    db.prepare("UPDATE matches SET timer_json=? WHERE id=?").run(JSON.stringify({remainingMs:45000,running:false,authoritativeAt:100000,kind:'BREAK',holdReason:'SUPERIORITY'}),matchId);
+    expect(()=>service.execute(actor,matchId,{type:'PAUSE'})).toThrow(/running round or rest break/i);
+  });
+
+  it('starts the next round from a running rest without waiting for the countdown',()=>{
+    const{db,service,actor,matchId}=system();runningBreak(db,matchId,45000);vi.spyOn(Date,'now').mockReturnValue(100000);
+    const early=service.execute(actor,matchId,{type:'NEXT_ROUND'});
+    expect(early).toMatchObject({state:'IN_PROGRESS',currentRound:2});
+    expect(early.timer).toMatchObject({kind:'ROUND',remainingMs:120000,running:true});
+    const event=db.prepare("SELECT payload_json FROM match_events WHERE match_id=? AND event_type='match.round_changed' ORDER BY sequence DESC LIMIT 1").get(matchId) as{payload_json:string};
+    expect(JSON.parse(event.payload_json)).toMatchObject({breakSkipped:true,round:2});
+  });
+});

@@ -123,7 +123,19 @@ export class MatchService {
           this.db.prepare('UPDATE matches SET actual_start_at=COALESCE(actual_start_at,?) WHERE id=?').run(new Date(now).toISOString(),matchId);break;
         }
         case 'PAUSE': {
-          if(!['IN_PROGRESS','GOLDEN_POINT'].includes(state))throw new HttpError(409,'INVALID_STATE','Pause requires a running round.');
+          if(!['IN_PROGRESS','GOLDEN_POINT'].includes(state)){
+            if(state==='ROUND_BREAK'&&nextTimer.kind==='BREAK'&&timer.running){
+              const restPaused=pauseTimer(nextTimer,now);
+              if(command.clientRemainingMs!=null){
+                const rawClientMs=Math.round(command.clientRemainingMs);
+                nextTimer=rawClientMs>0&&Math.abs(rawClientMs-restPaused.remainingMs)<=2500?{...restPaused,remainingMs:Math.min(timer.remainingMs,rawClientMs)}:restPaused;
+              }else{
+                nextTimer=restPaused;
+              }
+              eventType='match.paused';payload={...payload,restPaused:true};break;
+            }
+            throw new HttpError(409,'INVALID_STATE','Pause requires a running round or rest break.');
+          }
           transition('PAUSED');
           const paused=pauseTimer(nextTimer,now);
           if(command.clientRemainingMs!=null&&timer.running){

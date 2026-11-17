@@ -43,8 +43,8 @@ export interface OperatorActionMeta {
 
 export const OPERATOR_ACTIONS: readonly OperatorActionMeta[] = [
   // Time & Round Control
-  { id: 'TOGGLE_CLOCK', group: 'TIME', label: 'Start / Pause / Resume', description: 'Starts match, pauses running clock, or resumes rest/round', defaultKey: 'Space' },
-  { id: 'NEXT_ROUND', group: 'TIME', label: 'End Round & Rest / Next Round', description: 'Ends paused round into rest or starts the next round', defaultKey: 'Key:N' },
+  { id: 'TOGGLE_CLOCK', group: 'TIME', label: 'Start / Pause / Resume', description: 'Starts match, pauses & resumes rounds and rest breaks, starts next round after rest', defaultKey: 'Space' },
+  { id: 'NEXT_ROUND', group: 'TIME', label: 'End Round & Rest / Next Round', description: 'Ends paused round into rest or starts the next round early during rest', defaultKey: 'Key:N' },
   { id: 'MEDICAL_TIMEOUT', group: 'TIME', label: 'Medical / Doctor Call', description: 'Starts or ends medical timeout clock', defaultKey: 'Key:M' },
   { id: 'RESET_TIMER', group: 'TIME', label: 'Reset Timer', description: 'Opens audited timer reset dialog (when paused)', defaultKey: 'Key:R' },
   { id: 'PREVIOUS_ROUND', group: 'TIME', label: 'Previous Round', description: 'Opens audited previous-round correction dialog', defaultKey: 'Key:B' },

@@ -190,7 +190,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
   const superiorityRequired = Boolean(snapshot && displayRound?.endedAt && displayRound.blueScore === displayRound.redScore && !displayRound.winner && (snapshot.state === 'ROUND_BREAK' || snapshot.timer.kind === 'BREAK' || (snapshot.state === 'PAUSED' && snapshot.timer.kind === 'ROUND' && remainingMs <= 0)));
   const canResume = Boolean(snapshot && ['PAUSED', 'ROUND_BREAK'].includes(snapshot.state) && !superiorityRequired);
   const breakPaused = Boolean(snapshot && snapshot.state === 'ROUND_BREAK' && !snapshot.timer.running && remainingMs > 0);
-  const canNextRound = Boolean(snapshot && !superiorityRequired && (snapshot.state === 'ROUND_BREAK' ? breakPaused : snapshot.state === 'PAUSED' && snapshot.timer.kind !== 'BREAK' && snapshot.currentRound < snapshot.totalRounds));
+  const canNextRound = Boolean(snapshot && !superiorityRequired && (snapshot.state === 'ROUND_BREAK' ? true : snapshot.state === 'PAUSED' && snapshot.timer.kind !== 'BREAK' && snapshot.currentRound < snapshot.totalRounds));
   const canMedical = Boolean(snapshot && (['IN_PROGRESS', 'PAUSED'].includes(snapshot.state) || snapshot.timer.kind === 'MEDICAL'));
   const canRequestReview = Boolean(snapshot && ['IN_PROGRESS', 'PAUSED', 'GOLDEN_POINT', 'ROUND_BREAK'].includes(snapshot.state));
   const canUndo = Boolean(snapshot && !['COMPLETED', 'WALKOVER', 'DISQUALIFIED', 'WITHDRAWN'].includes(snapshot.state));
@@ -263,7 +263,8 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
       switch (action) {
         case 'TOGGLE_CLOCK':
           if (canStart) void execute('START');
-          else if (snapshot.state === 'IN_PROGRESS') void execute('PAUSE');
+          else if (snapshot.state === 'IN_PROGRESS' || snapshot.state === 'GOLDEN_POINT') void execute('PAUSE');
+          else if (snapshot.state === 'ROUND_BREAK' && snapshot.timer.running) void execute('PAUSE');
           else if (canResume) void execute('RESUME');
           break;
         case 'NEXT_ROUND':
@@ -482,9 +483,13 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                   <Button variant="success" disabled={pending} onClick={() => void execute('START')}>
                     <Play /> Start <Keycap token={kb.TOGGLE_CLOCK} enabled={kbOn} />
                   </Button>
-                ) : snapshot.state === 'IN_PROGRESS' ? (
+                ) : snapshot.state === 'IN_PROGRESS' || snapshot.state === 'GOLDEN_POINT' ? (
                   <Button variant="yellow" disabled={pending} onClick={() => void execute('PAUSE')}>
                     <Pause /> Pause <Keycap token={kb.TOGGLE_CLOCK} enabled={kbOn} />
+                  </Button>
+                ) : snapshot.state === 'ROUND_BREAK' && snapshot.timer.running ? (
+                  <Button variant="yellow" disabled={pending} onClick={() => void execute('PAUSE')}>
+                    <Pause /> {snapshot.currentRound > snapshot.totalRounds ? 'Pause Golden Point rest' : 'Pause rest'} <Keycap token={kb.TOGGLE_CLOCK} enabled={kbOn} />
                   </Button>
                 ) : (
                   <Button variant="success" disabled={pending || !canResume} onClick={() => void execute('RESUME')}>
