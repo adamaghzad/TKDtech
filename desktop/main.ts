@@ -515,6 +515,13 @@ if (!hasSingleInstanceLock) {
   ipcMain.handle('desktop:open-external', async (_event, url: unknown) => {
     if (typeof url === 'string' && url.startsWith('https://')) await shell.openExternal(url);
   });
+  ipcMain.handle('desktop:tv-fullscreen', (_event, value: unknown) => {
+    const fullscreen = value === true;
+    for (const tvWindow of tvWindows.values()) {
+      if (!tvWindow.isDestroyed()) tvWindow.setFullScreen(fullscreen);
+    }
+    return fullscreen;
+  });
 
   app.on('second-instance', () => {
     if (status.state === 'RUNNING') openOperatorWindow();

@@ -27,6 +27,7 @@ export type OperatorActionId =
   | 'SUPERIORITY_RED'
   | 'MANUAL_HORN'
   | 'TOGGLE_TV_WAITING'
+  | 'TOGGLE_TV_FULLSCREEN'
   | 'TOGGLE_SOUND'
   | 'OPEN_PAIRING';
 
@@ -77,6 +78,7 @@ export const OPERATOR_ACTIONS: readonly OperatorActionMeta[] = [
   { id: 'SUPERIORITY_RED', group: 'CONTROL', label: 'Red Superiority Win', description: 'Records Red superiority win when a round ends tied', defaultKey: 'F2' },
   { id: 'MANUAL_HORN', group: 'CONTROL', label: 'Manual Arena Horn', description: 'Blasts the stadium air-horn on demand', defaultKey: 'F8' },
   { id: 'TOGGLE_TV_WAITING', group: 'CONTROL', label: 'Public TV Waiting Screen', description: 'Switches Public TV between Waiting screen and Scoreboard / Result', defaultKey: 'Key:W' },
+  { id: 'TOGGLE_TV_FULLSCREEN', group: 'CONTROL', label: 'Public TV Fullscreen', description: 'Puts every open Public TV window into fullscreen (or restores windowed)', defaultKey: 'F9' },
   { id: 'TOGGLE_SOUND', group: 'CONTROL', label: 'Toggle Match Sound', description: 'Mutes or enables scoreboard horn & countdown audio', defaultKey: 'Key:S' },
   { id: 'OPEN_PAIRING', group: 'CONTROL', label: 'Pair Devices (QR)', description: 'Opens judge & referee QR pairing modal', defaultKey: 'Key:D' },
 ] as const;

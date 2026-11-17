@@ -209,3 +209,24 @@ test('Public TV stays pinned to fullscreen when the operator starts the next mat
   await display.screenshot({path:'artifacts/public-tv-fullscreen-next-match.png',fullPage:true});
  }finally{if(display)await display.close();}
 });
+
+test('operator scoreboard toggles Public TV fullscreen remotely',async({page})=>{
+ await page.goto('/');await expect(page).toHaveURL(/\/dashboard/);const id=await matchId(page);const current=await snapshot(page,id);expect(current.matId).toBeTruthy();
+ await page.goto(`/scoreboard/${id}`);let display:Page|undefined;
+ try{
+  const popup=page.waitForEvent('popup');await page.getByRole('link',{name:'Public TV',exact:true}).click();display=await popup;await display.waitForURL(/\/display\/mat\//);await display.waitForLoadState('domcontentloaded');
+  const tvFullscreenButton=page.getByTestId('toggle-tv-fullscreen');await expect(tvFullscreenButton).toBeVisible();await expect(tvFullscreenButton).toHaveAttribute('aria-pressed','false');
+  await expect.poll(()=>display!.evaluate(()=>window.localStorage.getItem('tkd_public_tv_fullscreen'))).toBe(null);
+  await tvFullscreenButton.click();
+  await expect(tvFullscreenButton).toHaveAttribute('aria-pressed','true');
+  await expect.poll(()=>display!.evaluate(()=>window.localStorage.getItem('tkd_public_tv_fullscreen'))).toBe('1');
+  await display.locator('body').click({position:{x:20,y:400}});
+  await expect.poll(()=>display!.evaluate(()=>Boolean(document.fullscreenElement))).toBe(true);
+  await expect(display.getByTestId('public-display-controls')).toHaveCount(0);
+  await tvFullscreenButton.click();
+  await expect(tvFullscreenButton).toHaveAttribute('aria-pressed','false');
+  await expect.poll(()=>display!.evaluate(()=>Boolean(document.fullscreenElement))).toBe(false);
+  await expect.poll(()=>display!.evaluate(()=>window.localStorage.getItem('tkd_public_tv_fullscreen'))).toBe(null);
+  await expect(display.getByTestId('public-display-controls')).toBeVisible();
+ }finally{if(display)await display.close();}
+});

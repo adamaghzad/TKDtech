@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('tkdDesktop', {
   openData: () => ipcRenderer.invoke('desktop:open-data'),
   openLogs: () => ipcRenderer.invoke('desktop:open-logs'),
   openExternal: (url: string) => ipcRenderer.invoke('desktop:open-external', url),
+  setTvFullscreen: (value: boolean) => ipcRenderer.invoke('desktop:tv-fullscreen', value),
   onStatus: (callback: (status: unknown) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: unknown) => callback(status);
     ipcRenderer.on('desktop:status', listener);

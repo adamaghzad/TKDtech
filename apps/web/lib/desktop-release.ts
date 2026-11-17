@@ -1,16 +1,16 @@
 export const desktopRelease = {
-  version: '1.2.17',
+  version: '1.2.18',
   fileName: 'TKD-Scoring-Windows-x64.zip',
-  downloadUrl: 'https://github.com/adamaghzad/TKDtech/releases/download/desktop-v1.2.17/TKD-Scoring-Windows-x64.zip',
-  checksumUrl: 'https://github.com/adamaghzad/TKDtech/releases/download/desktop-v1.2.17/TKD-Scoring-Windows-x64.zip.sha256',
-  releaseUrl: 'https://github.com/adamaghzad/TKDtech/releases/tag/desktop-v1.2.17',
+  downloadUrl: 'https://github.com/adamaghzad/TKDtech/releases/download/desktop-v1.2.18/TKD-Scoring-Windows-x64.zip',
+  checksumUrl: 'https://github.com/adamaghzad/TKDtech/releases/download/desktop-v1.2.18/TKD-Scoring-Windows-x64.zip.sha256',
+  releaseUrl: 'https://github.com/adamaghzad/TKDtech/releases/tag/desktop-v1.2.18',
 } as const;
 
 export const androidRelease = {
-  version: '0.1.17-validation',
-  versionCode: 18,
+  version: '0.1.18-validation',
+  versionCode: 19,
   fileName: 'TKD-Scoring-Android-universal-validation-debug.apk',
-  downloadUrl: 'https://github.com/adamaghzad/TKDtech/releases/download/android-v0.1.17-validation/TKD-Scoring-Android-universal-validation-debug.apk',
-  checksumUrl: 'https://github.com/adamaghzad/TKDtech/releases/download/android-v0.1.17-validation/TKD-Scoring-Android-universal-validation-debug.apk.sha256',
-  releaseUrl: 'https://github.com/adamaghzad/TKDtech/releases/tag/android-v0.1.17-validation',
+  downloadUrl: 'https://github.com/adamaghzad/TKDtech/releases/download/android-v0.1.18-validation/TKD-Scoring-Android-universal-validation-debug.apk',
+  checksumUrl: 'https://github.com/adamaghzad/TKDtech/releases/download/android-v0.1.18-validation/TKD-Scoring-Android-universal-validation-debug.apk.sha256',
+  releaseUrl: 'https://github.com/adamaghzad/TKDtech/releases/tag/android-v0.1.18-validation',
 } as const;

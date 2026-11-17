@@ -2,13 +2,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ChevronLeft, CircleStop, Clock3, ExternalLink, History, Keyboard, Minus, MonitorPause, Pause, Play, Plus, QrCode, Radio, RotateCcw, ShieldAlert, Stethoscope, Swords, Undo2, Volume2, VolumeX, Wifi, WifiOff, Zap } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, CircleStop, Clock3, Expand, ExternalLink, History, Keyboard, Minus, MonitorPause, Pause, Play, Plus, QrCode, Radio, RotateCcw, ShieldAlert, Shrink, Stethoscope, Swords, Undo2, Volume2, VolumeX, Wifi, WifiOff, Zap } from 'lucide-react';
 import type { MatchCommand } from '../../../local-server/src/types';
 import type { MatchSnapshot, PointType, Side } from '@tkd/contracts';
 import { useMatchCloud } from '@/lib/use-match-cloud';
 import { useTimerAudio } from '@/lib/use-timer-audio';
 import type { PreviewableProSound } from '@/lib/pro-arena-synth';
 import { openPublicTv } from '@/lib/public-tv';
+import { desktopBridge, readTvFullscreenPref, TV_FULLSCREEN_PREF_KEY, writeTvFullscreenPref } from '@/lib/tv-fullscreen';
 import { useApi } from '@/lib/use-api';
 import { post } from '@/lib/api';
 import { formatTime, isRoundClosingSeconds, titleCase } from '@/lib/utils';
@@ -96,6 +97,29 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
   }));
   const [confirm, setConfirm] = useState<'RESET' | 'UNDO' | 'COMPLETE' | 'PREVIOUS' | 'SUPERIORITY_BLUE' | 'SUPERIORITY_RED' | null>(null);
   const [pointMode, setPointMode] = useState<'ADD' | 'REMOVE'>('ADD');
+  const [tvFullscreen, setTvFullscreen] = useState(false);
+
+  // Mirrors the shared Public TV fullscreen preference so the button state stays
+  // in sync even when the TV exits fullscreen through its own controls.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setTvFullscreen(readTvFullscreenPref()));
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === TV_FULLSCREEN_PREF_KEY) setTvFullscreen(readTvFullscreenPref());
+    };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
+  const toggleTvFullscreen = useCallback(() => {
+    const next = !readTvFullscreenPref();
+    writeTvFullscreenPref(next);
+    setTvFullscreen(next);
+    const bridge = desktopBridge();
+    if (bridge?.setTvFullscreen) void bridge.setTvFullscreen(next).catch(() => {});
+  }, []);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -247,6 +271,10 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
         setPairing(true);
         return;
       }
+      if (action === 'TOGGLE_TV_FULLSCREEN') {
+        toggleTvFullscreen();
+        return;
+      }
       if (pending) return;
 
       const scoreOrUndo = (side: Side, pt: PointType) => {
@@ -369,6 +397,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
     scoringOpen,
     snapshot,
     superiorityRequired,
+    toggleTvFullscreen,
   ]);
 
   if (!snapshot) return error ? <ErrorState error={error} retry={refresh} /> : <Loading label="Loading operator scoreboard…" />;
@@ -433,6 +462,15 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
             onClick={() => void execute('PUBLIC_WAITING')}
           >
             <MonitorPause /> {snapshot.publicWaiting ? 'TV: Waiting (Show Live)' : 'TV Waiting'} <Keycap token={kb.TOGGLE_TV_WAITING} enabled={kbOn} />
+          </Button>
+          <Button
+            variant={tvFullscreen ? 'yellow' : 'secondary'}
+            data-testid="toggle-tv-fullscreen"
+            aria-pressed={tvFullscreen}
+            title="Put every open Public TV window in fullscreen (or restore windowed). On the Desktop app this applies instantly; in a plain browser the TV applies it on its next interaction."
+            onClick={toggleTvFullscreen}
+          >
+            {tvFullscreen ? <Shrink /> : <Expand />} TV Fullscreen <Keycap token={kb.TOGGLE_TV_FULLSCREEN} enabled={kbOn} />
           </Button>
           <Button asChild variant="secondary">
             <Link href={tvPath} target="_blank" rel="noopener noreferrer" onClick={event => { if (openPublicTv(tvPath)) event.preventDefault(); }}>

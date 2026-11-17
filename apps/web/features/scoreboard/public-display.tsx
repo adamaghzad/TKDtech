@@ -10,10 +10,10 @@ import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/states';
 import { Badge } from '@/components/ui/badge';
 import { WaitingView } from './waiting-view';
+import { applyTvFullscreen, readTvFullscreenPref, TV_FULLSCREEN_PREF_KEY, writeTvFullscreenPref } from '@/lib/tv-fullscreen';
 
 const RESULT_STATES = new Set(['COMPLETED', 'DISQUALIFIED', 'WALKOVER']);
 const UNSTARTED_STATES = new Set(['PENDING', 'READY', 'CALLED']);
-const FULLSCREEN_PREF_KEY = 'tkd_public_tv_fullscreen';
 
 interface PublicDisplayProps {
   matchId: string;
@@ -40,43 +40,31 @@ export function PublicDisplay({ matchId, queuedSnapshot, onLiveOrResolved }: Pub
   // Fullscreen is requested on <html> (which never unmounts) so changing the displayed
   // match — e.g. starting a new Hong vs Chung match — keeps the Public TV fullscreen.
   const toggleFullscreen = useCallback(async () => {
-    try {
-      if (document.fullscreenElement) {
-        localStorage.removeItem(FULLSCREEN_PREF_KEY);
-        await document.exitFullscreen();
-      } else {
-        localStorage.setItem(FULLSCREEN_PREF_KEY, '1');
-        await document.documentElement.requestFullscreen();
-      }
-    } catch {
-      // A browser may deny fullscreen outside a user gesture; the display remains usable.
-    }
+    const next = !document.fullscreenElement;
+    writeTvFullscreenPref(next);
+    await applyTvFullscreen(next);
   }, []);
 
   // If the sticky fullscreen choice was lost (browser reload, crash), re-enter on the
   // first interaction with the TV screen. Exiting through the TV's own controls clears
   // the preference, so an intentional exit is always respected.
   const restoreFullscreen = useCallback(async () => {
-    try {
-      if (!document.fullscreenElement && localStorage.getItem(FULLSCREEN_PREF_KEY) === '1') {
-        await document.documentElement.requestFullscreen();
-      }
-    } catch {
-      // Browsers require a user gesture; the choice is re-applied on the next interaction.
-    }
+    if (!document.fullscreenElement && readTvFullscreenPref()) await applyTvFullscreen(true);
   }, []);
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => setFlipped(localStorage.getItem(`tkd_flip_${matchId}`) === '1'));
     // Sync with fullscreen that is already active (e.g. after the displayed match changed):
     // no fullscreenchange event fires for an already-fullscreen document.
-    setFullscreen(Boolean(document.fullscreenElement));
+    const frame = requestAnimationFrame(() => {
+      setFlipped(localStorage.getItem(`tkd_flip_${matchId}`) === '1');
+      setFullscreen(Boolean(document.fullscreenElement));
+    });
     // Re-apply the sticky fullscreen choice after the TV page (re)loads — kiosk TVs stay pinned.
     void restoreFullscreen();
     const handler = () => {
       const active = Boolean(document.fullscreenElement);
       setFullscreen(active);
-      if (active) localStorage.setItem(FULLSCREEN_PREF_KEY, '1');
+      if (active) writeTvFullscreenPref(true);
     };
     document.addEventListener('fullscreenchange', handler);
     return () => {
@@ -84,6 +72,17 @@ export function PublicDisplay({ matchId, queuedSnapshot, onLiveOrResolved }: Pub
       document.removeEventListener('fullscreenchange', handler);
     };
   }, [matchId, restoreFullscreen]);
+
+  // Remote control from the operator scoreboard: the operator writes the shared
+  // preference, which fires a storage event in this window (same origin).
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== TV_FULLSCREEN_PREF_KEY) return;
+      void applyTvFullscreen(event.newValue === '1');
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   useEffect(() => {
     const onGesture = () => void restoreFullscreen();
