@@ -247,3 +247,34 @@ test('Public TV enters fullscreen automatically when the operator starts the mat
   await display.screenshot({path:'artifacts/public-tv-auto-fullscreen-match-start.png',fullPage:true});
  }finally{if(display)await display.close();}
 });
+
+test('podium displays show athlete and club medal ceremonies', async ({ page }) => {
+ await page.goto('/');await expect(page).toHaveURL(/\/dashboard/);
+ const bootstrap=await(await page.request.get('/api/v1/bootstrap')).json() as{data:{activeTournament:{id:string}|null;tournaments:Array<{id:string}>}};
+ const tournamentId=bootstrap.data.activeTournament?.id??bootstrap.data.tournaments[0]!.id;
+ const details=await(await page.request.get(`/api/v1/tournaments/${tournamentId}`)).json() as{data:{medals?:Array<{category_id:string;category_name:string;athlete_name:string;place:number}>}};
+ const medal=details.data.medals?.[0];
+ expect(medal, 'seeded showcase medals must exist').toBeTruthy();
+ const podium=await(await page.request.get(`/api/v1/categories/${medal!.category_id}/podium`)).json() as{data:{categoryName:string;placements:Array<{athleteName:string;place:number}>}};
+ const gold=podium.data.placements.find(placement=>placement.place===1)!;
+ expect(gold).toBeTruthy();
+ await page.goto(`/display/podium/${medal!.category_id}`);
+ await expect(page.getByText('Medal ceremony',{exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:podium.data.categoryName,exact:true})).toBeVisible();
+ await expect(page.getByText(gold.athleteName,{exact:true})).toBeVisible();
+ const controls=page.getByTestId('public-display-controls');
+ await expect(controls).toBeVisible();
+ await page.getByRole('button',{name:'Fullscreen',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>Boolean(document.fullscreenElement))).toBe(true);
+ await expect(controls).toHaveCount(0);
+ await page.evaluate(()=>void document.exitFullscreen());
+ await expect.poll(()=>page.evaluate(()=>Boolean(document.fullscreenElement))).toBe(false);
+ const clubPodium=await(await page.request.get(`/api/v1/public/tournaments/${tournamentId}/club-podium`)).json() as{data:{clubs:Array<{clubName:string;rank:number;total:number}>}};
+ expect(clubPodium.data.clubs.length).toBeGreaterThan(0);
+ await page.goto(`/display/podium/clubs/${tournamentId}`);
+ await expect(page.getByText('Club / Team ceremony',{exact:true})).toBeVisible();
+ await expect(page.getByText(clubPodium.data.clubs[0]!.clubName,{exact:true})).toBeVisible();
+ await expect(page.getByText('Champion club',{exact:true})).toBeVisible();
+ await expect(page.getByText(/medal/).first()).toBeVisible();
+ await page.screenshot({path:'artifacts/club-podium-display.png',fullPage:true});
+});

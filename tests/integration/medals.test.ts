@@ -122,6 +122,32 @@ describe('medal standings for athletes and clubs', () => {
 
     const auditRow = db.prepare("SELECT action FROM audit_logs WHERE entity_id=? AND action='MEDAL_STANDINGS_REFRESHED'").get(categoryId) as { action: string } | undefined;
     expect(auditRow?.action).toBe('MEDAL_STANDINGS_REFRESHED');
+
+    // Ceremony podium feed for this category.
+    const podium = repository.getCategoryPodium(categoryId) as {
+      categoryName: string; tournamentName: string; tournamentVenue: string;
+      placements: Array<{ place: number; athleteName: string; clubName: string | null; countryCode: string | null }>;
+    };
+    expect(podium.categoryName).toBe('Medals -58 kg');
+    expect(podium.tournamentName).toBeTruthy();
+    expect(podium.placements.map(placement => placement.place).sort()).toEqual([1, 2, 3, 3]);
+    expect(podium.placements.find(placement => placement.place === 1)!.athleteName).toBeTruthy();
+    expect(podium.placements.every(placement => placement.countryCode === 'TST')).toBe(true);
+    expect(new Set(podium.placements.map(placement => placement.clubName)).size).toBe(2);
+
+    // Tournament-wide club podium feed (4 seeded showcase medals + 4 from this category).
+    const clubPodium = repository.getClubPodium(tournamentId) as {
+      tournamentName: string;
+      clubs: Array<{ rank: number; clubName: string; gold: number; silver: number; bronze: number; total: number }>;
+    };
+    expect(clubPodium.tournamentName).toBeTruthy();
+    expect(clubPodium.clubs).toHaveLength(6);
+    expect(clubPodium.clubs.reduce((sum, club) => sum + club.total, 0)).toBe(8);
+    for (const club of clubPodium.clubs) expect(club.total).toBe(club.gold + club.silver + club.bronze);
+    const byMedals = [...clubPodium.clubs].sort((a, b) => b.gold - a.gold || b.silver - a.silver || b.bronze - a.bronze || a.clubName.localeCompare(b.clubName));
+    expect(clubPodium.clubs.map(club => club.clubName)).toEqual(byMedals.map(club => club.clubName));
+    expect(clubPodium.clubs[0]!.rank).toBe(1);
+    expect(clubPodium.clubs[5]!.rank).toBe(6);
   });
 
   it('keeps medal_standings empty for a two-athlete final-only category until it resolves', () => {
@@ -141,6 +167,8 @@ describe('medal standings for athletes and clubs', () => {
     winMatch(db, service, actor, matches[0]!.id, 'RED');
     const medals = medalRows(db, categoryId);
     expect(medals.map(medal => medal.place).sort()).toEqual([1, 2]);
+    const podium = repository.getCategoryPodium(categoryId) as { placements: Array<{ place: number }> };
+    expect(podium.placements.map(placement => placement.place).sort()).toEqual([1, 2]);
   });
 
   it('updates medals when a result is corrected through a fresh recompute', () => {

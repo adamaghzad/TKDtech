@@ -181,7 +181,7 @@ export class TournamentRepository {
     const matches = this.db.prepare(`SELECT m.id,m.match_number,m.phase,m.state,m.current_round,m.blue_score,m.red_score,m.mat_id,m.queue_position,m.scheduled_at,c.name AS category_name,NULLIF(TRIM(ba.first_name||' '||ba.last_name),'') AS blue_name,NULLIF(TRIM(ra.first_name||' '||ra.last_name),'') AS red_name,mat.name AS mat_name FROM matches m JOIN categories c ON c.id=m.category_id LEFT JOIN athletes ba ON ba.id=m.blue_athlete_id LEFT JOIN athletes ra ON ra.id=m.red_athlete_id LEFT JOIN mats mat ON mat.id=m.mat_id WHERE m.tournament_id=? ORDER BY CAST(m.match_number AS INTEGER),m.match_number`).all(id);
     const draws = this.db.prepare(`SELECT d.*,c.name AS category_name FROM draws d JOIN categories c ON c.id=d.category_id WHERE c.tournament_id=? ORDER BY d.created_at DESC`).all(id);
     const results = this.db.prepare(`SELECT r.*,m.match_number,c.name AS category_name,NULLIF(TRIM(w.first_name||' '||w.last_name),'') AS winner_name,NULLIF(TRIM(l.first_name||' '||l.last_name),'') AS loser_name FROM tournament_results r JOIN matches m ON m.id=r.match_id JOIN categories c ON c.id=m.category_id LEFT JOIN athletes w ON w.id=r.winner_athlete_id LEFT JOIN athletes l ON l.id=r.loser_athlete_id WHERE r.tournament_id=? ORDER BY r.completed_at DESC`).all(id);
-    const medals = this.db.prepare(`SELECT ms.id,ms.place,a.first_name||' '||a.last_name AS athlete_name,cl.name AS club_name,cat.name AS category_name FROM medal_standings ms JOIN athletes a ON a.id=ms.athlete_id LEFT JOIN clubs cl ON cl.id=ms.club_id JOIN categories cat ON cat.id=ms.category_id WHERE ms.tournament_id=? ORDER BY ms.place,a.last_name`).all(id);
+    const medals = this.db.prepare(`SELECT ms.id,ms.place,ms.category_id,a.country_code,a.first_name||' '||a.last_name AS athlete_name,cl.name AS club_name,cat.name AS category_name FROM medal_standings ms JOIN athletes a ON a.id=ms.athlete_id LEFT JOIN clubs cl ON cl.id=ms.club_id JOIN categories cat ON cat.id=ms.category_id WHERE ms.tournament_id=? ORDER BY ms.place,a.last_name`).all(id);
     const ruleset = this.db.prepare('SELECT * FROM tournament_rulesets WHERE tournament_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1').get(id) as {config_json:string}|undefined;
     return { tournament, clubs, athletes, categories, mats, matches, draws, results, medals, ruleset: ruleset ? JSON.parse(ruleset.config_json) as Ruleset : EXAMPLE_WT_STYLE_RULESET };
   }
@@ -497,5 +497,20 @@ export class TournamentRepository {
       reason: 'Bracket results changed; medal standings recomputed.',
     });
     return { inserted: desired.length, removed: existing.length };
+  }
+
+  getCategoryPodium(categoryId: string): Record<string, unknown> {
+    const category = this.db.prepare(`SELECT c.id,c.name,c.division,c.age_group,c.tournament_id,t.name AS tournament_name,t.venue AS tournament_venue FROM categories c JOIN tournaments t ON t.id=c.tournament_id WHERE c.id=?`).get(categoryId) as {id:string;name:string;division:string;age_group:string;tournament_id:string;tournament_name:string;tournament_venue:string}|undefined;
+    if(!category)throw new HttpError(404,'NOT_FOUND','Category not found.');
+    const placements=this.db.prepare(`SELECT ms.place,ms.athlete_id AS athleteId,a.first_name||' '||a.last_name AS athleteName,cl.name AS clubName,a.country_code AS countryCode FROM medal_standings ms JOIN athletes a ON a.id=ms.athlete_id LEFT JOIN clubs cl ON cl.id=ms.club_id WHERE ms.category_id=? ORDER BY ms.place,a.last_name`).all(categoryId) as Array<{place:number;athleteId:string;athleteName:string;clubName:string|null;countryCode:string|null}>;
+    return {categoryId:category.id,categoryName:category.name,division:category.division,ageGroup:category.age_group,tournamentId:category.tournament_id,tournamentName:category.tournament_name,tournamentVenue:category.tournament_venue,placements};
+  }
+
+  getClubPodium(tournamentId: string): Record<string, unknown> {
+    const tournament=this.db.prepare('SELECT id,name,venue FROM tournaments WHERE id=?').get(tournamentId) as {id:string;name:string;venue:string}|undefined;
+    if(!tournament)throw new HttpError(404,'NOT_FOUND','Tournament not found.');
+    const rows=this.db.prepare(`SELECT cl.id AS clubId,cl.name AS clubName,cl.country_code AS countryCode,SUM(CASE WHEN ms.place=1 THEN 1 ELSE 0 END) AS gold,SUM(CASE WHEN ms.place=2 THEN 1 ELSE 0 END) AS silver,SUM(CASE WHEN ms.place=3 THEN 1 ELSE 0 END) AS bronze FROM medal_standings ms JOIN clubs cl ON cl.id=ms.club_id WHERE ms.tournament_id=? GROUP BY cl.id ORDER BY gold DESC,silver DESC,bronze DESC,cl.name`).all(tournamentId) as Array<{clubId:string;clubName:string;countryCode:string;gold:number;silver:number;bronze:number}>;
+    const clubs=rows.map((row,index)=>({...row,rank:index+1,total:row.gold+row.silver+row.bronze}));
+    return {tournamentId:tournament.id,tournamentName:tournament.name,tournamentVenue:tournament.venue,clubs};
   }
 }

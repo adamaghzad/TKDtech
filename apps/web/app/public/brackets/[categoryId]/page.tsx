@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, GitBranch, Maximize2 } from 'lucide-react';
+import { ArrowLeft, GitBranch, Maximize2, Medal } from 'lucide-react';
 import { useApi } from '@/lib/use-api';
 import { openPublicTv } from '@/lib/public-tv';
 import type { BracketResponse } from '@/features/tournaments/bracket-manager';
@@ -49,6 +49,19 @@ export default function PublicBracket() {
           <Badge tone={data.draw.status === 'PUBLISHED' ? 'green' : 'yellow'}>
             {data.draw.status}
           </Badge>
+          <Button asChild variant="secondary" size="sm">
+            <Link
+              href={`/display/podium/${categoryId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(event) => {
+                if (openPublicTv(`/display/podium/${categoryId}`)) event.preventDefault();
+              }}
+            >
+              <Medal />
+              Podium
+            </Link>
+          </Button>
           <Button asChild size="sm">
             <Link
               href={tvPath}

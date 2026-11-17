@@ -92,6 +92,8 @@ app.post('/api/v1/tournaments/:id/general-matches',requireAuth,asyncRoute((req,r
 app.post('/api/v1/categories/:id/draws',requireAuth,asyncRoute((req,res)=>{licensing.assertTournamentWork(tournamentIdForCategory(req.params.id!));const input=z.object({method:z.enum(['RANDOM','SEEDED'])}).parse(req.body);const result=repository.generateDraw(actorOf(req),req.params.id!,input.method);realtime.broadcastTournament(result.tournamentId,'bracket.updated',result.bracket);ok(res,result,201);}));
 app.post('/api/v1/draws/:id/publish',requireAuth,asyncRoute((req,res)=>{const tournamentId=tournamentIdForDraw(req.params.id!);licensing.assertTournamentWork(tournamentId);repository.publishDraw(actorOf(req),req.params.id!);realtime.broadcastTournament(tournamentId,'bracket.updated',{drawId:req.params.id!,published:true});ok(res,{published:true});}));
 app.get('/api/v1/categories/:id/bracket',asyncRoute((req,res)=>ok(res,repository.getBracket(req.params.id!))));
+app.get('/api/v1/categories/:id/podium',asyncRoute((req,res)=>ok(res,repository.getCategoryPodium(req.params.id!))));
+app.get('/api/v1/public/tournaments/:id/club-podium',asyncRoute((req,res)=>ok(res,repository.getClubPodium(req.params.id!))));
 
 app.get('/api/v1/matches/:id',asyncRoute((req,res)=>ok(res,matches.snapshot(req.params.id!))));
 app.get('/api/v1/matches/:id/events',requireAuth,asyncRoute((req,res)=>{const match=matches.snapshot(req.params.id!);repository.authorizeTournament(actorOf(req),match.tournamentId);ok(res,matches.listEvents(req.params.id!,Number(req.query.after||0)));}));
