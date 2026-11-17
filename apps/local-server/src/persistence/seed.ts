@@ -39,5 +39,34 @@ export function seedDevelopment(db: SqliteDatabase): {matchId:string;tournamentI
   command('SCORE','BLUE','TURNING_BODY_KICK');command('SCORE','RED','BODY_PUNCH');command('GAM_JEOM','BLUE');command('PAUSE');
   const current=db.prepare('SELECT timer_json FROM matches WHERE id=?').get(active.id) as {timer_json:string};const timer=JSON.parse(current.timer_json) as {remainingMs:number;running:boolean;authoritativeAt:number;kind:string};timer.remainingMs=84000;timer.running=false;timer.authoritativeAt=Date.now();db.prepare('UPDATE matches SET timer_json=?,match_number=\'203\' WHERE id=?').run(JSON.stringify(timer),active.id);
   for(const role of ['J1','J2','J3'] as const){const sessionId=randomUUID();const timestamp=Date.now();db.prepare('INSERT INTO judge_sessions(id,tournament_id,match_id,token_hash,role,device_name,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?)').run(sessionId,tournament.id,active.id,hashToken(randomUUID()),role,`Development ${role} tablet`,timestamp+12*3600*1000,isoNow());db.prepare('INSERT INTO device_presence(session_id,role,match_id,status,last_seen_at,connected_at) VALUES(?,?,?,\'ONLINE\',?,?)').run(sessionId,role,active.id,timestamp,timestamp);}
+  // Completed showcase category so athlete and club/team medal standings show real data in development mode.
+  const medalCategoryId=repo.createCategory(actor,tournament.id,{name:'Men -54 kg',division:'MEN',ageGroup:'Senior',minWeightKg:50,maxWeightKg:54,format:'SINGLE_ELIMINATION',rounds:2,roundDurationMs:120000,breakDurationMs:60000,goldenPointPolicy:'GOLDEN_POINT'}).id;
+  const medalInputs=[
+    {firstName:'Mehdi',lastName:'Alaoui',division:'MEN' as const,nationality:'Morocco',countryCode:'MAR',clubId:clubs[0],weightKg:53.8,seed:1,dateOfBirth:'2003-03-09',externalNumber:'DEV-MAR-101'},
+    {firstName:'Luc',lastName:'Moreau',division:'MEN' as const,nationality:'France',countryCode:'FRA',clubId:clubs[1],weightKg:53.1,seed:2,dateOfBirth:'2004-06-17',externalNumber:'DEV-FRA-102'},
+    {firstName:'Jae Won',lastName:'Seo',division:'MEN' as const,nationality:'Korea',countryCode:'KOR',clubId:clubs[2],weightKg:53.6,seed:3,dateOfBirth:'2002-08-05',externalNumber:'DEV-KOR-103'},
+    {firstName:'Mateo',lastName:'Navas',division:'MEN' as const,nationality:'Spain',countryCode:'ESP',clubId:clubs[3],weightKg:52.9,seed:4,dateOfBirth:'2003-11-28',externalNumber:'DEV-ESP-104'}
+  ];
+  const medalAthleteIds=medalInputs.map(input=>repo.createAthlete(actor,tournament.id,{...input,categoryId:medalCategoryId}).id);
+  const medalDraw=repo.generateDraw(actor,medalCategoryId,'SEEDED');repo.publishDraw(actor,medalDraw.drawId);
+  const completeMedalMatch=(matchId:string,winnerAthleteId:string)=>{
+    const row=db.prepare('SELECT blue_athlete_id,red_athlete_id FROM matches WHERE id=?').get(matchId) as {blue_athlete_id:string|null;red_athlete_id:string|null};
+    const winnerSide:'BLUE'|'RED'=row.blue_athlete_id===winnerAthleteId?'BLUE':'RED';
+    const blue=winnerSide==='BLUE'?6:2;const red=winnerSide==='BLUE'?2:6;
+    db.prepare("UPDATE matches SET current_round=2,state='PAUSED',blue_score=?,red_score=?,timer_json=? WHERE id=?").run(blue*2,red*2,JSON.stringify({remainingMs:30000,running:false,authoritativeAt:Date.now(),kind:'ROUND'}),matchId);
+    for(const round of [1,2])db.prepare('UPDATE match_rounds SET blue_score=?,red_score=?,winner_side=?,decision_method=?,ended_at=? WHERE match_id=? AND number=?').run(blue,red,winnerSide,'SCORE',isoNow(),matchId,round);
+    service.execute(actor,matchId,{type:'COMPLETE'});
+  };
+  const medalMatches=db.prepare('SELECT m.id,m.blue_athlete_id,m.red_athlete_id,bn.round,bn.position FROM matches m JOIN bracket_nodes bn ON bn.id=m.bracket_node_id WHERE m.category_id=? ORDER BY bn.round,bn.position').all(medalCategoryId) as Array<{id:string;blue_athlete_id:string|null;red_athlete_id:string|null;round:number;position:number}>;
+  const medalSemifinals=medalMatches.filter(match=>match.round===1);
+  const medalFinal=medalMatches.find(match=>match.round===2);
+  if(medalSemifinals.length===2&&medalFinal){
+    const topSeed=medalAthleteIds[0]!;const thirdSeed=medalAthleteIds[2]!;
+    const topSeedSemi=medalSemifinals.find(match=>match.blue_athlete_id===topSeed||match.red_athlete_id===topSeed)!;
+    const thirdSeedSemi=medalSemifinals.find(match=>match.blue_athlete_id===thirdSeed||match.red_athlete_id===thirdSeed)!;
+    completeMedalMatch(topSeedSemi.id,topSeed);
+    completeMedalMatch(thirdSeedSemi.id,thirdSeed);
+    completeMedalMatch(medalFinal.id,thirdSeed);
+  }
   return{matchId:active.id,tournamentId:tournament.id};
 }

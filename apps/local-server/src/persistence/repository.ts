@@ -416,4 +416,86 @@ export class TournamentRepository {
     if(destination){const side=bracket.nodes.find(n=>n.id===row.bracket_node_id)?.destinationSide;const next=this.db.prepare('SELECT id FROM matches WHERE bracket_node_id=?').get(destination.id) as {id:string}|undefined;if(next){this.db.prepare(`UPDATE matches SET ${side==='BLUE'?'blue_athlete_id':'red_athlete_id'}=?,state=?,version=version+1,updated_at=? WHERE id=?`).run(winnerId,destination.status,isoNow(),next.id);}this.db.prepare('UPDATE bracket_nodes SET blue_athlete_id=?,red_athlete_id=?,status=? WHERE id=?').run(destination.blueEntrantId,destination.redEntrantId,destination.status,destination.id);}
     audit(this.db,{tournamentId:row.tournament_id,actorId:actor.id,action:'ATHLETE_ADVANCED',entityType:'match',entityId:matchId,after:{winnerId,destinationNodeId:destination?.id??null}});
   }
+
+  /**
+   * Recompute the medal standings for one category from its latest published bracket.
+   *
+   * WT single-elimination placement: gold = final winner, silver = final loser,
+   * bronze = the two semifinal losers (one bronze per resolved semifinal with two
+   * real athletes; a bye semifinal has no loser). Medals are only awarded once the
+   * final itself is resolved. The recompute is idempotent: rows are replaced only
+   * when the placement set actually changed, so corrections update medals safely.
+   */
+  refreshMedalStandings(categoryId: string, actorId: string | null = null): { inserted: number; removed: number } {
+    const rows = this.db.prepare(`
+      SELECT bn.id AS node_id, bn.round, bn.position, bn.winner_athlete_id AS node_winner,
+             bn.blue_athlete_id AS node_blue, bn.red_athlete_id AS node_red,
+             m.id AS match_id, m.state AS match_state, m.winner_side,
+             m.blue_athlete_id AS match_blue, m.red_athlete_id AS match_red,
+             tr.id AS result_id, tr.winner_athlete_id AS result_winner
+      FROM brackets b
+      JOIN draws d ON d.id = b.draw_id
+      JOIN bracket_nodes bn ON bn.bracket_id = b.id
+      LEFT JOIN matches m ON m.bracket_node_id = bn.id
+      LEFT JOIN tournament_results tr ON tr.match_id = m.id
+      WHERE b.category_id = ?
+        AND b.draw_id = (SELECT id FROM draws WHERE category_id = ? ORDER BY created_at DESC LIMIT 1)
+      ORDER BY bn.round, bn.position
+    `).all(categoryId, categoryId) as Array<{
+      node_id: string; round: number; position: number; node_winner: string | null;
+      node_blue: string | null; node_red: string | null;
+      match_id: string | null; match_state: string | null; winner_side: 'BLUE' | 'RED' | null;
+      match_blue: string | null; match_red: string | null;
+      result_id: string | null; result_winner: string | null;
+    }>;
+    const category = this.db.prepare('SELECT tournament_id FROM categories WHERE id=?').get(categoryId) as { tournament_id: string } | undefined;
+    if (!rows.length || !category) return { inserted: 0, removed: 0 };
+
+    const terminal = (state: string | null) => ['COMPLETED', 'WALKOVER', 'DISQUALIFIED'].includes(state ?? '');
+    const nodeAthlete = (row: typeof rows[number]): { blue: string | null; red: string | null; winner: string | null } => ({
+      blue: row.match_blue ?? row.node_blue,
+      red: row.match_red ?? row.node_red,
+      winner: row.result_winner ?? row.node_winner ?? (row.winner_side === 'BLUE' ? (row.match_blue ?? row.node_blue) : row.winner_side === 'RED' ? (row.match_red ?? row.node_red) : null),
+    });
+
+    const finalRound = Math.max(...rows.map(row => row.round));
+    const final = rows.find(row => row.round === finalRound);
+    const desired: Array<{ athleteId: string; place: 1 | 2 | 3; resultId: string }> = [];
+
+    if (final) {
+      const finalists = nodeAthlete(final);
+      if (terminal(final.match_state) && finalists.blue && finalists.red && finalists.winner && final.result_id) {
+        desired.push({ athleteId: finalists.winner, place: 1, resultId: final.result_id });
+        const silver = finalists.blue === finalists.winner ? finalists.red : finalists.blue;
+        desired.push({ athleteId: silver, place: 2, resultId: final.result_id });
+        for (const semifinal of rows.filter(row => row.round === finalRound - 1)) {
+          const semi = nodeAthlete(semifinal);
+          if (!terminal(semifinal.match_state) || !semi.blue || !semi.red || !semi.winner) continue;
+          const loser = semi.blue === semi.winner ? semi.red : semi.blue;
+          desired.push({ athleteId: loser, place: 3, resultId: semifinal.result_id ?? final.result_id });
+        }
+      }
+    }
+
+    const existing = this.db.prepare('SELECT athlete_id, place, result_id FROM medal_standings WHERE category_id=?').all(categoryId) as Array<{ athlete_id: string; place: number; result_id: string }>;
+    const signature = (list: Array<{ athleteId: string; place: number }>) => JSON.stringify([...list].map(item => ({ a: item.athleteId, p: item.place })).sort((x, y) => x.p - y.p || x.a.localeCompare(y.a)));
+    if (signature(existing.map(item => ({ athleteId: item.athlete_id, place: item.place }))) === signature(desired)) return { inserted: 0, removed: 0 };
+
+    const clubOf = new Map((this.db.prepare('SELECT id, club_id FROM athletes WHERE tournament_id=?').all(category.tournament_id) as Array<{ id: string; club_id: string | null }>).map(row => [row.id, row.club_id]));
+    for (const athleteId of new Set(desired.map(medal => medal.athleteId))) {
+      if (!clubOf.has(athleteId)) return { inserted: 0, removed: 0 };
+    }
+    this.db.prepare('DELETE FROM medal_standings WHERE category_id=?').run(categoryId);
+    for (const medal of desired) {
+      this.db.prepare('INSERT INTO medal_standings(id,tournament_id,athlete_id,club_id,category_id,place,result_id) VALUES(?,?,?,?,?,?,?)')
+        .run(randomUUID(), category.tournament_id, medal.athleteId, clubOf.get(medal.athleteId) ?? null, categoryId, medal.place, medal.resultId);
+    }
+    audit(this.db, {
+      tournamentId: category.tournament_id, actorId, action: 'MEDAL_STANDINGS_REFRESHED', entityType: 'category', entityId: categoryId,
+      before: { medals: existing.map(item => ({ athleteId: item.athlete_id, place: item.place })) },
+      after: { medals: desired.map(item => ({ athleteId: item.athleteId, place: item.place })) },
+      reason: 'Bracket results changed; medal standings recomputed.',
+    });
+    return { inserted: desired.length, removed: existing.length };
+  }
 }
