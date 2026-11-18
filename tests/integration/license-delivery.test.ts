@@ -91,6 +91,21 @@ describe('owner license email delivery', () => {
     expect(service.getDashboard(actor).deliveries).toHaveLength(1);
   });
 
+  it('issues and records the monthly salle subscription plans', async () => {
+    for (const plan of ['SALLE', 'SALLE_PLUS'] as const) {
+      const { actor, sender, service } = setup();
+      const result = await service.issueAndSend(actor, input({ plan, expires: '2026-11-26' }), `approval-${plan.toLowerCase()}`);
+      expect(result.duplicate).toBe(false);
+      expect(result.delivery).toMatchObject({ plan, status: 'SENT' });
+      const message = sender.messages.at(-1);
+      if (!message) throw new Error('Expected a sent email');
+      const evaluation = evaluateDesktopLicense(message.token, verificationKey, message.deviceCode, now);
+      expect(evaluation.status).toBe('ACTIVE');
+      if (evaluation.status !== 'ACTIVE') throw new Error('Expected active license');
+      expect(evaluation.payload.plan).toBe(plan);
+    }
+  });
+
   it('is idempotent and rejects changed details under the same approval key', async () => {
     const { actor, sender, service } = setup();
     const first = await service.issueAndSend(actor, input(), 'approval-request-002');
