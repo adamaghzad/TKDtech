@@ -230,3 +230,48 @@ describe('offline clock guard (subscription enforcement)', () => {
     expect(licensing.getStatus()).toMatchObject({ status: 'ACTIVE', canStartNewWork: true });
   });
 });
+
+describe('Salle plan capability gating', () => {
+  const activated = (plan: 'SALLE' | 'SALLE_PLUS') => {
+    const db = database();
+    const licensing = service(db, temporaryDirectory());
+    const code = licensing.getStatus().installationCode;
+    const status = licensing.activate(signDesktopLicense(payload(code, initialNow, { plan }), signingKey));
+    expect(status.status).toBe('ACTIVE');
+    return licensing;
+  };
+
+  it('keeps scoring work but blocks tournament production and the full judging panel for Salle', () => {
+    const salle = activated('SALLE');
+    expect(salle.getStatus()).toMatchObject({
+      status: 'ACTIVE',
+      canStartNewWork: true,
+      capabilities: { registrations: false, draws: false, podium: false, reports: false, fullJudgingPanel: false },
+    });
+    expect(() => salle.assertNewWork()).not.toThrow();
+    for (const feature of ['registrations', 'draws', 'podium', 'reports'] as const) {
+      expectHttpCode(() => salle.assertPlanFeature(feature), 'PLAN_UPGRADE_REQUIRED');
+    }
+    expectHttpCode(() => salle.assertJudgePairing('J2'), 'PLAN_UPGRADE_REQUIRED');
+    expectHttpCode(() => salle.assertJudgePairing('J3'), 'PLAN_UPGRADE_REQUIRED');
+    expect(() => salle.assertJudgePairing('J1')).not.toThrow();
+    expect(() => salle.assertJudgePairing('REFEREE')).not.toThrow();
+  });
+
+  it('unlocks everything for Salle Plus and for an unlicensed (owner) deployment', () => {
+    const sallePlus = activated('SALLE_PLUS');
+    expect(sallePlus.getStatus()).toMatchObject({
+      status: 'ACTIVE',
+      capabilities: { registrations: true, draws: true, podium: true, reports: true, fullJudgingPanel: true },
+    });
+    for (const feature of ['registrations', 'draws', 'podium', 'reports'] as const) {
+      expect(() => sallePlus.assertPlanFeature(feature)).not.toThrow();
+    }
+    expect(() => sallePlus.assertJudgePairing('J2')).not.toThrow();
+
+    const owner = new DesktopLicenseService(database(), { required: false, directory: temporaryDirectory(), machineId: 'SERVICE-TEST-MACHINE', now: () => initialNow, verificationKey: verificationKey });
+    expect(owner.getStatus().capabilities).toMatchObject({ registrations: true, reports: true });
+    expect(() => owner.assertPlanFeature('registrations')).not.toThrow();
+    expect(() => owner.assertJudgePairing('J3')).not.toThrow();
+  });
+});

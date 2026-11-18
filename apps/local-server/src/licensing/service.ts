@@ -37,7 +37,27 @@ export interface DesktopLicenseStatus {
     expiresAt: string;
     daysRemaining: number;
   } | null;
+  capabilities: DesktopPlanCapabilities;
 }
+
+export interface DesktopPlanCapabilities {
+  registrations: boolean;
+  draws: boolean;
+  podium: boolean;
+  reports: boolean;
+  fullJudgingPanel: boolean;
+}
+
+export type DesktopPlanFeature = keyof Omit<DesktopPlanCapabilities, 'fullJudgingPanel'>;
+
+const FULL_PLAN_CAPABILITIES: DesktopPlanCapabilities = { registrations: true, draws: true, podium: true, reports: true, fullJudgingPanel: true };
+const TRAINING_PLAN_CAPABILITIES: DesktopPlanCapabilities = { registrations: false, draws: false, podium: false, reports: false, fullJudgingPanel: false };
+const PLAN_FEATURE_LABELS: Record<DesktopPlanFeature, string> = {
+  registrations: 'Club, category and athlete registrations',
+  draws: 'Draw generation and publishing',
+  podium: 'Podium and medal ceremonies',
+  reports: 'PDF and CSV reports',
+};
 
 interface DesktopLicenseServiceOptions {
   required?: boolean;
@@ -198,6 +218,7 @@ export class DesktopLicenseService {
         canStartNewWork: true,
         canFinishActiveTournament: false,
         serverTime,
+        capabilities: FULL_PLAN_CAPABILITIES,
         message: null,
         license: null,
       };
@@ -217,6 +238,7 @@ export class DesktopLicenseService {
         serverTime,
         message: 'The installation identity is damaged or unavailable. Preserve the license folder and contact support.',
         license: null,
+        capabilities: FULL_PLAN_CAPABILITIES,
       };
     }
 
@@ -227,6 +249,7 @@ export class DesktopLicenseService {
       canStartNewWork: false,
       canFinishActiveTournament: false,
       serverTime,
+      capabilities: FULL_PLAN_CAPABILITIES,
     } as const;
     const guard = this.clockGuard(this.now());
     if (guard.blocked) {
@@ -260,6 +283,7 @@ export class DesktopLicenseService {
         expiresAt: payload.expiresAt,
         daysRemaining: Math.max(0, Math.ceil((Date.parse(payload.expiresAt) - this.now()) / 86_400_000)),
       } : null,
+      capabilities: status === 'ACTIVE' && payload?.plan === 'SALLE' ? TRAINING_PLAN_CAPABILITIES : FULL_PLAN_CAPABILITIES,
     };
   }
 
@@ -299,6 +323,29 @@ export class DesktopLicenseService {
       if (tournament?.status === 'IN_PROGRESS') return;
     }
     throw this.denial(status.status);
+  }
+
+  /**
+   * Salle training-plan gating: an active SALLE license keeps scoring, general matches,
+   * the TV displays and single-judge (J1 + referee) control, while tournament production
+   * (registrations, draws, podium, reports, corner judges) requires Salle+ or a club/tournament plan.
+   */
+  assertPlanFeature(feature: DesktopPlanFeature): void {
+    if (!this.trainingOnly()) return;
+    throw new HttpError(403, 'PLAN_UPGRADE_REQUIRED', `${PLAN_FEATURE_LABELS[feature]} are not part of the Salle training plan. Upgrade to Salle+ (tournaments included) to unlock them.`);
+  }
+
+  assertJudgePairing(role: string): void {
+    if (!this.trainingOnly()) return;
+    if (role === 'J2' || role === 'J3') {
+      throw new HttpError(403, 'PLAN_UPGRADE_REQUIRED', 'Corner judges J2 and J3 are part of the full judging panel. The Salle training plan includes single-judge scoring (J1) and the referee controller.');
+    }
+  }
+
+  private trainingOnly(): boolean {
+    if (!this.required) return false;
+    const status = this.getStatus();
+    return status.status === 'ACTIVE' && status.license?.plan === 'SALLE';
   }
 }
 

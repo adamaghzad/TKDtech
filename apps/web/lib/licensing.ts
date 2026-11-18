@@ -17,4 +17,11 @@ export interface DesktopLicenseStatus {
     expiresAt: string;
     daysRemaining: number;
   } | null;
+  capabilities?: {
+    registrations: boolean;
+    draws: boolean;
+    podium: boolean;
+    reports: boolean;
+    fullJudgingPanel: boolean;
+  };
 }

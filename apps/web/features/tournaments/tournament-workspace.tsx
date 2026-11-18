@@ -15,6 +15,7 @@ import { CategoryManager, DrawManager } from './category-manager';
 import { BracketManager } from './bracket-manager';
 import { MatchManager } from './match-manager';
 import { ResultsManager, MedalManager, ReportsManager, TournamentSettings } from './results-reports';
+import { PlanGateBanner } from '@/components/admin/plan-gate-banner';
 import { post } from '@/lib/api';
 import { useState } from 'react';
 
@@ -151,6 +152,8 @@ export function TournamentWorkspace({ tournamentId, section }: { tournamentId: s
           ))}
         </div>
       </div>
+      {['athletes', 'clubs', 'categories'].includes(current) && <PlanGateBanner feature="registrations" />}
+      {current === 'draws' && <PlanGateBanner feature="draws" />}
       {current === 'overview' && <TournamentOverview data={data} refresh={refresh} />}
       {current === 'athletes' && <AthleteManager data={data} refresh={refresh} />}
       {current === 'clubs' && <ClubManager data={data} refresh={refresh} />}
@@ -161,7 +164,9 @@ export function TournamentWorkspace({ tournamentId, section }: { tournamentId: s
         <MatchManager data={data} refresh={refresh} scheduleOnly={current === 'schedule'} />
       )}
       {current === 'results' && <ResultsManager data={data} />}
+      {current === 'medals' && <PlanGateBanner feature="podium" />}
       {current === 'medals' && <MedalManager data={data} />}
+      {current === 'reports' && <PlanGateBanner feature="reports" />}
       {current === 'reports' && <ReportsManager data={data} />}
       {current === 'settings' && <TournamentSettings data={data} refresh={refresh} />}
     </div>
