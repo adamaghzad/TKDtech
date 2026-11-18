@@ -1,7 +1,7 @@
 import { createHash, sign, verify } from 'node:crypto';
 import { z } from 'zod';
 
-export const desktopLicensePlans = ['FOUNDING_CLUB', 'CLUB', 'TOURNAMENT_SUPPORT'] as const;
+export const desktopLicensePlans = ['FOUNDING_CLUB', 'CLUB', 'TOURNAMENT_SUPPORT', 'SALLE', 'SALLE_PLUS'] as const;
 export type DesktopLicensePlan = (typeof desktopLicensePlans)[number];
 
 const isoDateTime = z.string().min(20).max(40).refine((value) => Number.isFinite(Date.parse(value)), 'Invalid ISO date.');

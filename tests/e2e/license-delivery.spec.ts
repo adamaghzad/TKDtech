@@ -53,6 +53,7 @@ async function mockDeliveryApi(page: Page, deliveries: Delivery[], failure = fal
 }
 
 async function fillApproval(page: Page) {
+  await page.getByLabel('Subscription plan').selectOption('CLUB');
   await page.getByLabel('Client / club name').fill('Atlas Taekwondo');
   await page.getByLabel('Client email').fill('coach@example.com');
   await page.getByLabel('Installation code').fill(installationCode.toLowerCase());

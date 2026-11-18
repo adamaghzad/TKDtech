@@ -92,8 +92,20 @@ function publicState(status: LicenseEvaluationStatus): DesktopLicenseState {
   return 'INVALID';
 }
 
+// Offline clock-guard policy:
+// - A rollback larger than LICENSE_CLOCK_ROLLBACK_TOLERANCE_MS blocks all licensed work
+//   until the clock is restored (an expired license cannot be revived by moving the date back).
+// - Small corrections (timezone fixes, NTP adjustments) stay within the tolerance.
+// - The stored high-water mark only rises, and at most LICENSE_CLOCK_FORWARD_CAP_MS per
+//   process, so a future-clock accident never poisons the guard beyond recovery.
+// - Activating a fresh valid license resets the guard (support recovery path).
+const LICENSE_CLOCK_ROLLBACK_TOLERANCE_MS = 72 * 3_600_000;
+const LICENSE_CLOCK_FORWARD_CAP_MS = 72 * 3_600_000;
+const LICENSE_CLOCK_WRITE_THRESHOLD_MS = 3_600_000;
+
 export class DesktopLicenseService {
   private readonly required: boolean;
+  private clockGuardCeiling?: number;
   private readonly directory: string;
   private readonly installationFile: string;
   private readonly licenseFile: string;
@@ -149,6 +161,32 @@ export class DesktopLicenseService {
     }
   }
 
+  private clockGuard(now: number): { blocked: boolean; message: string | null } {
+    const row = this.db.prepare('SELECT last_seen_ms FROM license_clock_guard WHERE id=1').get() as { last_seen_ms: number } | undefined;
+    const lastSeen = row?.last_seen_ms;
+    if (lastSeen !== undefined && now < lastSeen - LICENSE_CLOCK_ROLLBACK_TOLERANCE_MS) {
+      return {
+        blocked: true,
+        message: `The system clock was moved back (last recorded ${new Date(lastSeen).toISOString()}). Restore the correct date and time, then restart the application. If the date is already correct, contact support to re-activate the license.`,
+      };
+    }
+    if (lastSeen === undefined || now > lastSeen) {
+      if (this.clockGuardCeiling === undefined) this.clockGuardCeiling = (lastSeen ?? now) + LICENSE_CLOCK_FORWARD_CAP_MS;
+      const target = Math.min(now, this.clockGuardCeiling);
+      if (lastSeen === undefined || target - lastSeen >= LICENSE_CLOCK_WRITE_THRESHOLD_MS) {
+        this.db.prepare('INSERT INTO license_clock_guard(id, last_seen_ms, updated_at) VALUES(1, ?, ?) ON CONFLICT(id) DO UPDATE SET last_seen_ms=excluded.last_seen_ms, updated_at=excluded.updated_at')
+          .run(target, new Date(target).toISOString());
+      }
+    }
+    return { blocked: false, message: null };
+  }
+
+  private resetClockGuard(now: number): void {
+    this.db.prepare('INSERT INTO license_clock_guard(id, last_seen_ms, updated_at) VALUES(1, ?, ?) ON CONFLICT(id) DO UPDATE SET last_seen_ms=excluded.last_seen_ms, updated_at=excluded.updated_at')
+      .run(now, new Date(now).toISOString());
+    this.clockGuardCeiling = now + LICENSE_CLOCK_FORWARD_CAP_MS;
+  }
+
   getStatus(): DesktopLicenseStatus {
     const serverTime = new Date(this.now()).toISOString();
     if (!this.required) {
@@ -190,6 +228,10 @@ export class DesktopLicenseService {
       canFinishActiveTournament: false,
       serverTime,
     } as const;
+    const guard = this.clockGuard(this.now());
+    if (guard.blocked) {
+      return { ...base, status: 'INVALID', message: guard.message, license: null };
+    }
     if (!existsSync(this.licenseFile)) {
       return { ...base, status: 'UNLICENSED', message: this.statusMessage('UNLICENSED'), license: null };
     }
@@ -224,6 +266,8 @@ export class DesktopLicenseService {
   activate(token: string): DesktopLicenseStatus {
     if (!this.required) throw new HttpError(400, 'LICENSE_NOT_REQUIRED', 'Desktop license activation is not required in this deployment.');
     const identity = this.identity();
+    const guard = this.clockGuard(this.now());
+    if (guard.blocked) throw new HttpError(403, 'LICENSE_CLOCK_ROLLBACK', guard.message ?? 'The system clock was moved back. Restore the correct date and time before activating a license.');
     const evaluation = evaluateDesktopLicense(token, this.verificationKey, identity.code, this.now());
     if (evaluation.status !== 'ACTIVE') {
       const status = publicState(evaluation.status);
@@ -231,6 +275,7 @@ export class DesktopLicenseService {
       throw new HttpError(status === 'INVALID' ? 400 : 403, code, this.statusMessage(status) ?? 'The license could not be activated.');
     }
     atomicWrite(this.licenseFile, `${token.replace(/^\uFEFF/, '').trim()}\n`);
+    this.resetClockGuard(this.now());
     return this.getStatus();
   }
 

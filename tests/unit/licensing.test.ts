@@ -41,6 +41,15 @@ describe('desktop license cryptography', () => {
     expect(evaluateDesktopLicense(`\uFEFF${token}\n`, key.verification, payload.deviceCode, now)).toEqual({ status: 'ACTIVE', payload });
   });
 
+  it('signs and verifies the monthly salle subscription plans', () => {
+    const key = keys();
+    for (const plan of ['SALLE', 'SALLE_PLUS'] as const) {
+      const payload = { ...fixture(), plan };
+      const token = signDesktopLicense(payload, key.signing);
+      expect(evaluateDesktopLicense(token, key.verification, payload.deviceCode, now)).toEqual({ status: 'ACTIVE', payload });
+    }
+  });
+
   it('rejects a modified payload even when the original signature is retained', () => {
     const key = keys();
     const payload = fixture();

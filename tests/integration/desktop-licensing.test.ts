@@ -154,3 +154,79 @@ describe('desktop license service', () => {
     expect(existsSync(path.join(directory, 'installation.json'))).toBe(false);
   });
 });
+
+describe('offline clock guard (subscription enforcement)', () => {
+  const longPayload = (deviceCode: string, now = initialNow) => payload(deviceCode, now, { notBefore: new Date(initialNow - 10 * 86_400_000).toISOString(), expiresAt: new Date(now + 800 * 86_400_000).toISOString() });
+
+  it('blocks all licensed work when the clock is rolled back beyond the tolerance', () => {
+    const db = database();
+    const directory = temporaryDirectory();
+    let clock = initialNow;
+    const licensing = service(db, directory, () => clock);
+    const code = licensing.getStatus().installationCode;
+    licensing.activate(signDesktopLicense(payload(code), signingKey));
+    expect(licensing.getStatus().status).toBe('ACTIVE');
+
+    // Ten days back: the expired-license revival trick must not work.
+    clock -= 10 * 86_400_000;
+    const rolledBack = licensing.getStatus();
+    expect(rolledBack.status).toBe('INVALID');
+    expect(rolledBack.message).toMatch(/clock was moved back/i);
+    expect(rolledBack.canStartNewWork).toBe(false);
+    expect(rolledBack.canFinishActiveTournament).toBe(false);
+    expectHttpCode(() => licensing.assertNewWork(), 'LICENSE_REQUIRED');
+  });
+
+  it('tolerates a small clock correction without losing the high-water mark', () => {
+    const db = database();
+    const directory = temporaryDirectory();
+    let clock = initialNow;
+    const licensing = service(db, directory, () => clock);
+    const code = licensing.getStatus().installationCode;
+    licensing.activate(signDesktopLicense(longPayload(code), signingKey));
+
+    clock -= 2 * 3_600_000; // two hours back, well within the 72h tolerance
+    expect(licensing.getStatus()).toMatchObject({ status: 'ACTIVE', canStartNewWork: true });
+
+    // The stored mark still reflects the furthest time seen, so a later large
+    // rollback from the same starting point is still blocked.
+    clock = initialNow - 20 * 86_400_000;
+    expect(licensing.getStatus().status).toBe('INVALID');
+  });
+
+  it('caps forward growth so a future-clock accident never poisons the guard', () => {
+    const db = database();
+    const directory = temporaryDirectory();
+    let clock = initialNow;
+    const licensing = service(db, directory, () => clock);
+    const code = licensing.getStatus().installationCode;
+    licensing.activate(signDesktopLicense(longPayload(code), signingKey));
+
+    // Clock accidentally set far into the future, then corrected back.
+    clock = initialNow + 400 * 86_400_000;
+    expect(licensing.getStatus().status).toBe('ACTIVE');
+    clock = initialNow + 86_400_000;
+    expect(licensing.getStatus()).toMatchObject({ status: 'ACTIVE', canStartNewWork: true });
+  });
+
+  it('rejects activation of a license while the clock is rolled back, and activation resets the guard', () => {
+    const db = database();
+    const directory = temporaryDirectory();
+    let clock = initialNow;
+    const licensing = service(db, directory, () => clock);
+    const code = licensing.getStatus().installationCode;
+
+    // Seed the high-water mark, then roll the clock back.
+    clock += 5 * 86_400_000;
+    licensing.getStatus();
+    clock = initialNow - 15 * 86_400_000;
+    expectHttpCode(() => licensing.activate(signDesktopLicense(longPayload(code, initialNow), signingKey)), 'LICENSE_CLOCK_ROLLBACK');
+
+    // After the clock is restored forward, activating a fresh valid license clears the guard.
+    clock = initialNow + 6 * 86_400_000;
+    const activated = licensing.activate(signDesktopLicense(longPayload(code, initialNow + 6 * 86_400_000), signingKey));
+    expect(activated.status).toBe('ACTIVE');
+    clock = initialNow + 7 * 86_400_000;
+    expect(licensing.getStatus()).toMatchObject({ status: 'ACTIVE', canStartNewWork: true });
+  });
+});

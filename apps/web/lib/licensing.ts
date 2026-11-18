@@ -12,7 +12,7 @@ export interface DesktopLicenseStatus {
   license: {
     licenseId: string;
     clubName: string;
-    plan: 'FOUNDING_CLUB' | 'CLUB' | 'TOURNAMENT_SUPPORT';
+    plan: 'FOUNDING_CLUB' | 'CLUB' | 'TOURNAMENT_SUPPORT' | 'SALLE' | 'SALLE_PLUS';
     issuedAt: string;
     expiresAt: string;
     daysRemaining: number;

@@ -15,7 +15,7 @@ import { useToast } from '@/components/ui/toast';
 import { post } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 
-const plans = ['FOUNDING_CLUB', 'CLUB', 'TOURNAMENT_SUPPORT'] as const;
+const plans = ['SALLE', 'SALLE_PLUS', 'CLUB', 'FOUNDING_CLUB', 'TOURNAMENT_SUPPORT'] as const;
 const schema = z.object({
   clubName: z.string().trim().min(2, 'Enter the client or club name.').max(180),
   clientEmail: z.string().trim().email('Enter a valid client email.').max(254),
@@ -47,6 +47,8 @@ type DeliveryResult = { delivery: Delivery; duplicate: boolean };
 function isoDay(date: Date): string { return date.toISOString().slice(0, 10); }
 function defaultExpiry(): string { const date = new Date(); date.setUTCFullYear(date.getUTCFullYear() + 1); return isoDay(date); }
 function planLabel(plan: typeof plans[number]): string {
+  if (plan === 'SALLE') return 'Salle — training & grades';
+  if (plan === 'SALLE_PLUS') return 'Salle+ — tournaments included';
   if (plan === 'FOUNDING_CLUB') return 'Founding Club';
   if (plan === 'TOURNAMENT_SUPPORT') return 'Tournament Support';
   return 'Club';
@@ -59,9 +61,9 @@ export default function LicenseDeliveryPage() {
   const { toast } = useToast();
   const [submitError, setSubmitError] = useState('');
   const [lastDelivery, setLastDelivery] = useState<Delivery | null>(null);
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<Values>({
+  const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<Values>({
     resolver: zodResolver(schema),
-    defaultValues: { clubName: '', clientEmail: '', plan: 'CLUB', deviceCode: '', expires: defaultExpiry(), paymentConfirmed: false },
+    defaultValues: { clubName: '', clientEmail: '', plan: 'SALLE', deviceCode: '', expires: defaultExpiry(), paymentConfirmed: false },
   });
 
   if (!owner) return <Card><CardContent className="flex items-start gap-3"><LockKeyhole className="mt-0.5 size-5 shrink-0 text-timer" /><div><h2 className="font-semibold">Owner access required</h2><p className="mt-1 text-sm text-muted">Only the TKDTech business owner can issue and email desktop licenses.</p></div></CardContent></Card>;
@@ -109,7 +111,13 @@ export default function LicenseDeliveryPage() {
             <Field label="Installation code" hint="The client copies this from TKD Scoring → Activation. It is not a password." error={errors.deviceCode?.message}><Input spellCheck={false} autoComplete="off" className="numeric uppercase tracking-wider" placeholder="TKD-0000-1111-2222-3333-4444" {...register('deviceCode')} /></Field>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Subscription plan" error={errors.plan?.message}><Select {...register('plan')}>{plans.map((plan) => <option key={plan} value={plan}>{planLabel(plan)}</option>)}</Select></Field>
-              <Field label="Paid until" hint="The license expires at the end of this UTC day." error={errors.expires?.message}><Input type="date" min={isoDay(new Date())} {...register('expires')} /></Field>
+              <Field label="Paid until" hint="The license expires at the end of this UTC day." error={errors.expires?.message}>
+                <Input type="date" min={isoDay(new Date())} {...register('expires')} />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button type="button" className="rounded-md border border-line px-2.5 py-1 text-[10px] font-semibold text-muted transition hover:border-primary hover:text-white" onClick={() => setValue('expires', isoDay(new Date(Date.now() + 30 * 86_400_000)), { shouldValidate: true })}>+1 month</button>
+                  <button type="button" className="rounded-md border border-line px-2.5 py-1 text-[10px] font-semibold text-muted transition hover:border-primary hover:text-white" onClick={() => setValue('expires', isoDay(new Date(Date.now() + 365 * 86_400_000)), { shouldValidate: true })}>+1 year</button>
+                </div>
+              </Field>
             </div>
             <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line/70 bg-black/20 p-4"><input type="checkbox" className="mt-1 size-4 accent-[#2068ff]" {...register('paymentConfirmed')} /><span><span className="block text-sm font-semibold">I confirm payment for this client, plan, computer and paid period.</span><span className="mt-1 block text-xs leading-5 text-muted">This approval creates a signed license. It does not charge a card or collect payment online.</span>{errors.paymentConfirmed && <span className="mt-2 block text-xs text-[#ff8390]">{errors.paymentConfirmed.message}</span>}</span></label>
             {submitError && <div role="alert" className="flex items-start gap-2 rounded-xl border border-red/30 bg-red/5 p-3 text-xs leading-5 text-[#ff9aa4]"><CircleAlert className="mt-0.5 size-4 shrink-0" /><span>{submitError}</span></div>}

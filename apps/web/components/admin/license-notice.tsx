@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { CircleAlert, Clock3, KeyRound } from 'lucide-react';
+import { CircleAlert, Clock3, KeyRound, MessageCircle } from 'lucide-react';
 import { useApi } from '@/lib/use-api';
 import type { DesktopLicenseStatus } from '@/lib/licensing';
 
@@ -19,7 +19,10 @@ export function LicenseNotice() {
         <p className="font-semibold">{active ? `Desktop license expires in ${license.license?.daysRemaining ?? 0} days.` : 'Desktop license action required.'}</p>
         <p className="mt-0.5 opacity-80">{active ? 'Renew before expiry to keep creating tournament work without interruption.' : license.message}</p>
       </div>
-      <Link href="/activation" className="inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-lg border border-white/15 px-3 font-semibold transition hover:bg-white/5"><KeyRound className="size-4" />{active ? 'Renew license' : 'Open activation'}</Link>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        <a href={`https://wa.me/212614192699?text=${encodeURIComponent(active ? 'Bonjour, je veux renouveler ma licence TKD Scoring.' : 'Bonjour, j\'ai besoin d\'aide avec la licence TKD Scoring.')}`} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-[#25D366]/30 bg-[#25D366]/10 px-3 font-semibold text-[#7fe0a8] transition hover:bg-[#25D366]/20"><MessageCircle className="size-4" />WhatsApp</a>
+        <Link href="/activation" className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-white/15 px-3 font-semibold transition hover:bg-white/5"><KeyRound className="size-4" />{active ? 'Renew license' : 'Open activation'}</Link>
+      </div>
     </div>
   );
 }
