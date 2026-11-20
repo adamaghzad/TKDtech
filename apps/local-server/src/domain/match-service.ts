@@ -12,8 +12,13 @@ import type { Actor, MatchCommand } from '../types';
 interface DeviceSession { id:string;tournament_id:string;match_id:string;role:'J1'|'J2'|'J3'|'REFEREE';device_name:string;status:string;expires_at:number;last_sequence?:number }
 interface ProposalResult { status:string;reason:string;decisionId:string|null;points:number;duplicate?:boolean;matchId:string;diagnostics?:{serverReceivedAt:number;consensusWindowMs:number;consensusThreshold:number;matchingJudgeCount:number;expiredPriorCount:number;onlineJudgeCount:number;scoringMode:'ONE_JUDGE'|'TWO_JUDGE'} }
 
+export interface MatchServiceLicenseGuards {
+  /** Called before the first start of a match (license plan quotas). A never-interrupted guard: it only runs when actual_start_at is still unset. */
+  assertMatchStart?: () => void;
+}
+
 export class MatchService {
-  constructor(private readonly db: SqliteDatabase, private readonly repository: TournamentRepository) {}
+  constructor(private readonly db: SqliteDatabase, private readonly repository: TournamentRepository, private readonly licenseGuards: MatchServiceLicenseGuards = {}) {}
 
   snapshot(matchId: string): MatchSnapshot {
     const row = getJoinedMatch(this.db, matchId);
@@ -115,6 +120,7 @@ export class MatchService {
       };
       switch(command.type){
         case 'START': {
+          if(!current.actual_start_at)this.licenseGuards.assertMatchStart?.();
           if(!current.blue_athlete_id||!current.red_athlete_id)throw new HttpError(409,'ENTRANTS_UNKNOWN','Both athletes must be confirmed.');
           if(!current.mat_id)throw new HttpError(409,'MAT_REQUIRED','Assign an available mat before starting.');
           if(!['READY','CALLED'].includes(state))throw new HttpError(409,'INVALID_STATE','Start requires a ready or called match.');

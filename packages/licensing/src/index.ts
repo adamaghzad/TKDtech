@@ -1,14 +1,61 @@
 import { createHash, sign, verify } from 'node:crypto';
 import { z } from 'zod';
 
-export const desktopLicensePlans = ['FOUNDING_CLUB', 'CLUB', 'TOURNAMENT_SUPPORT', 'SALLE', 'SALLE_PLUS'] as const;
+export const desktopLicensePlans = ['FOUNDING_CLUB', 'CLUB', 'TOURNAMENT_SUPPORT', 'SALLE', 'SALLE_PLUS', 'SALLE_PRO'] as const;
 export type DesktopLicensePlan = (typeof desktopLicensePlans)[number];
+
+// Version-1 tokens (tkd1.) keep compatibility with desktop builds up to 1.2.24:
+// their strict parser only knows the five original plans and no quota fields.
+// SALLE_PRO licenses and explicit quota overrides are issued as version-2 (tkd2.).
+const v1LicensePlans = ['FOUNDING_CLUB', 'CLUB', 'TOURNAMENT_SUPPORT', 'SALLE', 'SALLE_PLUS'] as const;
+
+export const SALLE_MONTHLY_MATCH_QUOTA = 200;
+export const SALLE_PLUS_YEARLY_TOURNAMENT_QUOTA = 3;
+export const TOURNAMENT_MONTHLY_CREATION_LIMIT = 2;
+
+export interface PlanQuotaDefaults {
+  matchQuota: number | null;
+  tournamentQuota: number | null;
+}
+
+/** Plan quota defaults applied when the license token does not carry explicit quotas (v1 tokens). */
+export const planQuotaDefaults: Record<DesktopLicensePlan, PlanQuotaDefaults> = {
+  FOUNDING_CLUB: { matchQuota: null, tournamentQuota: null },
+  CLUB: { matchQuota: null, tournamentQuota: null },
+  TOURNAMENT_SUPPORT: { matchQuota: null, tournamentQuota: null },
+  SALLE: { matchQuota: SALLE_MONTHLY_MATCH_QUOTA, tournamentQuota: 0 },
+  SALLE_PLUS: { matchQuota: null, tournamentQuota: SALLE_PLUS_YEARLY_TOURNAMENT_QUOTA },
+  SALLE_PRO: { matchQuota: null, tournamentQuota: null },
+};
 
 const isoDateTime = z.string().min(20).max(40).refine((value) => Number.isFinite(Date.parse(value)), 'Invalid ISO date.');
 export const installationCodeSchema = z.string().regex(/^TKD(?:-[0-9A-F]{4}){5}$/, 'Invalid installation code.');
 
+const licenseQuotaField = z.number().int().min(0).max(1_000_000).nullable();
+
+function validateLicenseDates(payload: { issuedAt: string; notBefore: string; expiresAt: string }, context: z.RefinementCtx): void {
+  if (Date.parse(payload.notBefore) >= Date.parse(payload.expiresAt)) {
+    context.addIssue({ code: 'custom', message: 'notBefore must precede expiresAt.', path: ['notBefore'] });
+  }
+  if (Date.parse(payload.issuedAt) > Date.parse(payload.expiresAt)) {
+    context.addIssue({ code: 'custom', message: 'issuedAt must not follow expiresAt.', path: ['issuedAt'] });
+  }
+}
+
 export const licensePayloadSchema = z.object({
   version: z.literal(1),
+  keyId: z.string().regex(/^TKD-[A-Z0-9-]{6,80}$/),
+  licenseId: z.string().regex(/^LIC-[A-Z0-9-]{6,100}$/),
+  clubName: z.string().trim().min(2).max(180),
+  plan: z.enum(v1LicensePlans),
+  deviceCode: installationCodeSchema,
+  issuedAt: isoDateTime,
+  notBefore: isoDateTime,
+  expiresAt: isoDateTime,
+}).strict().superRefine(validateLicenseDates);
+
+export const licensePayloadSchemaV2 = z.object({
+  version: z.literal(2),
   keyId: z.string().regex(/^TKD-[A-Z0-9-]{6,80}$/),
   licenseId: z.string().regex(/^LIC-[A-Z0-9-]{6,100}$/),
   clubName: z.string().trim().min(2).max(180),
@@ -17,16 +64,13 @@ export const licensePayloadSchema = z.object({
   issuedAt: isoDateTime,
   notBefore: isoDateTime,
   expiresAt: isoDateTime,
-}).strict().superRefine((payload, context) => {
-  if (Date.parse(payload.notBefore) >= Date.parse(payload.expiresAt)) {
-    context.addIssue({ code: 'custom', message: 'notBefore must precede expiresAt.', path: ['notBefore'] });
-  }
-  if (Date.parse(payload.issuedAt) > Date.parse(payload.expiresAt)) {
-    context.addIssue({ code: 'custom', message: 'issuedAt must not follow expiresAt.', path: ['issuedAt'] });
-  }
-});
+  matchQuota: licenseQuotaField,
+  tournamentQuota: licenseQuotaField,
+}).strict().superRefine(validateLicenseDates);
 
-export type DesktopLicensePayload = z.infer<typeof licensePayloadSchema>;
+export type DesktopLicensePayloadV1 = z.infer<typeof licensePayloadSchema>;
+export type DesktopLicensePayloadV2 = z.infer<typeof licensePayloadSchemaV2>;
+export type DesktopLicensePayload = DesktopLicensePayloadV1 | DesktopLicensePayloadV2;
 export type LicenseEvaluationStatus = 'ACTIVE' | 'MALFORMED' | 'WRONG_KEY' | 'INVALID_SIGNATURE' | 'DEVICE_MISMATCH' | 'NOT_YET_VALID' | 'EXPIRED';
 export type LicenseEvaluation =
   | { status: 'ACTIVE'; payload: DesktopLicensePayload }
@@ -54,11 +98,11 @@ export function installationCodeFor(installationId: string, machineId: string): 
 }
 
 export function signDesktopLicense(payloadInput: DesktopLicensePayload, key: LicenseSigningKey): string {
-  const payload = licensePayloadSchema.parse(payloadInput);
+  const payload = payloadInput.version === 1 ? licensePayloadSchema.parse(payloadInput) : licensePayloadSchemaV2.parse(payloadInput);
   if (payload.keyId !== key.keyId) throw new Error('License payload and signing key identifiers differ.');
   const encodedPayload = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
   const signature = sign(null, Buffer.from(encodedPayload, 'ascii'), key.privateKeyPem).toString('base64url');
-  return `tkd1.${encodedPayload}.${signature}`;
+  return `${payloadInput.version === 1 ? 'tkd1' : 'tkd2'}.${encodedPayload}.${signature}`;
 }
 
 function decodeSegment(segment: string): Buffer | null {
@@ -76,7 +120,7 @@ export function evaluateDesktopLicense(
   const token = tokenInput.replace(/^\uFEFF/, '').trim();
   if (!token || token.length > 16_384) return { status: 'MALFORMED' };
   const parts = token.split('.');
-  if (parts.length !== 3 || parts[0] !== 'tkd1') return { status: 'MALFORMED' };
+  if (parts.length !== 3 || (parts[0] !== 'tkd1' && parts[0] !== 'tkd2')) return { status: 'MALFORMED' };
   const encodedPayload = parts[1]!;
   const encodedSignature = parts[2]!;
   const payloadBytes = decodeSegment(encodedPayload);
@@ -85,7 +129,8 @@ export function evaluateDesktopLicense(
 
   let parsed: DesktopLicensePayload;
   try {
-    parsed = licensePayloadSchema.parse(JSON.parse(payloadBytes.toString('utf8')));
+    const decodedPayload = JSON.parse(payloadBytes.toString('utf8'));
+    parsed = parts[0] === 'tkd1' ? licensePayloadSchema.parse(decodedPayload) : licensePayloadSchemaV2.parse(decodedPayload);
   } catch {
     return { status: 'MALFORMED' };
   }

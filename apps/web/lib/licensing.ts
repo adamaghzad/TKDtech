@@ -1,4 +1,10 @@
 export type DesktopLicenseState = 'NOT_REQUIRED' | 'UNLICENSED' | 'ACTIVE' | 'EXPIRED' | 'DEVICE_MISMATCH' | 'NOT_YET_VALID' | 'INVALID';
+export type DesktopLicensePlan = 'FOUNDING_CLUB' | 'CLUB' | 'TOURNAMENT_SUPPORT' | 'SALLE' | 'SALLE_PLUS' | 'SALLE_PRO';
+
+export interface DesktopLicenseUsage {
+  matches: { limit: number | null; used: number; resetsAt: string };
+  tournaments: { limit: number | null; used: number; usedThisMonth: number; monthlyLimit: number | null; nextReleaseAt: string | null };
+}
 
 export interface DesktopLicenseStatus {
   required: boolean;
@@ -12,7 +18,7 @@ export interface DesktopLicenseStatus {
   license: {
     licenseId: string;
     clubName: string;
-    plan: 'FOUNDING_CLUB' | 'CLUB' | 'TOURNAMENT_SUPPORT' | 'SALLE' | 'SALLE_PLUS';
+    plan: DesktopLicensePlan;
     issuedAt: string;
     expiresAt: string;
     daysRemaining: number;
@@ -24,4 +30,5 @@ export interface DesktopLicenseStatus {
     reports: boolean;
     fullJudgingPanel: boolean;
   };
+  usage?: DesktopLicenseUsage | null;
 }

@@ -9,9 +9,12 @@ import {
   installationCodeFor,
   installationCodeSchema,
   normalizeInstallationCode,
+  planQuotaDefaults,
+  TOURNAMENT_MONTHLY_CREATION_LIMIT,
   type DesktopLicensePayload,
   type LicenseEvaluationStatus,
   type LicenseVerificationKey,
+  type PlanQuotaDefaults,
 } from '../../../../packages/licensing/src/index';
 import { productionLicenseKey } from '../../../../packages/licensing/src/key';
 import type { SqliteDatabase } from '../persistence/database';
@@ -38,6 +41,12 @@ export interface DesktopLicenseStatus {
     daysRemaining: number;
   } | null;
   capabilities: DesktopPlanCapabilities;
+  usage: DesktopLicenseUsage | null;
+}
+
+export interface DesktopLicenseUsage {
+  matches: { limit: number | null; used: number; resetsAt: string };
+  tournaments: { limit: number | null; used: number; usedThisMonth: number; monthlyLimit: number | null; nextReleaseAt: string | null };
 }
 
 export interface DesktopPlanCapabilities {
@@ -219,6 +228,7 @@ export class DesktopLicenseService {
         canFinishActiveTournament: false,
         serverTime,
         capabilities: FULL_PLAN_CAPABILITIES,
+        usage: null,
         message: null,
         license: null,
       };
@@ -239,6 +249,7 @@ export class DesktopLicenseService {
         message: 'The installation identity is damaged or unavailable. Preserve the license folder and contact support.',
         license: null,
         capabilities: FULL_PLAN_CAPABILITIES,
+        usage: null,
       };
     }
 
@@ -250,6 +261,7 @@ export class DesktopLicenseService {
       canFinishActiveTournament: false,
       serverTime,
       capabilities: FULL_PLAN_CAPABILITIES,
+      usage: null,
     } as const;
     const guard = this.clockGuard(this.now());
     if (guard.blocked) {
@@ -284,6 +296,7 @@ export class DesktopLicenseService {
         daysRemaining: Math.max(0, Math.ceil((Date.parse(payload.expiresAt) - this.now()) / 86_400_000)),
       } : null,
       capabilities: status === 'ACTIVE' && payload?.plan === 'SALLE' ? TRAINING_PLAN_CAPABILITIES : FULL_PLAN_CAPABILITIES,
+      usage: status === 'ACTIVE' && payload ? this.usage(payload) : null,
     };
   }
 
@@ -346,6 +359,121 @@ export class DesktopLicenseService {
     if (!this.required) return false;
     const status = this.getStatus();
     return status.status === 'ACTIVE' && status.license?.plan === 'SALLE';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Plan quotas (1.2.25): monthly match allowance and rolling-year tournament
+  // creation allowance. Quotas live in the signed license (v2 tokens) or fall
+  // back to plan defaults; usage is counted from the local database so the
+  // allowance survives reinstalls of the app but not the club's own data.
+  // ---------------------------------------------------------------------------
+
+  private activePayload(): DesktopLicensePayload | null {
+    if (!this.required) return null;
+    let identity: ReturnType<DesktopLicenseService['identity']>;
+    try {
+      identity = this.identity();
+    } catch {
+      return null;
+    }
+    if (this.clockGuard(this.now()).blocked) return null;
+    if (!existsSync(this.licenseFile)) return null;
+    let token: string;
+    try {
+      token = readFileSync(this.licenseFile, 'utf8');
+    } catch {
+      return null;
+    }
+    const evaluation = evaluateDesktopLicense(token, this.verificationKey, identity.code, this.now());
+    return evaluation.status === 'ACTIVE' ? evaluation.payload : null;
+  }
+
+  private resolveQuotas(payload: DesktopLicensePayload): PlanQuotaDefaults {
+    if (payload.version === 2) return { matchQuota: payload.matchQuota, tournamentQuota: payload.tournamentQuota };
+    return planQuotaDefaults[payload.plan];
+  }
+
+  private monthStartIso(now: number): string {
+    const date = new Date(now);
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)).toISOString();
+  }
+
+  private nextMonthStartIso(now: number): string {
+    const date = new Date(now);
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1)).toISOString();
+  }
+
+  private countStartedMatches(monthStartIso: string): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS n FROM matches WHERE actual_start_at IS NOT NULL AND actual_start_at >= ?').get(monthStartIso) as { n: number };
+    return row.n;
+  }
+
+  private countCreatedTournaments(sinceIso: string): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS n FROM tournaments WHERE created_at >= ?').get(sinceIso) as { n: number };
+    return row.n;
+  }
+
+  private oldestCreatedTournamentAt(sinceIso: string): string | null {
+    const row = this.db.prepare('SELECT MIN(created_at) AS oldest FROM tournaments WHERE created_at >= ?').get(sinceIso) as { oldest: string | null };
+    return row.oldest;
+  }
+
+  private usage(payload: DesktopLicensePayload): DesktopLicenseUsage {
+    const now = this.now();
+    const monthStart = this.monthStartIso(now);
+    const windowStart = new Date(now - 365 * 86_400_000).toISOString();
+    const quotas = this.resolveQuotas(payload);
+    const tournamentsLimited = quotas.tournamentQuota !== null;
+    const oldest = tournamentsLimited ? this.oldestCreatedTournamentAt(windowStart) : null;
+    return {
+      matches: { limit: quotas.matchQuota, used: this.countStartedMatches(monthStart), resetsAt: this.nextMonthStartIso(now) },
+      tournaments: {
+        limit: quotas.tournamentQuota,
+        used: tournamentsLimited ? this.countCreatedTournaments(windowStart) : 0,
+        usedThisMonth: tournamentsLimited ? this.countCreatedTournaments(monthStart) : 0,
+        monthlyLimit: quotas.tournamentQuota !== null && quotas.tournamentQuota > 0 ? TOURNAMENT_MONTHLY_CREATION_LIMIT : null,
+        nextReleaseAt: oldest ? new Date(Date.parse(oldest) + 365 * 86_400_000).toISOString() : null,
+      },
+    };
+  }
+
+  /** Tournament creation gate: Salle cannot create tournaments at all; Salle+ is limited per rolling year and per calendar month. */
+  assertTournamentCreation(): void {
+    if (!this.required) return;
+    const payload = this.activePayload();
+    if (!payload) {
+      this.assertNewWork();
+      return;
+    }
+    if (payload.plan === 'SALLE') {
+      throw new HttpError(403, 'PLAN_UPGRADE_REQUIRED', 'Tournament creation is not part of the Salle training plan (training & grades). Upgrade to Salle+ — 3 tournaments per year included — to create tournaments.');
+    }
+    const quotas = this.resolveQuotas(payload);
+    if (quotas.tournamentQuota === null) return;
+    const now = this.now();
+    const monthStart = this.monthStartIso(now);
+    const windowStart = new Date(now - 365 * 86_400_000).toISOString();
+    if (quotas.tournamentQuota > 0 && this.countCreatedTournaments(monthStart) >= TOURNAMENT_MONTHLY_CREATION_LIMIT) {
+      throw new HttpError(403, 'PLAN_TOURNAMENT_MONTHLY_LIMIT', `This plan allows at most ${TOURNAMENT_MONTHLY_CREATION_LIMIT} new tournaments per calendar month. The monthly counter resets on ${this.nextMonthStartIso(now).slice(0, 10)}.`);
+    }
+    if (this.countCreatedTournaments(windowStart) >= quotas.tournamentQuota) {
+      const oldest = this.oldestCreatedTournamentAt(windowStart);
+      const release = oldest ? new Date(Date.parse(oldest) + 365 * 86_400_000).toISOString().slice(0, 10) : null;
+      throw new HttpError(403, 'PLAN_TOURNAMENT_QUOTA_EXCEEDED', `The plan's tournament allowance is used: ${quotas.tournamentQuota} tournament(s) per rolling 12 months.${release ? ` A slot frees on ${release}.` : ''} Already created tournaments stay fully usable. Upgrade to Salle Pro for unlimited tournaments.`);
+    }
+  }
+
+  /** Match start gate: blocks the START of the next match once the monthly allowance is used. A running match is never interrupted. */
+  assertMatchStart(): void {
+    if (!this.required) return;
+    const payload = this.activePayload();
+    if (!payload) return;
+    const quotas = this.resolveQuotas(payload);
+    if (quotas.matchQuota === null) return;
+    const now = this.now();
+    if (this.countStartedMatches(this.monthStartIso(now)) >= quotas.matchQuota) {
+      throw new HttpError(403, 'PLAN_MATCH_QUOTA_EXCEEDED', `The plan's match allowance is used: ${quotas.matchQuota} match(es) started this calendar month. A running match is never interrupted. The counter resets on ${this.nextMonthStartIso(now).slice(0, 10)} — or upgrade to Salle+ for unlimited matches.`);
+    }
   }
 }
 

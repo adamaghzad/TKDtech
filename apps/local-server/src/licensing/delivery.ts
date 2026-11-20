@@ -9,7 +9,9 @@ import {
   evaluateDesktopLicense,
   installationCodeSchema,
   licensePayloadSchema,
+  licensePayloadSchemaV2,
   normalizeInstallationCode,
+  planQuotaDefaults,
   signDesktopLicense,
   type DesktopLicensePayload,
   type LicenseSigningKey,
@@ -29,6 +31,8 @@ export const licenseDeliveryInputSchema = z.object({
   plan: z.enum(desktopLicensePlans),
   deviceCode: z.string().transform(normalizeInstallationCode).pipe(installationCodeSchema),
   expires: z.string().date(),
+  matchQuota: z.number().int().min(0).max(1_000_000).nullable().optional(),
+  tournamentQuota: z.number().int().min(0).max(1_000).nullable().optional(),
   paymentConfirmed: z.boolean().refine((value) => value, 'Confirm payment before issuing the license.'),
 }).strict();
 
@@ -44,6 +48,8 @@ export interface LicenseDelivery {
   deviceCode: string;
   issuedAt: string;
   expiresAt: string;
+  matchQuota: number | null;
+  tournamentQuota: number | null;
   status: LicenseDeliveryStatus;
   emailMessageId: string | null;
   deliveryError: string | null;
@@ -63,6 +69,8 @@ export interface LicenseEmail {
   plan: DesktopLicensePayload['plan'];
   deviceCode: string;
   expiresAt: string;
+  matchQuota: number | null;
+  tournamentQuota: number | null;
   token: string;
 }
 
@@ -87,6 +95,8 @@ interface DeliveryRow {
   device_code: string;
   issued_at: string;
   expires_at: string;
+  match_quota: number | null;
+  tournament_quota: number | null;
   status: LicenseDeliveryStatus;
   email_message_id: string | null;
   delivery_error: string | null;
@@ -104,6 +114,8 @@ function dto(row: DeliveryRow): LicenseDelivery {
     deviceCode: row.device_code,
     issuedAt: row.issued_at,
     expiresAt: row.expires_at,
+    matchQuota: row.match_quota ?? null,
+    tournamentQuota: row.tournament_quota ?? null,
     status: row.status,
     emailMessageId: row.email_message_id,
     deliveryError: row.delivery_error,
@@ -131,6 +143,8 @@ export function buildLicenseEmail(message: LicenseEmail, from: string) {
       '',
       `License ID: ${message.licenseId}`,
       `Plan: ${message.plan.replaceAll('_', ' ')}`,
+      ...(message.matchQuota !== null ? [`Match allowance: ${message.matchQuota} started matches per calendar month`] : []),
+      ...(message.tournamentQuota !== null ? [`Tournament allowance: ${message.tournamentQuota} new tournaments per rolling 12 months`] : []),
       `Valid until: ${expiry} (end of day UTC)`,
       `Installation code: ${message.deviceCode}`,
       '',
@@ -244,24 +258,46 @@ export class LicenseDeliveryService {
     if (requestKey.length < 8 || requestKey.length > 100) throw new HttpError(400, 'INVALID_IDEMPOTENCY_KEY', 'A valid approval request key is required.');
     const expiresAt = new Date(`${values.expires}T23:59:59.999Z`).toISOString();
     if (Date.parse(expiresAt) <= this.now()) throw new HttpError(400, 'LICENSE_EXPIRY_INVALID', 'The paid license expiry must be in the future.');
-    const requestHash = createHash('sha256').update(JSON.stringify([values.clubName, values.clientEmail, values.plan, values.deviceCode, values.expires])).digest('hex');
+    const quotaDefaults = planQuotaDefaults[values.plan];
+    const matchQuota = values.matchQuota === undefined ? quotaDefaults.matchQuota : values.matchQuota;
+    const tournamentQuota = values.tournamentQuota === undefined ? quotaDefaults.tournamentQuota : values.tournamentQuota;
+    const requestHash = createHash('sha256').update(JSON.stringify([values.clubName, values.clientEmail, values.plan, values.deviceCode, values.expires, matchQuota, tournamentQuota])).digest('hex');
     const duplicate = this.findDuplicate(actor.id, requestKey, requestHash);
     if (duplicate) return { delivery: duplicate, duplicate: true };
     const configuration = this.configuration();
     if (!configuration.configured) throw new HttpError(503, 'LICENSE_DELIVERY_NOT_CONFIGURED', `Complete the server configuration first: ${configuration.missing.join(', ')}.`, { missing: configuration.missing });
 
     const now = this.now();
-    const payload = licensePayloadSchema.parse({
-      version: 1,
-      keyId: this.verificationKey.keyId,
-      licenseId: `LIC-${new Date(now).getUTCFullYear()}-${randomBytes(6).toString('hex').toUpperCase()}`,
-      clubName: values.clubName,
-      plan: values.plan,
-      deviceCode: values.deviceCode,
-      issuedAt: new Date(now).toISOString(),
-      notBefore: new Date(now - 5 * 60_000).toISOString(),
-      expiresAt,
-    } satisfies DesktopLicensePayload);
+    // Compatibility: version-1 tokens (no quota fields, five original plans) are issued
+    // whenever the resolved quotas equal the plan defaults, so re-deliveries keep working
+    // on desktop builds up to 1.2.24. SALLE_PRO or custom quotas require version 2.
+    const useV2 = values.plan === 'SALLE_PRO' || matchQuota !== quotaDefaults.matchQuota || tournamentQuota !== quotaDefaults.tournamentQuota;
+    const licenseId = `LIC-${new Date(now).getUTCFullYear()}-${randomBytes(6).toString('hex').toUpperCase()}`;
+    const payload: DesktopLicensePayload = useV2
+      ? licensePayloadSchemaV2.parse({
+        version: 2 as const,
+        keyId: this.verificationKey.keyId,
+        licenseId,
+        clubName: values.clubName,
+        plan: values.plan,
+        deviceCode: values.deviceCode,
+        issuedAt: new Date(now).toISOString(),
+        notBefore: new Date(now - 5 * 60_000).toISOString(),
+        expiresAt,
+        matchQuota,
+        tournamentQuota,
+      })
+      : licensePayloadSchema.parse({
+        version: 1 as const,
+        keyId: this.verificationKey.keyId,
+        licenseId,
+        clubName: values.clubName,
+        plan: values.plan,
+        deviceCode: values.deviceCode,
+        issuedAt: new Date(now).toISOString(),
+        notBefore: new Date(now - 5 * 60_000).toISOString(),
+        expiresAt,
+      });
     const token = signDesktopLicense(payload, this.signingKey());
     const verification = evaluateDesktopLicense(token, this.verificationKey, values.deviceCode, now);
     if (verification.status !== 'ACTIVE') throw new HttpError(500, 'LICENSE_ISSUANCE_VERIFICATION_FAILED', 'The new license failed verification and was not sent.');
@@ -270,10 +306,11 @@ export class LicenseDeliveryService {
     const timestamp = new Date(now).toISOString();
     this.db.prepare(`INSERT INTO license_deliveries(
       id,license_id,request_key,request_hash,actor_id,club_name,client_email,plan,device_code,
-      issued_at,expires_at,status,created_at
-    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      issued_at,expires_at,status,created_at,match_quota,tournament_quota
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       id, payload.licenseId, requestKey, requestHash, actor.id, payload.clubName, values.clientEmail,
       payload.plan, payload.deviceCode, payload.issuedAt, payload.expiresAt, 'SENDING', timestamp,
+      matchQuota, tournamentQuota,
     );
 
     try {
@@ -284,6 +321,8 @@ export class LicenseDeliveryService {
         plan: payload.plan,
         deviceCode: payload.deviceCode,
         expiresAt: payload.expiresAt,
+        matchQuota,
+        tournamentQuota,
         token,
       });
       const sentAt = new Date(this.now()).toISOString();

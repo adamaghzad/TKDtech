@@ -3,10 +3,12 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { signDesktopLicense, type DesktopLicensePayload } from '../../packages/licensing/src/index';
+import { signDesktopLicense, type DesktopLicensePayloadV1, type DesktopLicensePayloadV2 } from '../../packages/licensing/src/index';
 import { DesktopLicenseService } from '../../apps/local-server/src/licensing/service';
+import { LicenseDeliveryService, type LicenseEmail } from '../../apps/local-server/src/licensing/delivery';
 import { openDatabase, type SqliteDatabase } from '../../apps/local-server/src/persistence/database';
 import { HttpError } from '../../apps/local-server/src/http';
+import type { Actor } from '../../apps/local-server/src/types';
 
 const initialNow = Date.parse('2026-10-27T12:00:00.000Z');
 const temporaryDirectories: string[] = [];
@@ -31,7 +33,7 @@ function service(db: SqliteDatabase, directory: string, clock: () => number = ()
   return new DesktopLicenseService(db, { required: true, directory, machineId: 'SERVICE-TEST-MACHINE', now: clock, verificationKey });
 }
 
-function payload(deviceCode: string, now = initialNow, overrides: Partial<DesktopLicensePayload> = {}): DesktopLicensePayload {
+function payload(deviceCode: string, now = initialNow, overrides: Partial<DesktopLicensePayloadV1> = {}): DesktopLicensePayloadV1 {
   return {
     version: 1,
     keyId: signingKey.keyId,
@@ -44,6 +46,47 @@ function payload(deviceCode: string, now = initialNow, overrides: Partial<Deskto
     expiresAt: new Date(now + 30 * 86_400_000).toISOString(),
     ...overrides,
   };
+}
+
+function payloadV2(deviceCode: string, overrides: Partial<DesktopLicensePayloadV2> = {}, now = initialNow): DesktopLicensePayloadV2 {
+  return {
+    version: 2,
+    keyId: signingKey.keyId,
+    licenseId: 'LIC-2026-SERVICE2',
+    clubName: 'Service Test Club',
+    plan: 'SALLE_PLUS',
+    deviceCode,
+    issuedAt: new Date(now - 60_000).toISOString(),
+    notBefore: new Date(now - 60_000).toISOString(),
+    expiresAt: new Date(now + 30 * 86_400_000).toISOString(),
+    matchQuota: null,
+    tournamentQuota: null,
+    ...overrides,
+  };
+}
+
+function createdTournamentAt(db: SqliteDatabase, createdAtIso: string): string {
+  const organizationId = randomUUID();
+  const tournamentId = randomUUID();
+  db.prepare('INSERT INTO organizations(id,name,slug,created_at) VALUES(?,?,?,?)').run(organizationId, 'Quota Organization', `quota-${organizationId}`, createdAtIso);
+  db.prepare(`INSERT INTO tournaments(id,organization_id,name,slug,description,organizer,venue,country,start_date,end_date,timezone,status,mat_count,ruleset_id,created_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(tournamentId, organizationId, 'Quota Tournament', `tournament-${tournamentId}`, '', 'Tester', 'Casablanca', 'Morocco', '2026-10-27', '2026-10-28', 'Africa/Casablanca', 'DRAFT', 1, 'test-ruleset', createdAtIso, createdAtIso);
+  return tournamentId;
+}
+
+function startedMatches(db: SqliteDatabase, count: number, startedAtIso: string): void {
+  const organizationId = randomUUID();
+  const tournamentId = randomUUID();
+  const categoryId = randomUUID();
+  db.prepare('INSERT INTO organizations(id,name,slug,created_at) VALUES(?,?,?,?)').run(organizationId, 'Quota Match Organization', `quota-match-${organizationId}`, startedAtIso);
+  db.prepare(`INSERT INTO tournaments(id,organization_id,name,slug,description,organizer,venue,country,start_date,end_date,timezone,status,mat_count,ruleset_id,created_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(tournamentId, organizationId, 'Quota Match Tournament', `tournament-${tournamentId}`, '', 'Tester', 'Casablanca', 'Morocco', '2026-10-27', '2026-10-28', 'Africa/Casablanca', 'IN_PROGRESS', 1, 'test-ruleset', startedAtIso, startedAtIso);
+  db.prepare(`INSERT INTO categories(id,tournament_id,name,division,age_group,min_weight_kg,max_weight_kg,ruleset_id,format,rounds,round_duration_ms,break_duration_ms,golden_point_policy)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(categoryId, tournamentId, 'Senior -68', 'SENIOR', 'ADULT', 60, 68, 'test-ruleset', 'SINGLE_ELIMINATION', 3, 120000, 30000, 'SUDDEN_DEATH');
+  for (let index = 1; index <= count; index += 1) {
+    db.prepare(`INSERT INTO matches(id,tournament_id,category_id,match_number,state,timer_json,actual_start_at,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,?)`).run(randomUUID(), tournamentId, categoryId, `QM-${count}-${index}`, 'COMPLETED', '{}', startedAtIso, startedAtIso, startedAtIso);
+  }
 }
 
 function tournament(db: SqliteDatabase, status: string): string {
@@ -273,5 +316,191 @@ describe('Salle plan capability gating', () => {
     expect(owner.getStatus().capabilities).toMatchObject({ registrations: true, reports: true });
     expect(() => owner.assertPlanFeature('registrations')).not.toThrow();
     expect(() => owner.assertJudgePairing('J3')).not.toThrow();
+  });
+});
+
+describe('Plan quotas (match and tournament allowances)', () => {
+  const activated = (build: (code: string) => string) => {
+    const db = database();
+    const licensing = service(db, temporaryDirectory());
+    const code = licensing.getStatus().installationCode;
+    const status = licensing.activate(build(code));
+    expect(status.status).toBe('ACTIVE');
+    return { db, licensing };
+  };
+  const token = (overrides: Partial<DesktopLicensePayloadV1>) => (code: string) => signDesktopLicense(payload(code, initialNow, overrides), signingKey);
+  const tokenV2 = (overrides: Partial<DesktopLicensePayloadV2>) => (code: string) => signDesktopLicense(payloadV2(code, overrides), signingKey);
+
+  it('exposes plan-default quotas for v1 tokens and explicit quotas for v2 tokens', () => {
+    const salle = activated(token({ plan: 'SALLE' }));
+    expect(salle.licensing.getStatus().usage).toMatchObject({
+      matches: { limit: 200, used: 0 },
+      tournaments: { limit: 0, used: 0, usedThisMonth: 0, monthlyLimit: null },
+    });
+    const sallePlus = activated(token({ plan: 'SALLE_PLUS' }));
+    expect(sallePlus.licensing.getStatus().usage).toMatchObject({
+      matches: { limit: null, used: 0 },
+      tournaments: { limit: 3, used: 0, usedThisMonth: 0, monthlyLimit: 2 },
+    });
+    const club = activated(token({ plan: 'CLUB' }));
+    expect(club.licensing.getStatus().usage).toMatchObject({ matches: { limit: null }, tournaments: { limit: null, monthlyLimit: null } });
+    const overridden = activated(tokenV2({ matchQuota: 50, tournamentQuota: 2 }));
+    expect(overridden.licensing.getStatus().usage).toMatchObject({ matches: { limit: 50 }, tournaments: { limit: 2, monthlyLimit: 2 } });
+    const owner = new DesktopLicenseService(database(), { required: false, directory: temporaryDirectory(), machineId: 'SERVICE-TEST-MACHINE', now: () => initialNow, verificationKey });
+    expect(owner.getStatus().usage).toBeNull();
+  });
+
+  it('blocks tournament creation for the Salle training plan', () => {
+    const salle = activated(token({ plan: 'SALLE' }));
+    expectHttpCode(() => salle.licensing.assertTournamentCreation(), 'PLAN_UPGRADE_REQUIRED');
+    expect(() => salle.licensing.assertMatchStart()).not.toThrow();
+  });
+
+  it('limits Salle+ tournament creations to 2 per calendar month', () => {
+    const sallePlus = activated(token({ plan: 'SALLE_PLUS' }));
+    const thisMonth = new Date(initialNow).toISOString();
+    createdTournamentAt(sallePlus.db, thisMonth);
+    expect(() => sallePlus.licensing.assertTournamentCreation()).not.toThrow();
+    createdTournamentAt(sallePlus.db, thisMonth);
+    expectHttpCode(() => sallePlus.licensing.assertTournamentCreation(), 'PLAN_TOURNAMENT_MONTHLY_LIMIT');
+    expect(sallePlus.licensing.getStatus().usage).toMatchObject({ tournaments: { usedThisMonth: 2, monthlyLimit: 2 } });
+  });
+
+  it('limits Salle+ to 3 tournament creations per rolling 12 months, frees slots on deletion and ignores older ones', () => {
+    const sallePlus = activated(token({ plan: 'SALLE_PLUS' }));
+    const day = 86_400_000;
+    const oldOutsideWindow = createdTournamentAt(sallePlus.db, new Date(initialNow - 400 * day).toISOString());
+    expect(sallePlus.licensing.getStatus().usage).toMatchObject({ tournaments: { used: 0 } });
+    createdTournamentAt(sallePlus.db, new Date(initialNow - 100 * day).toISOString());
+    createdTournamentAt(sallePlus.db, new Date(initialNow - 40 * day).toISOString());
+    expect(() => sallePlus.licensing.assertTournamentCreation()).not.toThrow();
+    createdTournamentAt(sallePlus.db, new Date(initialNow - 35 * day).toISOString());
+    expectHttpCode(() => sallePlus.licensing.assertTournamentCreation(), 'PLAN_TOURNAMENT_QUOTA_EXCEEDED');
+    expect(sallePlus.licensing.getStatus().usage?.tournaments.nextReleaseAt).toBe(new Date(initialNow - 100 * day + 365 * day).toISOString());
+    sallePlus.db.prepare('DELETE FROM tournaments WHERE id=?').run(oldOutsideWindow);
+    expectHttpCode(() => sallePlus.licensing.assertTournamentCreation(), 'PLAN_TOURNAMENT_QUOTA_EXCEEDED');
+    const oldest = sallePlus.db.prepare('SELECT id FROM tournaments WHERE created_at=?').get(new Date(initialNow - 100 * day).toISOString()) as { id: string };
+    sallePlus.db.prepare('DELETE FROM tournaments WHERE id=?').run(oldest.id);
+    expect(() => sallePlus.licensing.assertTournamentCreation()).not.toThrow();
+  });
+
+  it('keeps Salle Pro and club plans unlimited for tournament creation', () => {
+    const day = 86_400_000;
+    const pro = activated(tokenV2({ plan: 'SALLE_PRO' }));
+    for (let index = 0; index < 5; index += 1) createdTournamentAt(pro.db, new Date(initialNow - (index + 1) * 10 * day).toISOString());
+    expect(() => pro.licensing.assertTournamentCreation()).not.toThrow();
+    expect(pro.licensing.getStatus().usage).toMatchObject({ matches: { limit: null }, tournaments: { limit: null } });
+    const club = activated(token({ plan: 'CLUB' }));
+    for (let index = 0; index < 5; index += 1) createdTournamentAt(club.db, new Date(initialNow - (index + 1) * 10 * day).toISOString());
+    expect(() => club.licensing.assertTournamentCreation()).not.toThrow();
+  });
+
+  it('blocks the next match start once the monthly Salle allowance is used, without ever interrupting a running match', () => {
+    const thisMonth = new Date(initialNow).toISOString();
+    const salle = activated(token({ plan: 'SALLE' }));
+    startedMatches(salle.db, 199, thisMonth);
+    expect(() => salle.licensing.assertMatchStart()).not.toThrow();
+    startedMatches(salle.db, 1, thisMonth);
+    expectHttpCode(() => salle.licensing.assertMatchStart(), 'PLAN_MATCH_QUOTA_EXCEEDED');
+    expect(salle.licensing.getStatus().usage).toMatchObject({ matches: { used: 200, limit: 200, resetsAt: '2026-11-01T00:00:00.000Z' } });
+
+    const lastMonth = '2026-09-15T10:00:00.000Z';
+    const salleLastMonth = activated(token({ plan: 'SALLE' }));
+    startedMatches(salleLastMonth.db, 200, lastMonth);
+    expect(() => salleLastMonth.licensing.assertMatchStart()).not.toThrow();
+  });
+
+  it('keeps match starts unlimited for Salle+ v1 and honors explicit v2 match quotas', () => {
+    const thisMonth = new Date(initialNow).toISOString();
+    const sallePlus = activated(token({ plan: 'SALLE_PLUS' }));
+    startedMatches(sallePlus.db, 500, thisMonth);
+    expect(() => sallePlus.licensing.assertMatchStart()).not.toThrow();
+
+    const capped = activated(tokenV2({ matchQuota: 10 }));
+    startedMatches(capped.db, 10, thisMonth);
+    expectHttpCode(() => capped.licensing.assertMatchStart(), 'PLAN_MATCH_QUOTA_EXCEEDED');
+
+    const generous = activated(tokenV2({ matchQuota: 250 }));
+    startedMatches(generous.db, 200, thisMonth);
+    expect(() => generous.licensing.assertMatchStart()).not.toThrow();
+  });
+
+  it('never consults quotas on unlicensed or expired deployments', () => {
+    const unlicensed = service(database(), temporaryDirectory());
+    expectHttpCode(() => unlicensed.assertTournamentCreation(), 'LICENSE_REQUIRED');
+    expect(() => unlicensed.assertMatchStart()).not.toThrow();
+    const owner = new DesktopLicenseService(database(), { required: false, directory: temporaryDirectory(), machineId: 'SERVICE-TEST-MACHINE', now: () => initialNow, verificationKey });
+    expect(() => owner.assertTournamentCreation()).not.toThrow();
+    expect(() => owner.assertMatchStart()).not.toThrow();
+  });
+});
+
+describe('License delivery quotas (v1/v2 token issuance)', () => {
+  const owner: Actor = { id: randomUUID(), role: 'SUPER_ADMIN', tournamentIds: [] };
+  const deliver = async (input: Record<string, unknown>, requestKey: string) => {
+    const db = database();
+    db.prepare('INSERT INTO profiles(id,email,full_name,password_hash,created_at) VALUES(?,?,?,?,?)').run(owner.id, 'quota-owner@example.com', 'Quota Owner', 'not-used', new Date(initialNow).toISOString());
+    let emailed: LicenseEmail | undefined;
+    const sender = { send: async (message: LicenseEmail) => { emailed = message; return { messageId: 'quota-test' }; } };
+    const service = new LicenseDeliveryService(db, { now: () => initialNow, env: {} as NodeJS.ProcessEnv, sender, signingKey, verificationKey });
+    const result = await service.issueAndSend(owner, input, requestKey);
+    if (!emailed) throw new Error('The delivery email was not captured.');
+    return { result: result.delivery, emailed, db };
+  };
+  const input = (deviceCode: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+    clubName: 'Quota Test Club', clientEmail: 'quota@example.com', plan: 'SALLE', deviceCode, expires: '2027-10-27', paymentConfirmed: true, ...extra,
+  });
+
+  it('issues v1 tokens with plan defaults (compatible with builds up to 1.2.24) and records the quotas', async () => {
+    const { result, emailed, db } = await deliver(input('TKD-1111-2222-3333-4444-5555'), 'quota-delivery-v1');
+    expect(result.status).toBe('SENT');
+    expect(result.plan).toBe('SALLE');
+    expect(result.matchQuota).toBe(200);
+    expect(result.tournamentQuota).toBe(0);
+    expect(emailed.token.startsWith('tkd1.')).toBe(true);
+    expect(emailed.matchQuota).toBe(200);
+    const row = db.prepare('SELECT match_quota,tournament_quota FROM license_deliveries WHERE id=?').get(result.id) as { match_quota: number; tournament_quota: number };
+    expect(row).toMatchObject({ match_quota: 200, tournament_quota: 0 });
+    const sallePlus = await deliver(input('TKD-1111-2222-3333-4444-5556', { plan: 'SALLE_PLUS' }), 'quota-delivery-v1-salle-plus');
+    expect(sallePlus.emailed.token.startsWith('tkd1.')).toBe(true);
+    expect(sallePlus.result.tournamentQuota).toBe(3);
+  });
+
+  it('issues v2 tokens for quota overrides and the SALLE_PRO plan', async () => {
+    const overridden = await deliver(input('TKD-1111-2222-3333-4444-5557', { plan: 'SALLE_PLUS', matchQuota: 250, tournamentQuota: 5 }), 'quota-delivery-v2-override');
+    expect(overridden.emailed.token.startsWith('tkd2.')).toBe(true);
+    expect(overridden.result.matchQuota).toBe(250);
+    expect(overridden.result.tournamentQuota).toBe(5);
+    const pro = await deliver(input('TKD-1111-2222-3333-4444-5558', { plan: 'SALLE_PRO' }), 'quota-delivery-v2-pro');
+    expect(pro.emailed.token.startsWith('tkd2.')).toBe(true);
+    expect(pro.result.plan).toBe('SALLE_PRO');
+    expect(pro.result.matchQuota).toBeNull();
+    expect(pro.result.tournamentQuota).toBeNull();
+  });
+
+  it('activates delivered v1 and v2 tokens on the desktop service with the intended quotas', async () => {
+    const db = database();
+    const licensing = service(db, temporaryDirectory());
+    const code = licensing.getStatus().installationCode;
+    const v1 = await deliver(input(code), 'quota-delivery-activate-v1');
+    expect(licensing.activate(v1.emailed.token).status).toBe('ACTIVE');
+    expect(licensing.getStatus().usage).toMatchObject({ matches: { limit: 200 }, tournaments: { limit: 0 } });
+    const v2 = await deliver(input(code, { plan: 'SALLE_PLUS', matchQuota: 280, tournamentQuota: 4 }), 'quota-delivery-activate-v2');
+    expect(licensing.activate(v2.emailed.token).status).toBe('ACTIVE');
+    expect(licensing.getStatus().usage).toMatchObject({ matches: { limit: 280 }, tournaments: { limit: 4 } });
+    expect(licensing.getStatus().license?.plan).toBe('SALLE_PLUS');
+  });
+
+  it('keeps idempotency: the same approval key replays the same delivery', async () => {
+    const db = database();
+    db.prepare('INSERT INTO profiles(id,email,full_name,password_hash,created_at) VALUES(?,?,?,?,?)').run(owner.id, 'quota-owner@example.com', 'Quota Owner', 'not-used', new Date(initialNow).toISOString());
+    let sent = 0;
+    const sender = { send: async (message: LicenseEmail) => { sent += 1; return { messageId: 'quota-test' }; } };
+    const service = new LicenseDeliveryService(db, { now: () => initialNow, env: {} as NodeJS.ProcessEnv, sender, signingKey, verificationKey });
+    const first = await service.issueAndSend(owner, input('TKD-1111-2222-3333-4444-5559', { plan: 'SALLE_PLUS' }), 'quota-delivery-idempotent');
+    const second = await service.issueAndSend(owner, input('TKD-1111-2222-3333-4444-5559', { plan: 'SALLE_PLUS' }), 'quota-delivery-idempotent');
+    expect(second.duplicate).toBe(true);
+    expect(second.delivery.licenseId).toBe(first.delivery.licenseId);
+    expect(sent).toBe(1);
   });
 });

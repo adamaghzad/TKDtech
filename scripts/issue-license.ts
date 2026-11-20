@@ -7,7 +7,9 @@ import {
   evaluateDesktopLicense,
   installationCodeSchema,
   licensePayloadSchema,
+  licensePayloadSchemaV2,
   normalizeInstallationCode,
+  planQuotaDefaults,
   signDesktopLicense,
   type DesktopLicensePlan,
   type DesktopLicensePayload,
@@ -26,6 +28,8 @@ TKD_LICENSE_PRIVATE_KEY=/secure/ed25519-private.pem \\
 
 Plans: ${desktopLicensePlans.join(', ')}
 Use either --days N or --expires YYYY-MM-DD (end of that UTC day).
+Optional allowances: --match-quota N|unlimited and --tournament-quota N|unlimited
+(defaults: SALLE 200 matches / 0 tournament, SALLE+ unlimited / 3 tournaments).
 The output is never overwritten unless --force is explicitly supplied.`;
 
 function argumentsOf(argv: string[]): Map<string, string | boolean> {
@@ -72,7 +76,7 @@ try {
     console.log(usage);
     process.exit(0);
   }
-  const supported = new Set(['--club', '--plan', '--device', '--days', '--expires', '--output', '--force', '--help']);
+  const supported = new Set(['--club', '--plan', '--device', '--days', '--expires', '--output', '--force', '--help', '--match-quota', '--tournament-quota']);
   for (const name of args.keys()) if (!supported.has(name)) throw new Error(`Unknown option ${name}.\n\n${usage}`);
 
   const now = Date.now();
@@ -89,17 +93,46 @@ try {
   const derivedPublicKey = createPublicKey(privateKey).export({ type: 'spki', format: 'pem' }).toString();
   assertProductionPrivateKey(derivedPublicKey);
 
-  const payload = licensePayloadSchema.parse({
-    version: 1,
-    keyId: productionLicenseKey.keyId,
-    licenseId: `LIC-${new Date(now).getUTCFullYear()}-${randomBytes(6).toString('hex').toUpperCase()}`,
-    clubName,
-    plan,
-    deviceCode,
-    issuedAt: new Date(now).toISOString(),
-    notBefore: new Date(now - 5 * 60_000).toISOString(),
-    expiresAt: new Date(expiry(args, now)).toISOString(),
-  } satisfies DesktopLicensePayload);
+  const quotaOf = (name: '--match-quota' | '--tournament-quota'): number | null | undefined => {
+    const value = args.get(name);
+    if (value == null) return undefined;
+    if (typeof value !== 'string') throw new Error(`${name} expects a number or "unlimited".`);
+    if (value === 'unlimited') return null;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 1_000_000) throw new Error(`${name} must be a whole number from 0 to 1000000, or "unlimited".`);
+    return parsed;
+  };
+  const quotaDefaults = planQuotaDefaults[plan];
+  const matchQuota = quotaOf('--match-quota') ?? quotaDefaults.matchQuota;
+  const tournamentQuota = quotaOf('--tournament-quota') ?? quotaDefaults.tournamentQuota;
+  const useV2 = plan === 'SALLE_PRO' || matchQuota !== quotaDefaults.matchQuota || tournamentQuota !== quotaDefaults.tournamentQuota;
+  const licenseId = `LIC-${new Date(now).getUTCFullYear()}-${randomBytes(6).toString('hex').toUpperCase()}`;
+  const expiresAt = new Date(expiry(args, now)).toISOString();
+  const payload: DesktopLicensePayload = useV2
+    ? licensePayloadSchemaV2.parse({
+      version: 2 as const,
+      keyId: productionLicenseKey.keyId,
+      licenseId,
+      clubName,
+      plan,
+      deviceCode,
+      issuedAt: new Date(now).toISOString(),
+      notBefore: new Date(now - 5 * 60_000).toISOString(),
+      expiresAt,
+      matchQuota,
+      tournamentQuota,
+    })
+    : licensePayloadSchema.parse({
+      version: 1 as const,
+      keyId: productionLicenseKey.keyId,
+      licenseId,
+      clubName,
+      plan,
+      deviceCode,
+      issuedAt: new Date(now).toISOString(),
+      notBefore: new Date(now - 5 * 60_000).toISOString(),
+      expiresAt,
+    });
   const token = signDesktopLicense(payload, { keyId: productionLicenseKey.keyId, privateKeyPem });
   const verification = evaluateDesktopLicense(token, productionLicenseKey, deviceCode, now);
   if (verification.status !== 'ACTIVE') throw new Error(`Internal issuance verification failed: ${verification.status}. No license was written.`);
@@ -111,6 +144,8 @@ try {
   console.log(`Plan: ${payload.plan}`);
   console.log(`Device: ${payload.deviceCode}`);
   console.log(`Expires: ${payload.expiresAt}`);
+  console.log(`Match allowance: ${matchQuota === null ? 'unlimited' : `${matchQuota}/month`}`);
+  console.log(`Tournament allowance: ${tournamentQuota === null ? 'unlimited' : `${tournamentQuota}/12 months`}`);
   console.log(`File: ${output}`);
   console.log('Send only this .tkdlicense file to the customer. Never send or commit the private key.');
 } catch (error) {

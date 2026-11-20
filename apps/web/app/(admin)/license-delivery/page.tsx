@@ -15,13 +15,16 @@ import { useToast } from '@/components/ui/toast';
 import { post } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 
-const plans = ['SALLE', 'SALLE_PLUS', 'CLUB', 'FOUNDING_CLUB', 'TOURNAMENT_SUPPORT'] as const;
+const plans = ['SALLE', 'SALLE_PLUS', 'SALLE_PRO', 'CLUB', 'FOUNDING_CLUB', 'TOURNAMENT_SUPPORT'] as const;
+const quotaInput = z.string().trim().regex(/^$|^\d{1,7}$/, 'Enter a whole number of matches/tournaments, or leave empty for the plan default.');
 const schema = z.object({
   clubName: z.string().trim().min(2, 'Enter the client or club name.').max(180),
   clientEmail: z.string().trim().email('Enter a valid client email.').max(254),
   plan: z.enum(plans),
   deviceCode: z.string().trim().regex(/^TKD(?:-[0-9A-F]{4}){5}$/i, 'Enter the complete installation code from the client.'),
   expires: z.string().date('Choose the paid-until date.').refine((value) => Date.parse(`${value}T23:59:59.999Z`) > Date.now(), 'The paid-until date must be in the future.'),
+  matchQuota: quotaInput,
+  tournamentQuota: quotaInput,
   paymentConfirmed: z.boolean().refine((value) => value, 'Confirm payment before issuing the license.'),
 });
 type Values = z.infer<typeof schema>;
@@ -35,6 +38,8 @@ type Delivery = {
   deviceCode: string;
   issuedAt: string;
   expiresAt: string;
+  matchQuota: number | null;
+  tournamentQuota: number | null;
   status: 'SENDING' | 'SENT' | 'FAILED';
   emailMessageId: string | null;
   deliveryError: string | null;
@@ -49,9 +54,25 @@ function defaultExpiry(): string { const date = new Date(); date.setUTCFullYear(
 function planLabel(plan: typeof plans[number]): string {
   if (plan === 'SALLE') return 'Salle — training & grades';
   if (plan === 'SALLE_PLUS') return 'Salle+ — tournaments included';
+  if (plan === 'SALLE_PRO') return 'Salle Pro — unlimited, branded TV & priority support';
   if (plan === 'FOUNDING_CLUB') return 'Founding Club';
   if (plan === 'TOURNAMENT_SUPPORT') return 'Tournament Support';
   return 'Club';
+}
+
+const quotaDefaults: Record<typeof plans[number], { matchQuota: number | null; tournamentQuota: number | null }> = {
+  SALLE: { matchQuota: 200, tournamentQuota: 0 },
+  SALLE_PLUS: { matchQuota: null, tournamentQuota: 3 },
+  SALLE_PRO: { matchQuota: null, tournamentQuota: null },
+  CLUB: { matchQuota: null, tournamentQuota: null },
+  FOUNDING_CLUB: { matchQuota: null, tournamentQuota: null },
+  TOURNAMENT_SUPPORT: { matchQuota: null, tournamentQuota: null },
+};
+
+function quotaSummary(matchQuota: number | null, tournamentQuota: number | null): string {
+  const matches = matchQuota === null ? 'matchs illimités' : `${matchQuota} matchs/mois`;
+  const tournaments = tournamentQuota === null ? 'tournois illimités' : `${tournamentQuota} tournoi(s)/12 mois`;
+  return `${matches} · ${tournaments}`;
 }
 
 export default function LicenseDeliveryPage() {
@@ -60,12 +81,14 @@ export default function LicenseDeliveryPage() {
   const { data, error, loading, refresh } = useApi<Dashboard>(owner ? '/api/v1/admin/license-deliveries' : null);
   const { toast } = useToast();
   const [submitError, setSubmitError] = useState('');
+  const [plan, setPlan] = useState<typeof plans[number]>('SALLE');
   const [lastDelivery, setLastDelivery] = useState<Delivery | null>(null);
   const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<Values>({
     resolver: zodResolver(schema),
-    defaultValues: { clubName: '', clientEmail: '', plan: 'SALLE', deviceCode: '', expires: defaultExpiry(), paymentConfirmed: false },
+    defaultValues: { clubName: '', clientEmail: '', plan: 'SALLE', deviceCode: '', expires: defaultExpiry(), matchQuota: '', tournamentQuota: '', paymentConfirmed: false },
   });
 
+  const planField = register('plan');
   if (!owner) return <Card><CardContent className="flex items-start gap-3"><LockKeyhole className="mt-0.5 size-5 shrink-0 text-timer" /><div><h2 className="font-semibold">Owner access required</h2><p className="mt-1 text-sm text-muted">Only the TKDTech business owner can issue and email desktop licenses.</p></div></CardContent></Card>;
   if (loading) return <Loading label="Loading license delivery…" />;
   if (error) return <ErrorState error={error} retry={refresh} />;
@@ -75,11 +98,13 @@ export default function LicenseDeliveryPage() {
     setSubmitError('');
     setLastDelivery(null);
     try {
-      const result = await post<DeliveryResult>('/api/v1/admin/license-deliveries', { ...values, deviceCode: values.deviceCode.toUpperCase() });
+      const matchQuota = values.matchQuota.trim() === '' ? undefined : Number(values.matchQuota.trim());
+      const tournamentQuota = values.tournamentQuota.trim() === '' ? undefined : Number(values.tournamentQuota.trim());
+      const result = await post<DeliveryResult>('/api/v1/admin/license-deliveries', { ...values, matchQuota, tournamentQuota, deviceCode: values.deviceCode.toUpperCase() });
       setLastDelivery(result.delivery);
       if (result.delivery.status === 'SENT') {
         toast(result.duplicate ? 'License already sent' : 'License emailed', `${result.delivery.licenseId} · ${result.delivery.clientEmail}`);
-        reset({ clubName: '', clientEmail: '', plan: values.plan, deviceCode: '', expires: values.expires, paymentConfirmed: false });
+        reset({ clubName: '', clientEmail: '', plan: values.plan, deviceCode: '', expires: values.expires, matchQuota: '', tournamentQuota: '', paymentConfirmed: false });
       } else if (result.delivery.status === 'FAILED') {
         setSubmitError('The previous delivery was not confirmed. Check the email configuration and submit a new approval.');
       }
@@ -110,13 +135,21 @@ export default function LicenseDeliveryPage() {
             </div>
             <Field label="Installation code" hint="The client copies this from TKD Scoring → Activation. It is not a password." error={errors.deviceCode?.message}><Input spellCheck={false} autoComplete="off" className="numeric uppercase tracking-wider" placeholder="TKD-0000-1111-2222-3333-4444" {...register('deviceCode')} /></Field>
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Subscription plan" error={errors.plan?.message}><Select {...register('plan')}>{plans.map((plan) => <option key={plan} value={plan}>{planLabel(plan)}</option>)}</Select></Field>
+              <Field label="Subscription plan" error={errors.plan?.message}><Select {...planField} onChange={(event) => { void planField.onChange(event); setPlan(event.target.value as typeof plans[number]); }}>{plans.map((plan) => <option key={plan} value={plan}>{planLabel(plan)}</option>)}</Select></Field>
               <Field label="Paid until" hint="The license expires at the end of this UTC day." error={errors.expires?.message}>
                 <Input type="date" min={isoDay(new Date())} {...register('expires')} />
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button type="button" className="rounded-md border border-line px-2.5 py-1 text-[10px] font-semibold text-muted transition hover:border-primary hover:text-white" onClick={() => setValue('expires', isoDay(new Date(Date.now() + 30 * 86_400_000)), { shouldValidate: true })}>+1 month</button>
                   <button type="button" className="rounded-md border border-line px-2.5 py-1 text-[10px] font-semibold text-muted transition hover:border-primary hover:text-white" onClick={() => setValue('expires', isoDay(new Date(Date.now() + 365 * 86_400_000)), { shouldValidate: true })}>+1 year</button>
                 </div>
+              </Field>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Match allowance (per month)" hint={quotaDefaults[plan]?.matchQuota === null ? 'Plan default: unlimited. Enter a number to cap started matches per calendar month.' : `Plan default: ${quotaDefaults[plan]?.matchQuota} matches/month. Leave empty to use it.`} error={errors.matchQuota?.message}>
+                <Input inputMode="numeric" placeholder={quotaDefaults[plan]?.matchQuota === null ? 'illimité' : String(quotaDefaults[plan]?.matchQuota)} {...register('matchQuota')} />
+              </Field>
+              <Field label="Tournament allowance (per 12 months)" hint={quotaDefaults[plan]?.tournamentQuota === null ? 'Plan default: unlimited. Enter a number to cap created tournaments per rolling year (max 2 creations/month).' : `Plan default: ${quotaDefaults[plan]?.tournamentQuota} tournament(s)/year. Leave empty to use it.`} error={errors.tournamentQuota?.message}>
+                <Input inputMode="numeric" placeholder={quotaDefaults[plan]?.tournamentQuota === null ? 'illimité' : String(quotaDefaults[plan]?.tournamentQuota)} {...register('tournamentQuota')} />
               </Field>
             </div>
             <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line/70 bg-black/20 p-4"><input type="checkbox" className="mt-1 size-4 accent-[#2068ff]" {...register('paymentConfirmed')} /><span><span className="block text-sm font-semibold">I confirm payment for this client, plan, computer and paid period.</span><span className="mt-1 block text-xs leading-5 text-muted">This approval creates a signed license. It does not charge a card or collect payment online.</span>{errors.paymentConfirmed && <span className="mt-2 block text-xs text-[#ff8390]">{errors.paymentConfirmed.message}</span>}</span></label>
@@ -138,7 +171,7 @@ export default function LicenseDeliveryPage() {
 
     <Card>
       <CardHeader><CardTitle className="flex items-center gap-2"><CalendarDays className="size-4 text-primary" />Delivery history</CardTitle><Badge>{data.deliveries.length}</Badge></CardHeader>
-      <CardContent className="space-y-3">{data.deliveries.length === 0 ? <div className="py-8 text-center"><KeyRound className="mx-auto size-7 text-muted" /><p className="mt-3 text-sm font-semibold">No licenses emailed from this server yet</p><p className="mt-1 text-xs text-muted">Approved deliveries will appear here with their license ID and status.</p></div> : data.deliveries.map((delivery) => <article key={delivery.id} className="rounded-xl border border-line/60 bg-black/15 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{delivery.clubName}</p><Badge tone={delivery.status === 'SENT' ? 'green' : delivery.status === 'FAILED' ? 'red' : 'yellow'}>{delivery.status}</Badge></div><p className="mt-1 break-all text-xs text-muted">{delivery.clientEmail} · {planLabel(delivery.plan)}</p></div><p className="numeric text-xs font-bold text-[#8baeff]">{delivery.licenseId}</p></div><div className="mt-3 grid gap-2 border-t border-line/50 pt-3 text-[11px] leading-5 text-muted md:grid-cols-2"><p>Device <code className="break-all text-white/70">{delivery.deviceCode}</code></p><p>Paid until <span className="text-white/70">{delivery.expiresAt.slice(0, 10)}</span></p></div>{delivery.deliveryError && <p className="mt-2 text-xs text-[#ff9aa4]">{delivery.deliveryError}</p>}</article>)}</CardContent>
+      <CardContent className="space-y-3">{data.deliveries.length === 0 ? <div className="py-8 text-center"><KeyRound className="mx-auto size-7 text-muted" /><p className="mt-3 text-sm font-semibold">No licenses emailed from this server yet</p><p className="mt-1 text-xs text-muted">Approved deliveries will appear here with their license ID and status.</p></div> : data.deliveries.map((delivery) => <article key={delivery.id} className="rounded-xl border border-line/60 bg-black/15 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{delivery.clubName}</p><Badge tone={delivery.status === 'SENT' ? 'green' : delivery.status === 'FAILED' ? 'red' : 'yellow'}>{delivery.status}</Badge></div><p className="mt-1 break-all text-xs text-muted">{delivery.clientEmail} · {planLabel(delivery.plan)}</p></div><p className="numeric text-xs font-bold text-[#8baeff]">{delivery.licenseId}</p></div><div className="mt-3 grid gap-2 border-t border-line/50 pt-3 text-[11px] leading-5 text-muted md:grid-cols-2"><p>Device <code className="break-all text-white/70">{delivery.deviceCode}</code></p><p>Paid until <span className="text-white/70">{delivery.expiresAt.slice(0, 10)}</span></p><p>Quotas <span className="text-white/70">{quotaSummary(delivery.matchQuota, delivery.tournamentQuota)}</span></p></div>{delivery.deliveryError && <p className="mt-2 text-xs text-[#ff9aa4]">{delivery.deliveryError}</p>}</article>)}</CardContent>
     </Card>
   </div>;
 }
