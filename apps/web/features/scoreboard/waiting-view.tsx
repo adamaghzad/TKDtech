@@ -1,5 +1,6 @@
 import type { MatchSnapshot } from '@tkd/contracts';
 import { BrandMark } from '@/components/brand';
+import { useMediaQuery } from '@/lib/use-media-query';
 import { cn } from '@/lib/utils';
 import { HeadguardIcon, HoguIcon } from './scoring-activity-icons';
 
@@ -7,7 +8,7 @@ interface WaitingViewProps {
   snapshot?: MatchSnapshot;
 }
 
-function WaitingPanel({ side }: { side: 'BLUE' | 'RED' }) {
+function WaitingPanel({ side, className }: { side: 'BLUE' | 'RED'; className?: string }) {
   const blue = side === 'BLUE';
   return <section
     aria-label={`${side} waiting panel`}
@@ -15,7 +16,8 @@ function WaitingPanel({ side }: { side: 'BLUE' | 'RED' }) {
       'relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden',
       blue
         ? 'bg-[radial-gradient(circle_at_center,#1247db_0%,#08266f_52%,#020817_100%)]'
-        : 'bg-[radial-gradient(circle_at_center,#df2335_0%,#7d101d_52%,#180308_100%)]'
+        : 'bg-[radial-gradient(circle_at_center,#df2335_0%,#7d101d_52%,#180308_100%)]',
+      className,
     )}
   >
     <div aria-hidden="true" className="aspect-square w-[54%] rounded-sm bg-white/[.055] shadow-[inset_0_0_70px_rgba(255,255,255,.06),0_0_70px_rgba(0,0,0,.15)]" />
@@ -24,6 +26,7 @@ function WaitingPanel({ side }: { side: 'BLUE' | 'RED' }) {
 }
 
 export function WaitingView({ snapshot }: WaitingViewProps) {
+  const compact = useMediaQuery('(max-width: 640px)');
   const waitingForStart = Boolean(snapshot);
   const label = snapshot ? `Match ${snapshot.matchNumber} waiting to start` : 'Mat waiting for the next match';
   return <div
@@ -54,23 +57,43 @@ export function WaitingView({ snapshot }: WaitingViewProps) {
       </div>
     </header>
 
-    <main className="grid min-h-0 flex-1 grid-cols-[1fr_minmax(88px,22%)_1fr]">
-      <WaitingPanel side="BLUE" />
-      <aside className="relative z-10 flex min-h-0 min-w-0 flex-col bg-black text-center shadow-[0_0_35px_rgba(0,0,0,.5)]">
-        <div className="flex min-h-[29%] flex-col items-center justify-center border-b border-white/10 px-2 py-[5%]">
-          <p className="text-[clamp(.6rem,1.15vw,1.3rem)] font-black tracking-[.08em] text-white/85">MATCH</p>
-          {snapshot && <p data-testid="waiting-match-number" className="numeric mt-1 text-[clamp(1.5rem,3vw,3.4rem)] font-black leading-none">{snapshot.matchNumber}</p>}
-        </div>
-        <div className="flex min-h-[92px] items-center justify-center bg-timer px-2 py-[8%] text-black">
-          <p className="text-[clamp(.85rem,1.85vw,2.1rem)] font-black uppercase leading-none tracking-[.08em]">WAITING</p>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2 py-3 [@media(max-height:500px)]:py-1">
-          <p className="text-[clamp(.6rem,1.15vw,1.3rem)] font-black tracking-[.08em] text-white/85">ROUND</p>
-          {snapshot && <p data-testid="waiting-round-number" className="numeric mt-1 text-[clamp(1.8rem,4vw,4.5rem)] font-black leading-none">{snapshot.currentRound}</p>}
-        </div>
-      </aside>
-      <WaitingPanel side="RED" />
-    </main>
+    {compact ? (
+      <main className="flex min-h-0 flex-1 flex-col">
+        <WaitingPanel side="BLUE" className="flex-1" />
+        <aside className="relative z-10 flex shrink-0 flex-row items-stretch bg-black text-center shadow-[0_0_35px_rgba(0,0,0,.5)]">
+          <div className="flex min-h-[84px] flex-1 flex-col items-center justify-center border-r border-white/10 px-2 py-3">
+            <p className="text-[10px] font-black tracking-[.08em] text-white/85">MATCH</p>
+            {snapshot && <p data-testid="waiting-match-number" className="numeric mt-1 text-3xl font-black leading-none">{snapshot.matchNumber}</p>}
+          </div>
+          <div className="flex w-[38%] shrink-0 items-center justify-center bg-timer px-3 py-3 text-black">
+            <p className="text-sm font-black uppercase leading-none tracking-[.08em]">WAITING</p>
+          </div>
+          <div className="flex min-h-[84px] flex-1 flex-col items-center justify-center border-l border-white/10 px-2 py-3">
+            <p className="text-[10px] font-black tracking-[.08em] text-white/85">ROUND</p>
+            {snapshot && <p data-testid="waiting-round-number" className="numeric mt-1 text-3xl font-black leading-none">{snapshot.currentRound}</p>}
+          </div>
+        </aside>
+        <WaitingPanel side="RED" className="flex-1" />
+      </main>
+    ) : (
+      <main className="grid min-h-0 flex-1 grid-cols-[1fr_minmax(88px,22%)_1fr]">
+        <WaitingPanel side="BLUE" />
+        <aside className="relative z-10 flex min-h-0 min-w-0 flex-col bg-black text-center shadow-[0_0_35px_rgba(0,0,0,.5)]">
+          <div className="flex min-h-[29%] flex-col items-center justify-center border-b border-white/10 px-2 py-[5%]">
+            <p className="text-[clamp(.6rem,1.15vw,1.3rem)] font-black tracking-[.08em] text-white/85">MATCH</p>
+            {snapshot && <p data-testid="waiting-match-number" className="numeric mt-1 text-[clamp(1.5rem,3vw,3.4rem)] font-black leading-none">{snapshot.matchNumber}</p>}
+          </div>
+          <div className="flex min-h-[92px] items-center justify-center bg-timer px-2 py-[8%] text-black">
+            <p className="text-[clamp(.85rem,1.85vw,2.1rem)] font-black uppercase leading-none tracking-[.08em]">WAITING</p>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2 py-3 [@media(max-height:500px)]:py-1">
+            <p className="text-[clamp(.6rem,1.15vw,1.3rem)] font-black tracking-[.08em] text-white/85">ROUND</p>
+            {snapshot && <p data-testid="waiting-round-number" className="numeric mt-1 text-[clamp(1.8rem,4vw,4.5rem)] font-black leading-none">{snapshot.currentRound}</p>}
+          </div>
+        </aside>
+        <WaitingPanel side="RED" />
+      </main>
+    )}
 
     <footer className="relative z-20 grid min-h-[38px] grid-cols-[1fr_auto_1fr] items-center gap-3 border-t border-white/10 bg-[#070a10] px-[2.5%] py-2 text-[clamp(.42rem,.62vw,.7rem)] font-semibold uppercase tracking-wider text-white/55">
       <span>Public mat display</span>

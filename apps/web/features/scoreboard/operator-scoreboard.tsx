@@ -447,26 +447,26 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
             data-testid="open-keybinds-button"
             className={kbOn ? 'border-primary/40 text-white' : 'text-muted'}
           >
-            <Keyboard /> {kbOn ? 'Keybinds ON' : 'Keybinds OFF'} <Keycap token="?" enabled />
+            <Keyboard /> <span className='sr-only sm:not-sr-only'>{kbOn ? 'Keybinds ON' : 'Keybinds OFF'}</span> <Keycap token="?" enabled />
           </Button>
           <Button variant={audio.ready ? 'success' : 'secondary'} aria-label={audio.ready ? 'Mute match sounds' : 'Enable match sounds'} aria-pressed={audio.ready} onClick={() => void audio.toggle()}>
-            {audio.ready ? <Volume2 /> : <VolumeX />}{audio.ready ? 'Pro sound on' : audio.enabled ? 'Enable pro sound' : 'Sound off'} <Keycap token={kb.TOGGLE_SOUND} enabled={kbOn} />
+            {audio.ready ? <Volume2 /> : <VolumeX />}<span className='sr-only sm:not-sr-only'>{audio.ready ? 'Pro sound on' : audio.enabled ? 'Enable pro sound' : 'Sound off'}</span> <Keycap token={kb.TOGGLE_SOUND} enabled={kbOn} />
           </Button>
           <Button variant={soundDeckOpen ? 'default' : 'secondary'} data-testid="toggle-sound-deck" onClick={() => setSoundDeckOpen(open => !open)}>
-            <Radio /> Pro FX
+            <Radio /> <span className='sr-only sm:not-sr-only'>Pro FX</span>
           </Button>
           {snapshot.phase === 'GENERAL' && (
             <Button
               variant={['COMPLETED', 'WALKOVER', 'DISQUALIFIED'].includes(snapshot.state) ? 'default' : 'secondary'}
               disabled={pending}
               data-testid="next-general-match"
-              onClick={() => void startNextGeneralBout()}
+                onClick={() => void startNextGeneralBout()}
             >
-              <Swords /> Next Chung vs Hong
+              <Swords /> <span className='sr-only sm:not-sr-only'>Next Chung vs Hong</span>
             </Button>
           )}
           <Button variant="secondary" onClick={() => setPairing(true)}>
-            <QrCode /> Pair devices <Keycap token={kb.OPEN_PAIRING} enabled={kbOn} />
+            <QrCode /> <span className='sr-only sm:not-sr-only'>Pair devices</span> <Keycap token={kb.OPEN_PAIRING} enabled={kbOn} />
           </Button>
           <Button
             variant={snapshot.publicWaiting ? 'yellow' : 'secondary'}
@@ -476,7 +476,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
             title="Switch Public TV between Waiting screen and Scoreboard / Match Result"
             onClick={() => void execute('PUBLIC_WAITING')}
           >
-            <MonitorPause /> {snapshot.publicWaiting ? 'TV: Waiting (Show Live)' : 'TV Waiting'} <Keycap token={kb.TOGGLE_TV_WAITING} enabled={kbOn} />
+            <MonitorPause /> <span className='sr-only sm:not-sr-only'>{snapshot.publicWaiting ? 'TV: Waiting (Show Live)' : 'TV Waiting'}</span> <Keycap token={kb.TOGGLE_TV_WAITING} enabled={kbOn} />
           </Button>
           <Button
             variant={tvFullscreen ? 'yellow' : 'secondary'}
@@ -485,11 +485,11 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
             title="Put every open Public TV window in fullscreen (or restore windowed). On the Desktop app this applies instantly; in a plain browser the TV applies it on its next interaction."
             onClick={toggleTvFullscreen}
           >
-            {tvFullscreen ? <Shrink /> : <Expand />} TV Fullscreen <Keycap token={kb.TOGGLE_TV_FULLSCREEN} enabled={kbOn} />
+            {tvFullscreen ? <Shrink /> : <Expand />} <span className='sr-only sm:not-sr-only'>TV Fullscreen</span> <Keycap token={kb.TOGGLE_TV_FULLSCREEN} enabled={kbOn} />
           </Button>
           <Button asChild variant="secondary">
             <Link href={tvPath} target="_blank" rel="noopener noreferrer" onClick={event => { if (openPublicTv(tvPath)) event.preventDefault(); }}>
-              <ExternalLink /> Public TV
+              <ExternalLink /> <span className='sr-only sm:not-sr-only'>Public TV</span>
             </Link>
           </Button>
         </div>
@@ -531,7 +531,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
               <span className={`numeric rounded-md px-2.5 py-0.5 text-2xl font-bold transition-colors ${isRoundClosingSeconds(snapshot.timer.kind, remainingMs) ? 'bg-[#e60019] text-white' : ''}`}>{formatTime(remainingMs)}</span>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 [&_button]:h-auto [&_button]:min-h-10 [&_button]:whitespace-normal">
                 {canStart ? (
                   <Button variant="success" disabled={pending} onClick={() => void execute('START')}>
                     <Play /> Start <Keycap token={kb.TOGGLE_CLOCK} enabled={kbOn} />
@@ -563,7 +563,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                 </Button>
               </div>
               {goldenPointAvailable && (
-                <Button className="mt-2 w-full bg-timer text-black hover:bg-timer/90" disabled={pending} onClick={() => void execute('START_GOLDEN_POINT')}>
+                <Button className="mt-2 w-full whitespace-normal bg-timer text-black hover:bg-timer/90" disabled={pending} onClick={() => void execute('START_GOLDEN_POINT')}>
                   <Zap /> Start Golden Point — first valid score wins the match
                 </Button>
               )}
@@ -592,8 +592,8 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {/* Row 1: 5 point buttons + Gam-Jeom + +/- toggle */}
-                      <div className="grid grid-cols-7 gap-1.5">
+                      {/* Row 1: 5 point buttons + Gam-Jeom + +/- toggle (2 touch-friendly rows on phones) */}
+                      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
                         {pointButtons.map((point) => {
                           const actionKey = side === 'BLUE' ? kb[point.blueAction] : kb[point.redAction];
                           return (
@@ -791,7 +791,7 @@ export function OperatorScoreboard({ matchId }: { matchId: string }) {
                     <span className="text-[11px] font-semibold">{titleCase(event.event_type)}</span>
                     <Badge>SEQ {event.sequence}</Badge>
                   </div>
-                  <p className="mt-1 break-words font-mono text-[9px] leading-4 text-muted">{JSON.stringify(event.payload)}</p>
+                  <p className="mt-1 break-all font-mono text-[9px] leading-4 text-muted">{JSON.stringify(event.payload)}</p>
                 </div>
               )) : (
                 <p className="py-6 text-center text-xs text-muted">No events recorded.</p>

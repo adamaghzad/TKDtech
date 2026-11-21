@@ -30,7 +30,7 @@ export function Keycap({
     <kbd
       aria-hidden="true"
       className={cn(
-        'pointer-events-none inline-flex min-w-5 items-center justify-center rounded border border-white/25 bg-black/35 px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none tracking-tight text-white/90 shadow-inner',
+        'pointer-events-none hidden min-w-5 sm:inline-flex items-center justify-center rounded border border-white/25 bg-black/35 px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none tracking-tight text-white/90 shadow-inner',
         className,
       )}
     >
