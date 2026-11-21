@@ -18,6 +18,7 @@ import {
 } from '../../../../packages/licensing/src/index';
 import { productionLicenseKey } from '../../../../packages/licensing/src/key';
 import type { SqliteDatabase } from '../persistence/database';
+import { audit } from '../persistence/audit';
 import { HttpError } from '../http';
 
 export type DesktopLicenseState = 'NOT_REQUIRED' | 'UNLICENSED' | 'ACTIVE' | 'EXPIRED' | 'DEVICE_MISMATCH' | 'NOT_YET_VALID' | 'INVALID';
@@ -403,14 +404,63 @@ export class DesktopLicenseService {
     return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1)).toISOString();
   }
 
+  /**
+   * Tamper resistance (1.2.26): usage is the MAX of the editable data columns and an
+   * append-only ledger written at each billable event. Nulling actual_start_at or
+   * backdating created_at therefore no longer resets an allowance; a ledger row stops
+   * counting once its referenced entity is deleted, so deleting a tournament still
+   * frees its yearly slot. Divergence (ledger above data) is written to the audit trail.
+   */
   private countStartedMatches(monthStartIso: string): number {
-    const row = this.db.prepare('SELECT COUNT(*) AS n FROM matches WHERE actual_start_at IS NOT NULL AND actual_start_at >= ?').get(monthStartIso) as { n: number };
-    return row.n;
+    const data = (this.db.prepare('SELECT COUNT(*) AS n FROM matches WHERE actual_start_at IS NOT NULL AND actual_start_at >= ?').get(monthStartIso) as { n: number }).n;
+    const ledger = (this.db.prepare(`SELECT COUNT(*) AS n FROM plan_usage_ledger l WHERE l.kind='MATCH_STARTED' AND l.period_key=? AND EXISTS(SELECT 1 FROM matches m WHERE m.id=l.ref_id)`).get(monthStartIso.slice(0, 7)) as { n: number }).n;
+    if (ledger > data) this.reportUsageTamper('MATCH_STARTED', data, ledger);
+    return Math.max(data, ledger);
   }
 
   private countCreatedTournaments(sinceIso: string): number {
-    const row = this.db.prepare('SELECT COUNT(*) AS n FROM tournaments WHERE created_at >= ?').get(sinceIso) as { n: number };
-    return row.n;
+    const data = (this.db.prepare('SELECT COUNT(*) AS n FROM tournaments WHERE created_at >= ?').get(sinceIso) as { n: number }).n;
+    const ledger = (this.db.prepare(`SELECT COUNT(*) AS n FROM plan_usage_ledger l WHERE l.kind='TOURNAMENT_CREATED' AND l.occurred_at>=? AND EXISTS(SELECT 1 FROM tournaments t WHERE t.id=l.ref_id)`).get(sinceIso) as { n: number }).n;
+    if (ledger > data) this.reportUsageTamper('TOURNAMENT_CREATED', data, ledger);
+    return Math.max(data, ledger);
+  }
+
+  private reportUsageTamper(kind: string, dataCount: number, ledgerCount: number): void {
+    try {
+      const flagged = this.db.prepare("SELECT id FROM audit_logs WHERE action='PLAN_USAGE_TAMPER_SUSPECTED' AND entity_id=? LIMIT 1").get(kind);
+      if (flagged) return;
+      audit(this.db, {
+        action: 'PLAN_USAGE_TAMPER_SUSPECTED',
+        entityType: 'plan_usage',
+        entityId: kind,
+        before: { dataCount },
+        after: { ledgerCount },
+        reason: 'The usage ledger counts more billable events than the data columns. Records were likely edited outside the application.',
+      });
+    } catch {
+      // The audit trail must never break the quota check itself.
+    }
+  }
+
+  /** Records a billable match start in the append-only usage ledger (called by the match engine inside the start transaction). */
+  recordMatchStart(matchId: string): void {
+    this.recordUsage('MATCH_STARTED', matchId);
+  }
+
+  /** Records a billable tournament creation in the append-only usage ledger. */
+  recordTournamentCreation(tournamentId: string): void {
+    this.recordUsage('TOURNAMENT_CREATED', tournamentId);
+  }
+
+  private recordUsage(kind: 'MATCH_STARTED' | 'TOURNAMENT_CREATED', refId: string): void {
+    if (!this.required) return;
+    if (!this.activePayload()) return;
+    const now = this.now();
+    const occurredAt = new Date(now).toISOString();
+    const date = new Date(now);
+    const periodKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    this.db.prepare('INSERT INTO plan_usage_ledger(id,kind,period_key,occurred_at,ref_id,created_at) VALUES(?,?,?,?,?,?)')
+      .run(randomUUID(), kind, periodKey, occurredAt, refId, occurredAt);
   }
 
   private oldestCreatedTournamentAt(sinceIso: string): string | null {

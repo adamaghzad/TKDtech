@@ -74,7 +74,16 @@ function createdTournamentAt(db: SqliteDatabase, createdAtIso: string): string {
   return tournamentId;
 }
 
-function startedMatches(db: SqliteDatabase, count: number, startedAtIso: string): void {
+function ledgerUsage(db: SqliteDatabase, kind: 'MATCH_STARTED' | 'TOURNAMENT_CREATED', refIds: string[], occurredAtIso: string): void {
+  const date = new Date(occurredAtIso);
+  const periodKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  for (const refId of refIds) {
+    db.prepare('INSERT INTO plan_usage_ledger(id,kind,period_key,occurred_at,ref_id,created_at) VALUES(?,?,?,?,?,?)')
+      .run(randomUUID(), kind, periodKey, occurredAtIso, refId, occurredAtIso);
+  }
+}
+
+function startedMatches(db: SqliteDatabase, count: number, startedAtIso: string): string[] {
   const organizationId = randomUUID();
   const tournamentId = randomUUID();
   const categoryId = randomUUID();
@@ -83,10 +92,14 @@ function startedMatches(db: SqliteDatabase, count: number, startedAtIso: string)
     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(tournamentId, organizationId, 'Quota Match Tournament', `tournament-${tournamentId}`, '', 'Tester', 'Casablanca', 'Morocco', '2026-10-27', '2026-10-28', 'Africa/Casablanca', 'IN_PROGRESS', 1, 'test-ruleset', startedAtIso, startedAtIso);
   db.prepare(`INSERT INTO categories(id,tournament_id,name,division,age_group,min_weight_kg,max_weight_kg,ruleset_id,format,rounds,round_duration_ms,break_duration_ms,golden_point_policy)
     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(categoryId, tournamentId, 'Senior -68', 'SENIOR', 'ADULT', 60, 68, 'test-ruleset', 'SINGLE_ELIMINATION', 3, 120000, 30000, 'SUDDEN_DEATH');
+  const matchIds: string[] = [];
   for (let index = 1; index <= count; index += 1) {
+    const matchId = randomUUID();
+    matchIds.push(matchId);
     db.prepare(`INSERT INTO matches(id,tournament_id,category_id,match_number,state,timer_json,actual_start_at,created_at,updated_at)
-      VALUES(?,?,?,?,?,?,?,?,?)`).run(randomUUID(), tournamentId, categoryId, `QM-${count}-${index}`, 'COMPLETED', '{}', startedAtIso, startedAtIso, startedAtIso);
+      VALUES(?,?,?,?,?,?,?,?,?)`).run(matchId, tournamentId, categoryId, `QM-${count}-${index}`, 'COMPLETED', '{}', startedAtIso, startedAtIso, startedAtIso);
   }
+  return matchIds;
 }
 
 function tournament(db: SqliteDatabase, status: string): string {
@@ -423,6 +436,47 @@ describe('Plan quotas (match and tournament allowances)', () => {
     const generous = activated(tokenV2({ matchQuota: 250 }));
     startedMatches(generous.db, 200, thisMonth);
     expect(() => generous.licensing.assertMatchStart()).not.toThrow();
+  });
+
+
+  it('keeps the match allowance when actual_start_at is wiped (tamper-resistant ledger)', () => {
+    const thisMonth = new Date(initialNow).toISOString();
+    const salle = activated(token({ plan: 'SALLE' }));
+    const matchIds = startedMatches(salle.db, 200, thisMonth);
+    ledgerUsage(salle.db, 'MATCH_STARTED', matchIds, thisMonth);
+    expectHttpCode(() => salle.licensing.assertMatchStart(), 'PLAN_MATCH_QUOTA_EXCEEDED');
+    // The customer wipes the data column — the append-only ledger still counts the starts.
+    salle.db.prepare('UPDATE matches SET actual_start_at=NULL').run();
+    expectHttpCode(() => salle.licensing.assertMatchStart(), 'PLAN_MATCH_QUOTA_EXCEEDED');
+    expect(salle.licensing.getStatus().usage).toMatchObject({ matches: { used: 200 } });
+    const flagged = salle.db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='PLAN_USAGE_TAMPER_SUSPECTED' AND entity_id='MATCH_STARTED'").get() as { n: number };
+    expect(flagged.n).toBe(1);
+    // Deleting the matches entirely stops the ledger rows from counting (data loss is the only way out).
+    salle.db.prepare('DELETE FROM matches').run();
+    expect(() => salle.licensing.assertMatchStart()).not.toThrow();
+  });
+
+  it('keeps the tournament allowance when created_at is backdated, and deletion still frees the slot', () => {
+    const day = 86_400_000;
+    const sallePlus = activated(token({ plan: 'SALLE_PLUS' }));
+    const tournamentIds = [
+      createdTournamentAt(sallePlus.db, new Date(initialNow - 100 * day).toISOString()),
+      createdTournamentAt(sallePlus.db, new Date(initialNow - 40 * day).toISOString()),
+      createdTournamentAt(sallePlus.db, new Date(initialNow - 35 * day).toISOString()),
+    ];
+    // The ledger rows carry the real creation timeline (one row per tournament, at its own date).
+    for (const [index, tournamentId] of tournamentIds.entries()) {
+      ledgerUsage(sallePlus.db, 'TOURNAMENT_CREATED', [tournamentId], new Date(initialNow - [100, 40, 35][index]! * day).toISOString());
+    }
+    expectHttpCode(() => sallePlus.licensing.assertTournamentCreation(), 'PLAN_TOURNAMENT_QUOTA_EXCEEDED');
+    // The customer backdates the visible creation dates — the ledger holds the real timeline.
+    sallePlus.db.prepare("UPDATE tournaments SET created_at='2020-01-01T00:00:00.000Z'").run();
+    expectHttpCode(() => sallePlus.licensing.assertTournamentCreation(), 'PLAN_TOURNAMENT_QUOTA_EXCEEDED');
+    const flagged = sallePlus.db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='PLAN_USAGE_TAMPER_SUSPECTED' AND entity_id='TOURNAMENT_CREATED'").get() as { n: number };
+    expect(flagged.n).toBe(1);
+    // Deleting a tournament frees its slot on both sources (legitimate product behaviour).
+    sallePlus.db.prepare('DELETE FROM tournaments WHERE id=?').run(tournamentIds[0]);
+    expect(() => sallePlus.licensing.assertTournamentCreation()).not.toThrow();
   });
 
   it('never consults quotas on unlicensed or expired deployments', () => {

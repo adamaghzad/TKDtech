@@ -15,6 +15,8 @@ interface ProposalResult { status:string;reason:string;decisionId:string|null;po
 export interface MatchServiceLicenseGuards {
   /** Called before the first start of a match (license plan quotas). A never-interrupted guard: it only runs when actual_start_at is still unset. */
   assertMatchStart?: () => void;
+  /** Called inside the start transaction after the first start is persisted (append-only usage ledger). */
+  recordMatchStart?: (matchId: string) => void;
 }
 
 export class MatchService {
@@ -126,7 +128,8 @@ export class MatchService {
           if(!['READY','CALLED'].includes(state))throw new HttpError(409,'INVALID_STATE','Start requires a ready or called match.');
           transition('IN_PROGRESS');nextTimer={...startTimer(nextTimer,now),publicWaiting:false};eventType='match.started';
           this.db.prepare('UPDATE match_rounds SET started_at=COALESCE(started_at,?) WHERE match_id=? AND number=?').run(new Date(now).toISOString(),matchId,round);
-          this.db.prepare('UPDATE matches SET actual_start_at=COALESCE(actual_start_at,?) WHERE id=?').run(new Date(now).toISOString(),matchId);break;
+          this.db.prepare('UPDATE matches SET actual_start_at=COALESCE(actual_start_at,?) WHERE id=?').run(new Date(now).toISOString(),matchId);
+          if(!current.actual_start_at)this.licenseGuards.recordMatchStart?.(matchId);break;
         }
         case 'PAUSE': {
           if(!['IN_PROGRESS','GOLDEN_POINT'].includes(state)){
